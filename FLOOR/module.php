@@ -530,6 +530,48 @@ class Floorplaner extends IPSModuleStrict
         .variable-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .variable-type { color: var(--fp-muted); font-size: 11px; }
 
+        .object-tree { padding: 4px 2px 10px; }
+        .tree-node { user-select: none; }
+        .tree-row {
+            min-height: 31px;
+            display: grid;
+            grid-template-columns: 22px 24px minmax(120px, 1fr) auto auto;
+            gap: 5px;
+            align-items: center;
+            padding: 3px 8px 3px calc(8px + (var(--depth, 0) * 18px));
+            border-radius: 5px;
+        }
+        .tree-row:hover { background: rgba(255,255,255,.07); }
+        .tree-toggle {
+            width: 22px;
+            text-align: center;
+            color: var(--fp-muted);
+            cursor: pointer;
+        }
+        .tree-icon { text-align: center; }
+        .tree-name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tree-id { color: #9fc7ff; font-family: monospace; font-size: 11px; }
+        .tree-value {
+            color: var(--fp-muted);
+            font-size: 11px;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tree-row.variable { cursor: pointer; }
+        .tree-row.variable.selected-variable {
+            outline: 1px solid #74b9ff;
+            background: rgba(116,185,255,.12);
+        }
+        .tree-children.collapsed { display: none; }
+        .tree-empty { padding: 16px; color: var(--fp-muted); text-align: center; }
+
         .modal-actions {
             display: flex;
             justify-content: flex-end;
@@ -627,9 +669,9 @@ class Floorplaner extends IPSModuleStrict
 
 <div id="variableModal" class="modal-backdrop" aria-hidden="true">
     <div class="modal">
-        <h3>IP-Symcon Variable auswählen</h3>
+        <h3>IP-Symcon Objektbaum</h3>
         <div class="modal-search">
-            <input id="variableSearch" placeholder="ID, Name oder Pfad suchen …">
+            <input id="variableSearch" placeholder="Objekt, Variable oder ID suchen …">
         </div>
         <div id="variableList" class="variable-list"></div>
         <div class="modal-actions">
@@ -655,7 +697,8 @@ class Floorplaner extends IPSModuleStrict
 
     let state = normalizeProject(initial);
     let variablePickerTarget = null;
-    let variableRows = [];
+    let objectTree = [];
+    const expandedObjectIDs = new Set([0]);
     let tool = 'select';
     let selected = null;
     let wallStart = null;
@@ -1256,7 +1299,7 @@ class Floorplaner extends IPSModuleStrict
             chooseVariableBtn.addEventListener('click', () => {
                 variablePickerTarget = {floorId: state.activeFloor, itemId: selected.id};
                 statusEl.textContent = 'Objektbaum wird geladen …';
-                requestAction('getVariableTree', '');
+                requestAction('getObjectTree', '');
             });
         }
 
@@ -1534,26 +1577,113 @@ class Floorplaner extends IPSModuleStrict
         }
     });
 
-    function renderVariableRows(filter = '') {
+    function treeIcon(node) {
+        switch (Number(node.objectType)) {
+            case 0: return '▾'; // Kategorie
+            case 1: return '◇'; // Instanz
+            case 2: return '●'; // Variable
+            case 3: return '⌁'; // Script
+            case 4: return '▣'; // Ereignis
+            case 5: return '▤'; // Media
+            case 6: return '↗'; // Link
+            default: return '•';
+        }
+    }
+
+    function nodeMatches(node, needle) {
+        if (!needle) return true;
+        const hay = [
+            node.id,
+            node.name,
+            node.path,
+            node.valueText,
+            node.variableTypeName
+        ].join(' ').toLowerCase();
+        if (hay.includes(needle)) return true;
+        return Array.isArray(node.children) && node.children.some(child => nodeMatches(child, needle));
+    }
+
+    function renderTreeNode(node, depth, needle, currentVariableID) {
+        if (!nodeMatches(node, needle)) return '';
+
+        const children = Array.isArray(node.children) ? node.children : [];
+        const hasChildren = children.length > 0;
+        const isVariable = Number(node.objectType) === 2;
+        const forceOpen = !!needle;
+        const isOpen = forceOpen || expandedObjectIDs.has(Number(node.id));
+        const selectedClass = isVariable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
+        const rowClass = isVariable ? ' variable' : '';
+        const toggle = hasChildren ? (isOpen ? '▾' : '▸') : '';
+        const value = isVariable ? escapeHtml(node.valueText || '') : '';
+        const typeTitle = isVariable ? escapeHtml(node.variableTypeName || '') : escapeHtml(node.objectTypeName || '');
+
+        let html = `
+            <div class="tree-node">
+                <div class="tree-row${rowClass}${selectedClass}" style="--depth:${depth}" data-object-id="${node.id}" data-object-type="${node.objectType}" title="${escapeHtml(node.path || node.name || '')}">
+                    <div class="tree-toggle" data-tree-toggle="${node.id}">${toggle}</div>
+                    <div class="tree-icon">${treeIcon(node)}</div>
+                    <div class="tree-name">${escapeHtml(node.name || ('Objekt ' + node.id))}</div>
+                    <div class="tree-id">#${node.id}</div>
+                    <div class="tree-value" title="${typeTitle}">${value || typeTitle}</div>
+                </div>`;
+
+        if (hasChildren) {
+            const childHtml = children.map(child => renderTreeNode(child, depth + 1, needle, currentVariableID)).join('');
+            html += `<div class="tree-children${isOpen ? '' : ' collapsed'}" data-tree-children="${node.id}">${childHtml}</div>`;
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function renderObjectTree(filter = '') {
         const needle = String(filter || '').trim().toLowerCase();
-        const rows = variableRows.filter(v => {
-            if (!needle) return true;
-            return String(v.id).includes(needle) ||
-                String(v.name || '').toLowerCase().includes(needle) ||
-                String(v.path || '').toLowerCase().includes(needle);
+        let currentVariableID = 0;
+
+        if (variablePickerTarget) {
+            const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
+            const item = floor?.items.find(i => i.id === variablePickerTarget.itemId);
+            currentVariableID = Number(item?.variableID || 0);
+        }
+
+        const html = objectTree
+            .map(node => renderTreeNode(node, 0, needle, currentVariableID))
+            .join('');
+
+        variableList.innerHTML = `<div class="object-tree">${html || '<div class="tree-empty">Keine passenden Objekte gefunden.</div>'}</div>`;
+
+        variableList.querySelectorAll('[data-tree-toggle]').forEach(toggle => {
+            toggle.addEventListener('click', evt => {
+                evt.stopPropagation();
+                const id = Number(toggle.dataset.treeToggle);
+                if (expandedObjectIDs.has(id)) expandedObjectIDs.delete(id);
+                else expandedObjectIDs.add(id);
+                renderObjectTree(variableSearch.value);
+            });
         });
 
-        variableList.innerHTML = rows.map(v => `
-            <div class="variable-row" data-variable-id="${v.id}">
-                <div class="variable-id">#${v.id}</div>
-                <div class="variable-path">${escapeHtml(v.path || v.name || '')}</div>
-                <div class="variable-type">${escapeHtml(v.type || '')}</div>
-            </div>
-        `).join('') || '<div class="help">Keine passende Variable gefunden.</div>';
-
-        variableList.querySelectorAll('[data-variable-id]').forEach(row => {
-            row.addEventListener('click', () => assignVariable(Number(row.dataset.variableId)));
+        variableList.querySelectorAll('.tree-row.variable').forEach(row => {
+            row.addEventListener('click', () => assignVariable(Number(row.dataset.objectId)));
         });
+
+        variableList.querySelectorAll('.tree-row:not(.variable)').forEach(row => {
+            row.addEventListener('dblclick', () => {
+                const id = Number(row.dataset.objectId);
+                if (expandedObjectIDs.has(id)) expandedObjectIDs.delete(id);
+                else expandedObjectIDs.add(id);
+                renderObjectTree(variableSearch.value);
+            });
+        });
+    }
+
+    function findTreeNode(nodes, id) {
+        for (const node of nodes) {
+            if (Number(node.id) === Number(id)) return node;
+            if (Array.isArray(node.children)) {
+                const found = findTreeNode(node.children, id);
+                if (found) return found;
+            }
+        }
+        return null;
     }
 
     function assignVariable(variableID) {
@@ -1563,9 +1693,9 @@ class Floorplaner extends IPSModuleStrict
         if (!item) return;
 
         item.variableID = Number(variableID) || 0;
-        const row = variableRows.find(v => Number(v.id) === item.variableID);
-        item._variablePath = row?.path || '';
-        item._valueText = row?.valueText || '';
+        const node = item.variableID ? findTreeNode(objectTree, item.variableID) : null;
+        item._variablePath = node?.path || '';
+        item._valueText = node?.valueText || '';
 
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
@@ -1575,10 +1705,10 @@ class Floorplaner extends IPSModuleStrict
     }
 
     if (!variableModal || !variableList || !variableSearch) {
-        throw new Error('Floorplaner: Variablen-Auswahldialog fehlt im HTML.');
+        throw new Error('Floorplaner: Objektbaum-Dialog fehlt im HTML.');
     }
 
-    variableSearch.addEventListener('input', () => renderVariableRows(variableSearch.value));
+    variableSearch.addEventListener('input', () => renderObjectTree(variableSearch.value));
     document.getElementById('variableCloseBtn').addEventListener('click', () => {
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
@@ -1604,14 +1734,14 @@ class Floorplaner extends IPSModuleStrict
                 updateModeUI();
                 renderAll();
                 fit();
-            } else if (data?.type === 'variableTree' && Array.isArray(data.variables)) {
-                variableRows = data.variables;
+            } else if (data?.type === 'objectTree' && Array.isArray(data.objects)) {
+                objectTree = data.objects;
                 variableSearch.value = '';
-                renderVariableRows('');
+                renderObjectTree('');
                 variableModal.classList.add('open');
                 variableModal.setAttribute('aria-hidden', 'false');
                 variableSearch.focus();
-                statusEl.textContent = 'Variable auswählen';
+                statusEl.textContent = 'Objektbaum – Variable auswählen';
             } else if (data?.type === 'runtimeValue') {
                 const floor = state.floors.find(f => f.id === data.floorId);
                 const item = floor?.items.find(i => i.id === data.itemId);
@@ -1667,11 +1797,11 @@ HTML;
                 $this->ReloadForm();
                 break;
 
-            case 'getVariableTree':
+            case 'getObjectTree':
                 $message = json_encode(
                     [
-                        'type'      => 'variableTree',
-                        'variables' => $this->BuildVariableList()
+                        'type'    => 'objectTree',
+                        'objects' => $this->BuildObjectTree()
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
@@ -1949,51 +2079,89 @@ HTML;
         return $Project;
     }
 
-    private function BuildVariableList(): array
+    private function BuildObjectTree(): array
     {
-        $result = [];
-        $this->CollectVariables(0, '', $result);
-
-        usort(
-            $result,
-            static fn(array $a, array $b): int => strnatcasecmp((string) $a['path'], (string) $b['path'])
-        );
-
-        return $result;
+        return $this->BuildObjectChildren(0, '');
     }
 
-    private function CollectVariables(int $ParentID, string $ParentPath, array &$Result): void
+    private function BuildObjectChildren(int $ParentID, string $ParentPath): array
     {
+        $result = [];
+
         foreach (IPS_GetChildrenIDs($ParentID) as $objectID) {
+            if (!IPS_ObjectExists($objectID)) {
+                continue;
+            }
+
             $object = IPS_GetObject($objectID);
+            $objectType = (int) ($object['ObjectType'] ?? -1);
             $name = IPS_GetName($objectID);
             $path = ($ParentPath === '') ? $name : ($ParentPath . ' / ' . $name);
 
-            if ((int) $object['ObjectType'] === 2 && IPS_VariableExists($objectID)) {
-                $variable = IPS_GetVariable($objectID);
-                $typeNames = ['Boolean', 'Integer', 'Float', 'String'];
-                $variableType = (int) $variable['VariableType'];
+            $typeNames = [
+                0 => 'Kategorie',
+                1 => 'Instanz',
+                2 => 'Variable',
+                3 => 'Script',
+                4 => 'Ereignis',
+                5 => 'Medienobjekt',
+                6 => 'Link'
+            ];
 
-                $valueText = '';
+            $node = [
+                'id'             => $objectID,
+                'name'           => $name,
+                'path'           => $path,
+                'objectType'     => $objectType,
+                'objectTypeName' => $typeNames[$objectType] ?? ('Objekttyp ' . $objectType),
+                'children'       => []
+            ];
+
+            if ($objectType === 2 && IPS_VariableExists($objectID)) {
                 try {
-                    $valueText = (string) GetValueFormatted($objectID);
-                } catch (Throwable) {
-                    $valueText = '';
+                    $variable = IPS_GetVariable($objectID);
+                    $variableType = (int) ($variable['VariableType'] ?? -1);
+                    $variableTypeNames = [
+                        0 => 'Boolean',
+                        1 => 'Integer',
+                        2 => 'Float',
+                        3 => 'String'
+                    ];
+
+                    $node['variableType'] = $variableType;
+                    $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
+                    $node['valueText'] = (string) GetValueFormatted($objectID);
+                } catch (Throwable $e) {
+                    $node['valueText'] = '';
+                    $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
                 }
-
-                $Result[] = [
-                    'id'        => $objectID,
-                    'name'      => $name,
-                    'path'      => $path,
-                    'type'      => $typeNames[$variableType] ?? ('Typ ' . $variableType),
-                    'valueText' => $valueText
-                ];
             }
 
-            if (in_array((int) $object['ObjectType'], [0, 1], true)) {
-                $this->CollectVariables($objectID, $path, $Result);
+            // Kategorien und Instanzen sind die normalen sichtbaren Äste
+            // des Symcon-Objektbaums. Andere Objekte werden ebenfalls
+            // mitgeliefert, falls sie eigene Kinder besitzen.
+            $children = IPS_GetChildrenIDs($objectID);
+            if (count($children) > 0) {
+                $node['children'] = $this->BuildObjectChildren($objectID, $path);
             }
+
+            $result[] = $node;
         }
+
+        usort(
+            $result,
+            static function (array $a, array $b): int {
+                $typeOrder = [0 => 0, 1 => 1, 2 => 2, 6 => 3, 3 => 4, 5 => 5, 4 => 6];
+                $ao = $typeOrder[(int) $a['objectType']] ?? 99;
+                $bo = $typeOrder[(int) $b['objectType']] ?? 99;
+                if ($ao !== $bo) {
+                    return $ao <=> $bo;
+                }
+                return strnatcasecmp((string) $a['name'], (string) $b['name']);
+            }
+        );
+
+        return $result;
     }
 
     private function GetObjectPath(int $ObjectID): string
