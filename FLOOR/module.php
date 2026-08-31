@@ -438,19 +438,25 @@ class Floorplaner extends IPSModuleStrict
             gap: 6px;
             align-items: center;
             justify-content: center;
-            padding: 8px;
+            min-height: 50px;
+            padding: 8px 12px;
             background: var(--fp-panel);
             border-top: 1px solid var(--fp-border);
+            position: relative;
+            z-index: 50;
+            pointer-events: auto;
         }
 
         #viewbar button {
-            min-height: 32px;
+            min-height: 36px;
             border: 1px solid var(--fp-border);
             border-radius: 6px;
             background: var(--fp-panel-2);
             color: var(--fp-text);
-            padding: 5px 14px;
+            padding: 6px 18px;
             cursor: pointer;
+            pointer-events: auto;
+            touch-action: manipulation;
         }
 
         #app.view-mode .toolbar { display: none; }
@@ -612,6 +618,24 @@ class Floorplaner extends IPSModuleStrict
 
         <div class="spacer"></div>
         <div id="status" class="status">Bereit</div>
+    </div>
+
+    <div id="viewbar">
+        <button id="editBtn" type="button">✎ Floorplan bearbeiten</button>
+    </div>
+</div>
+
+<div id="variableModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+        <h3>IP-Symcon Variable auswählen</h3>
+        <div class="modal-search">
+            <input id="variableSearch" placeholder="ID, Name oder Pfad suchen …">
+        </div>
+        <div id="variableList" class="variable-list"></div>
+        <div class="modal-actions">
+            <button id="variableClearBtn" type="button">Zuordnung entfernen</button>
+            <button id="variableCloseBtn" type="button">Abbrechen</button>
+        </div>
     </div>
 </div>
 
@@ -1544,16 +1568,27 @@ class Floorplaner extends IPSModuleStrict
         item._valueText = row?.valueText || '';
 
         variableModal.classList.remove('open');
+        variableModal.setAttribute('aria-hidden', 'true');
         pushHistory();
         markDirty();
         render();
     }
 
+    if (!variableModal || !variableList || !variableSearch) {
+        throw new Error('Floorplaner: Variablen-Auswahldialog fehlt im HTML.');
+    }
+
     variableSearch.addEventListener('input', () => renderVariableRows(variableSearch.value));
-    document.getElementById('variableCloseBtn').addEventListener('click', () => variableModal.classList.remove('open'));
+    document.getElementById('variableCloseBtn').addEventListener('click', () => {
+        variableModal.classList.remove('open');
+        variableModal.setAttribute('aria-hidden', 'true');
+    });
     document.getElementById('variableClearBtn').addEventListener('click', () => assignVariable(0));
     variableModal.addEventListener('click', evt => {
-        if (evt.target === variableModal) variableModal.classList.remove('open');
+        if (evt.target === variableModal) {
+            variableModal.classList.remove('open');
+            variableModal.setAttribute('aria-hidden', 'true');
+        }
     });
 
     window.handleMessage = message => {
@@ -1574,6 +1609,7 @@ class Floorplaner extends IPSModuleStrict
                 variableSearch.value = '';
                 renderVariableRows('');
                 variableModal.classList.add('open');
+                variableModal.setAttribute('aria-hidden', 'false');
                 variableSearch.focus();
                 statusEl.textContent = 'Variable auswählen';
             } else if (data?.type === 'runtimeValue') {
