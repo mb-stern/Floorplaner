@@ -57,9 +57,31 @@ class Floorplaner extends IPSModuleStrict
         }
 
         $this->SetSummary('Floorplan Editor');
+        $this->RegisterRuntimeVariableMessages();
 
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->ReloadHtml();
+        }
+    }
+
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
+    {
+        if ($Message !== VM_UPDATE) {
+            return;
+        }
+
+        $project = $this->AddRuntimeValues($this->GetProject());
+
+        $message = json_encode(
+            [
+                'type'    => 'project',
+                'project' => $project
+            ],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+
+        if ($message !== false) {
+            $this->UpdateVisualizationValue($message);
         }
     }
 
@@ -408,6 +430,23 @@ class Floorplaner extends IPSModuleStrict
             stroke: #74b9ff;
         }
 
+        .opening-state-open {
+            stroke: #74d680;
+        }
+
+        .opening-shutter {
+            stroke: #b8c4d8;
+            stroke-width: 5;
+            vector-effect: non-scaling-stroke;
+            stroke-linecap: butt;
+        }
+
+        .opening-shutter-slat {
+            stroke: #8695aa;
+            stroke-width: 1.4;
+            vector-effect: non-scaling-stroke;
+        }
+
         .device {
             cursor: pointer;
         }
@@ -472,6 +511,18 @@ class Floorplaner extends IPSModuleStrict
             pointer-events: auto;
             gap: 6px;
             align-items: center;
+        }
+
+        #viewbar select {
+            height: 36px;
+            max-width: 150px;
+            padding: 0 26px 0 9px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,.35);
         }
 
         #viewbar button {
@@ -755,7 +806,7 @@ class Floorplaner extends IPSModuleStrict
     </div>
 
     <div id="viewbar">
-        <button id="liveFloorBtn" type="button" title="Etage wechseln" aria-label="Etage wechseln">▤</button>
+        <select id="liveFloorSelect" title="Etage auswählen" aria-label="Etage auswählen"></select>
         <button id="editBtn" type="button" title="Floorplan bearbeiten" aria-label="Floorplan bearbeiten">✎</button>
     </div>
 </div>
@@ -792,7 +843,7 @@ class Floorplaner extends IPSModuleStrict
     const properties = document.getElementById('properties');
     const propTitle = document.getElementById('propTitle');
     const floorSelect = document.getElementById('floorSelect');
-    const liveFloorBtn = document.getElementById('liveFloorBtn');
+    const liveFloorSelect = document.getElementById('liveFloorSelect');
     const statusEl = document.getElementById('status');
     const app = document.getElementById('app');
     const variableModal = document.getElementById('variableModal');
@@ -1063,24 +1114,16 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function renderFloorSelect() {
-        floorSelect.innerHTML = state.floors.map(f =>
+        const options = state.floors.map(f =>
             `<option value="${escapeHtml(f.id)}"${f.id === state.activeFloor ? ' selected' : ''}>${escapeHtml(f.name)}</option>`
         ).join('');
 
-        if (liveFloorBtn) {
-            const floor = currentFloor();
-            const count = state.floors.length;
-            liveFloorBtn.style.display = count > 1 ? '' : 'none';
-            liveFloorBtn.disabled = count <= 1;
-            liveFloorBtn.title = count > 1
-                ? `Etage wechseln – aktuell: ${floor?.name || 'Etage'}`
-                : 'Nur eine Etage vorhanden';
-            liveFloorBtn.setAttribute(
-                'aria-label',
-                count > 1
-                    ? `Etage wechseln – aktuell ${floor?.name || 'Etage'}`
-                    : 'Nur eine Etage vorhanden'
-            );
+        floorSelect.innerHTML = options;
+
+        if (liveFloorSelect) {
+            liveFloorSelect.innerHTML = options;
+            liveFloorSelect.style.display = state.floors.length > 1 ? '' : 'none';
+            liveFloorSelect.disabled = state.floors.length <= 1;
         }
     }
 
@@ -1148,18 +1191,83 @@ class Floorplaner extends IPSModuleStrict
         for (const o of floor.openings) {
             const wall = floor.walls.find(w => w.id === o.wallId);
             if (!wall) continue;
+
             const geom = openingGeometry(wall, o);
             const sel = selected?.type === 'opening' && selected.id === o.id ? ' selected' : '';
+            const amount = openingState(o);
+            const isOpen = amount > 0.02;
+            const stateClass = isOpen ? ' opening-state-open' : '';
+
             parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}">`);
             parts.push(`<line class="opening-gap" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
 
             if (o.type === 'door') {
-                parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.dx}" y2="${geom.dy}"/>`);
-                parts.push(`<path class="opening-line" d="M ${geom.x2} ${geom.y2} Q ${geom.cx} ${geom.cy} ${geom.dx} ${geom.dy}"/>`);
+                const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
+                const angle = amount * Math.PI / 2;
+                const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
+                const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
+
+                parts.push(`<line class="opening-line${stateClass}" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
+
+                if (isOpen) {
+                    const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * leafLength * .28 * amount;
+                    const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * leafLength * .28 * amount;
+                    parts.push(`<path class="opening-line${stateClass}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
+                }
             } else {
-                parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
-                parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
+                if (!isOpen) {
+                    parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
+                    parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
+                } else {
+                    // Zwei Fensterflügel öffnen sich sichtbar in den Raum.
+                    const halfLen = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1) / 2;
+                    const swing = halfLen * .72 * amount;
+                    const leftInnerX = geom.cx + geom.nx * swing;
+                    const leftInnerY = geom.cy + geom.ny * swing;
+                    const rightInnerX = geom.cx + geom.nx * swing;
+                    const rightInnerY = geom.cy + geom.ny * swing;
+
+                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x1}" y1="${geom.y1}" x2="${leftInnerX}" y2="${leftInnerY}"/>`);
+                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x2}" y1="${geom.y2}" x2="${rightInnerX}" y2="${rightInnerY}"/>`);
+                }
             }
+
+            if (o.shutterVariableID) {
+                const shutterOpen = shutterState(o);
+                const closed = 1 - shutterOpen;
+                const shutterOffset = 8;
+                const sx1 = geom.x1 - geom.nx * shutterOffset;
+                const sy1 = geom.y1 - geom.ny * shutterOffset;
+                const sx2 = geom.x2 - geom.nx * shutterOffset;
+                const sy2 = geom.y2 - geom.ny * shutterOffset;
+
+                if ((o.shutterStyle || 'roll') === 'roll') {
+                    if (closed > 0.01) {
+                        parts.push(
+                            `<line class="opening-shutter" opacity="${Math.max(.18, closed)}" ` +
+                            `x1="${sx1}" y1="${sy1}" x2="${sx2}" y2="${sy2}"/>`
+                        );
+
+                        const slats = Math.max(1, Math.round(7 * closed));
+                        for (let i = 0; i < slats; i++) {
+                            const t = slats === 1 ? .5 : i / (slats - 1);
+                            const px = sx1 + (sx2 - sx1) * t;
+                            const py = sy1 + (sy2 - sy1) * t;
+                            parts.push(
+                                `<line class="opening-shutter-slat" x1="${px - geom.nx * 4}" y1="${py - geom.ny * 4}" ` +
+                                `x2="${px + geom.nx * 4}" y2="${py + geom.ny * 4}"/>`
+                            );
+                        }
+                    }
+                } else {
+                    const panel = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1) * .24 * closed;
+                    if (panel > .5) {
+                        parts.push(`<line class="opening-shutter" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x1 - geom.nx * panel}" y2="${geom.y1 - geom.ny * panel}"/>`);
+                        parts.push(`<line class="opening-shutter" x1="${geom.x2}" y1="${geom.y2}" x2="${geom.x2 - geom.nx * panel}" y2="${geom.y2 - geom.ny * panel}"/>`);
+                    }
+                }
+            }
+
             parts.push(`</g>`);
         }
 
@@ -1219,6 +1327,51 @@ class Floorplaner extends IPSModuleStrict
         updateUndoButtons();
     }
 
+    function truthyVariableValue(value) {
+        return value === true || value === 1 || value === '1' || value === 'true' || value === 'on' || value === 'open';
+    }
+
+    function normalizedOpeningAmount(rawValue, variableType, profile, invert = false) {
+        let amount = 0;
+
+        if (Number(variableType) === 0) {
+            amount = truthyVariableValue(rawValue) ? 1 : 0;
+        } else if (Number(variableType) === 1 || Number(variableType) === 2) {
+            const raw = Number(rawValue);
+            const min = Number(profile?.min);
+            const max = Number(profile?.max);
+
+            if (Number.isFinite(raw) && Number.isFinite(min) && Number.isFinite(max) && max > min) {
+                amount = (raw - min) / (max - min);
+            } else if (Number.isFinite(raw)) {
+                amount = raw > 1 ? raw / 100 : raw;
+            }
+        } else {
+            amount = truthyVariableValue(String(rawValue).toLowerCase()) ? 1 : 0;
+        }
+
+        amount = Math.max(0, Math.min(1, amount));
+        return invert ? 1 - amount : amount;
+    }
+
+    function openingState(o) {
+        return normalizedOpeningAmount(
+            o._rawValue,
+            o._variableType,
+            o._profile,
+            o.invert === true
+        );
+    }
+
+    function shutterState(o) {
+        return normalizedOpeningAmount(
+            o._shutterVariableRawValue,
+            o._shutterVariableType,
+            o._shutterVariableProfile,
+            o.shutterInvert === true
+        );
+    }
+
     function openingGeometry(w, o) {
         const vx = w.x2 - w.x1;
         const vy = w.y2 - w.y1;
@@ -1243,7 +1396,7 @@ class Floorplaner extends IPSModuleStrict
         const dy = y1 + ny * depth;
 
         return {
-            x1, y1, x2, y2, cx, cy, dx, dy,
+            x1, y1, x2, y2, cx, cy, dx, dy, ux, uy, nx, ny,
             wx1: x1 + nx * 4,
             wy1: y1 + ny * 4,
             wx2: x2 + nx * 4,
@@ -1529,16 +1682,11 @@ class Floorplaner extends IPSModuleStrict
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
 
-    liveFloorBtn?.addEventListener('click', () => {
-        if (!Array.isArray(state.floors) || state.floors.length <= 1) return;
+    liveFloorSelect?.addEventListener('change', () => {
+        const nextFloorID = liveFloorSelect.value;
+        if (!state.floors.some(f => f.id === nextFloorID)) return;
 
-        const currentIndex = Math.max(
-            0,
-            state.floors.findIndex(f => f.id === state.activeFloor)
-        );
-        const nextIndex = (currentIndex + 1) % state.floors.length;
-
-        state.activeFloor = state.floors[nextIndex].id;
+        state.activeFloor = nextFloorID;
         selected = null;
         wallStart = null;
         render();
@@ -2421,6 +2569,39 @@ HTML;
             'areas'     => [],
             'trackers'  => []
         ];
+    }
+
+    private function RegisterRuntimeVariableMessages(): void
+    {
+        $project = $this->GetProject();
+        $ids = [];
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            foreach (($floor['items'] ?? []) as $item) {
+                $id = (int) ($item['variableID'] ?? 0);
+                if ($id > 0 && IPS_VariableExists($id)) {
+                    $ids[$id] = true;
+                }
+            }
+
+            foreach (($floor['openings'] ?? []) as $opening) {
+                foreach ([
+                    'variableID',
+                    'secondaryVariableID',
+                    'shutterVariableID',
+                    'shutterSecondaryVariableID'
+                ] as $field) {
+                    $id = (int) ($opening[$field] ?? 0);
+                    if ($id > 0 && IPS_VariableExists($id)) {
+                        $ids[$id] = true;
+                    }
+                }
+            }
+        }
+
+        foreach (array_keys($ids) as $id) {
+            $this->RegisterMessage((int) $id, VM_UPDATE);
+        }
     }
 
     private function AddRuntimeValues(array $Project): array
