@@ -42,7 +42,6 @@ class Floorplaner extends IPSModuleStrict
         $this->RegisterPropertyBoolean('ShowGrid', true);
 
         $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
-        $this->SetBuffer('RegisteredVariables', '[]');
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
@@ -64,7 +63,6 @@ class Floorplaner extends IPSModuleStrict
         }
 
         $this->PublishEasyFloorplanAssets();
-        $this->RegisterVariableMessages();
 
         $this->SetSummary('Floorplan Editor');
 
@@ -83,120 +81,6 @@ class Floorplaner extends IPSModuleStrict
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
             )
         );
-    }
-
-    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
-    {
-        if ($Message !== VM_UPDATE || IPS_GetKernelRunlevel() !== KR_READY) {
-            return;
-        }
-
-        $this->PushRuntimeValueUpdates($SenderID);
-    }
-
-    private function RegisterVariableMessages(): void
-    {
-        $old = json_decode($this->GetBuffer('RegisteredVariables'), true);
-        if (!is_array($old)) {
-            $old = [];
-        }
-
-        foreach ($old as $variableID) {
-            $variableID = (int) $variableID;
-            if ($variableID > 0 && IPS_VariableExists($variableID)) {
-                $this->UnregisterMessage($variableID, VM_UPDATE);
-            }
-        }
-
-        $ids = [];
-        $project = $this->GetProject();
-        foreach (($project['floors'] ?? []) as $floor) {
-            foreach (($floor['items'] ?? []) as $item) {
-                $id = (int) ($item['variableID'] ?? 0);
-                if ($id > 0 && IPS_VariableExists($id)) {
-                    $ids[$id] = true;
-                }
-            }
-            foreach (($floor['openings'] ?? []) as $opening) {
-                foreach (['variableID', 'secondaryVariableID'] as $field) {
-                    $id = (int) ($opening[$field] ?? 0);
-                    if ($id > 0 && IPS_VariableExists($id)) {
-                        $ids[$id] = true;
-                    }
-                }
-            }
-        }
-
-        $registered = array_map('intval', array_keys($ids));
-        foreach ($registered as $variableID) {
-            $this->RegisterMessage($variableID, VM_UPDATE);
-        }
-
-        $this->SetBuffer('RegisteredVariables', json_encode($registered));
-    }
-
-    private function PushRuntimeValueUpdates(int $VariableID): void
-    {
-        if ($VariableID <= 0 || !IPS_VariableExists($VariableID)) {
-            return;
-        }
-
-        $valueText = $this->GetSafeValueText($VariableID);
-        $project = $this->GetProject();
-
-        foreach (($project['floors'] ?? []) as $floor) {
-            $floorID = (string) ($floor['id'] ?? '');
-
-            foreach (($floor['items'] ?? []) as $item) {
-                if ((int) ($item['variableID'] ?? 0) === $VariableID) {
-                    $this->SendRuntimeValueMessage(
-                        $floorID,
-                        'item',
-                        (string) ($item['id'] ?? ''),
-                        'variableID',
-                        $valueText
-                    );
-                }
-            }
-
-            foreach (($floor['openings'] ?? []) as $opening) {
-                foreach (['variableID', 'secondaryVariableID'] as $field) {
-                    if ((int) ($opening[$field] ?? 0) === $VariableID) {
-                        $this->SendRuntimeValueMessage(
-                            $floorID,
-                            'opening',
-                            (string) ($opening['id'] ?? ''),
-                            $field,
-                            $valueText
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    private function SendRuntimeValueMessage(
-        string $FloorID,
-        string $EntityType,
-        string $EntityID,
-        string $Field,
-        string $ValueText
-    ): void {
-        $message = json_encode(
-            [
-                'type'       => 'runtimeValue',
-                'floorId'    => $FloorID,
-                'entityType' => $EntityType,
-                'entityId'   => $EntityID,
-                'field'      => $Field,
-                'valueText'  => $ValueText
-            ],
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-
-        if ($message !== false) {
-            $this->UpdateVisualizationValue($message);
-        }
     }
 
     private function PublishEasyFloorplanAssets(): void
@@ -2038,30 +1922,10 @@ class Floorplaner extends IPSModuleStrict
                 statusEl.textContent = 'Objektbaum – Variable auswählen';
             } else if (data?.type === 'runtimeValue') {
                 const floor = state.floors.find(f => f.id === data.floorId);
-                if (!floor) {
-                    return;
-                }
-
-                const entityType = data.entityType || 'item';
-                const entityId = data.entityId || data.itemId || '';
-                const field = data.field || 'variableID';
-
-                let entity = null;
-                if (entityType === 'opening') {
-                    entity = floor.openings?.find(o => o.id === entityId) || null;
-                } else {
-                    entity = floor.items?.find(i => i.id === entityId) || null;
-                }
-
-                if (entity) {
-                    const valueKey = field === 'variableID'
-                        ? '_valueText'
-                        : '_' + field.replace(/ID$/, '') + 'ValueText';
-                    entity[valueKey] = data.valueText || '';
+                const item = floor?.items.find(i => i.id === data.itemId);
+                if (item) {
+                    item._valueText = data.valueText || '';
                     render();
-                    if (selected?.id === entityId) {
-                        renderProperties();
-                    }
                 }
             }
         } catch (e) {
@@ -2146,7 +2010,6 @@ HTML;
                 }
 
                 $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
-                $this->RegisterVariableMessages();
                 $this->ReloadForm();
                 break;
 
@@ -2212,7 +2075,6 @@ HTML;
         }
 
         $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
-        $this->RegisterVariableMessages();
         $this->UpdateVisualizationValue(
             json_encode(
                 ['type' => 'project', 'project' => $project],
@@ -2604,12 +2466,12 @@ HTML;
     {
         $project = $this->GetProject();
 
-        foreach (($project['floors'] ?? []) as $floor) {
+        foreach ($project['floors'] as $floor) {
             if ((string) ($floor['id'] ?? '') !== $FloorID) {
                 continue;
             }
 
-            foreach (($floor['items'] ?? []) as $item) {
+            foreach ($floor['items'] as $item) {
                 if ((string) ($item['id'] ?? '') !== $ItemID) {
                     continue;
                 }
@@ -2620,32 +2482,28 @@ HTML;
                 }
 
                 $variable = IPS_GetVariable($variableID);
-                if ((int) ($variable['VariableType'] ?? -1) !== 0) {
-                    return;
-                }
+                $variableType = (int) $variable['VariableType'];
 
-                $newValue = !GetValueBoolean($variableID);
+                // Bewusst auf die ursprüngliche, funktionierende Bedienlogik
+                // zurückgesetzt: Boolean direkt über RequestAction umschalten.
+                if ($variableType === 0) {
+                    $newValue = !GetValueBoolean($variableID);
+                    RequestAction($variableID, $newValue);
 
-                try {
-                    /*
-                     * Bewusst wieder exakt wie in der zuvor funktionierenden
-                     * Bedienversion: RequestAction direkt auf die Variable.
-                     * Kein Ausweichen auf SetValueBoolean(), weil damit bei
-                     * Aktions-/Instanzvariablen nur der Variablenwert geändert
-                     * werden kann, ohne das eigentliche Gerät zu schalten.
-                     */
-                    \RequestAction($variableID, $newValue);
-                } catch (Throwable $e) {
-                    $this->SendDebug(
-                        'OperateItem',
-                        'RequestAction für Variable ' . $variableID . ' fehlgeschlagen: ' . $e->getMessage(),
-                        0
+                    $message = json_encode(
+                        [
+                            'type'      => 'runtimeValue',
+                            'floorId'   => $FloorID,
+                            'itemId'    => $ItemID,
+                            'valueText' => $this->GetSafeValueText($variableID)
+                        ],
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                     );
-                    return;
+                    if ($message !== false) {
+                        $this->UpdateVisualizationValue($message);
+                    }
                 }
 
-                // Anzeige sofort nach der Aktion aktualisieren.
-                $this->PushRuntimeValueUpdates($variableID);
                 return;
             }
         }
