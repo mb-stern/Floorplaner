@@ -1740,10 +1740,26 @@ class Floorplaner extends IPSModuleStrict
     }
 
     const deviceIconChoices = [
-        '💡','🔌','🔋','⚡','☀️','🌡️','💧','🔥','❄️','💨',
-        '🚪','🪟','🔒','🔓','📺','📻','🔊','📷','🎥','🛎️',
-        '🚗','🔌','🌀','🖥️','💻','📱','🧺','🍳','☕','🧊',
-        '🚿','🛁','🚽','🛋️','🛏️','🪑','🧯','🔔','⏻','⚙️'
+        // Licht / Strom
+        '💡','🔦','🕯️','✨','⚡','🔌','🔋','🪫','⏻','☀️','🌙',
+        // Klima / Wetter / Luft
+        '🌡️','🔥','❄️','💨','💧','☔','🌧️','🌤️','☁️','🌀','♨️',
+        // Türen / Fenster / Sicherheit
+        '🚪','🪟','🔒','🔓','🔑','🗝️','🔔','🛎️','🚨','🧯','🛡️','👁️',
+        // Sensorik
+        '📡','📶','📍','🧭','⏱️','⏰','🕒','🎚️','🎛️','📊','📈',
+        // Multimedia / IT
+        '📺','📻','🔊','🔉','🔇','🎵','🎬','📷','🎥','📹','🖥️','💻','⌨️','🖱️','📱','☎️',
+        // Haushalt
+        '🧺','🧹','🧽','🪣','🧼','🧴','🧻','🪥','🧊','☕','🍳','🥘','🍽️','🥤',
+        // Bad
+        '🚿','🛁','🚽','🪞',
+        // Möbel / Räume
+        '🛋️','🛏️','🪑','🗄️','🗃️','🪴','🖼️','📚',
+        // Fahrzeuge / Garage / Garten
+        '🚗','🚙','🚲','🛴','🏍️','🚘','⛽','🔧','🛠️','🪛','🌱','🌳','🌻','💦',
+        // Personen / Status
+        '👤','👥','🏠','🏡','🏢','✅','❌','⚠️','ℹ️','🔴','🟢','🟡','🔵','⚙️'
     ];
 
     function getDeviceIconPicker() {
@@ -1759,9 +1775,11 @@ class Floorplaner extends IPSModuleStrict
         const picker = getDeviceIconPicker();
         if (!picker || !input) return;
 
-        picker.innerHTML = deviceIconChoices
-            .map(icon => `<button type="button" data-device-icon="${escapeHtml(icon)}" title="${escapeHtml(icon)}">${escapeHtml(icon)}</button>`)
-            .join('');
+        picker.innerHTML =
+            `<button type="button" data-device-icon="" title="Standardsymbol des Gerätetyps">↩</button>` +
+            deviceIconChoices
+                .map(icon => `<button type="button" data-device-icon="${escapeHtml(icon)}" title="${escapeHtml(icon)}">${escapeHtml(icon)}</button>`)
+                .join('');
 
         const rect = input.getBoundingClientRect();
         picker.style.left = `${Math.min(rect.left, Math.max(8, window.innerWidth - 330))}px`;
@@ -1769,10 +1787,29 @@ class Floorplaner extends IPSModuleStrict
         picker.style.display = 'grid';
 
         picker.querySelectorAll('[data-device-icon]').forEach(button => {
-            button.addEventListener('click', () => {
-                input.value = button.dataset.deviceIcon || '';
-                input.dispatchEvent(new Event('input', {bubbles: true}));
+            button.addEventListener('click', evt => {
+                evt.preventDefault();
+                evt.stopPropagation();
+
+                if (!selected || selected.type !== 'item') {
+                    closeDeviceIconPicker();
+                    return;
+                }
+
+                const obj = findEntity('item', selected.id);
+                if (!obj) {
+                    closeDeviceIconPicker();
+                    return;
+                }
+
+                obj.icon = button.dataset.deviceIcon || '';
+                pushHistory();
+                markDirty();
                 closeDeviceIconPicker();
+
+                // Direkt neu zeichnen. selected bleibt erhalten, daher bleibt auch
+                // die Gerätekonfiguration offen und zeigt das gewählte Symbol.
+                render();
             });
         });
     }
