@@ -42,6 +42,7 @@ class Floorplaner extends IPSModuleStrict
         $this->RegisterPropertyBoolean('ShowGrid', true);
 
         $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
+        $this->SetBuffer('RegisteredVariables', '[]');
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
@@ -63,8 +64,139 @@ class Floorplaner extends IPSModuleStrict
         }
 
         $this->PublishEasyFloorplanAssets();
+        $this->RegisterVariableMessages();
 
         $this->SetSummary('Floorplan Editor');
+
+        // Nach einem Modul-/Konfigurationsupdate muss die bestehende
+        // HTML-SDK-Instanz die neue GetVisualizationTile()-Version laden.
+        if (IPS_GetKernelRunlevel() === KR_READY) {
+            $this->ReloadHtml();
+        }
+    }
+
+    public function ReloadHtml(): void
+    {
+        $this->UpdateVisualizationValue(
+            json_encode(
+                ['command' => 'reloadHtml'],
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            )
+        );
+    }
+
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
+    {
+        if ($Message !== VM_UPDATE || IPS_GetKernelRunlevel() !== KR_READY) {
+            return;
+        }
+
+        $this->PushRuntimeValueUpdates($SenderID);
+    }
+
+    private function RegisterVariableMessages(): void
+    {
+        $old = json_decode($this->GetBuffer('RegisteredVariables'), true);
+        if (!is_array($old)) {
+            $old = [];
+        }
+
+        foreach ($old as $variableID) {
+            $variableID = (int) $variableID;
+            if ($variableID > 0 && IPS_VariableExists($variableID)) {
+                $this->UnregisterMessage($variableID, VM_UPDATE);
+            }
+        }
+
+        $ids = [];
+        $project = $this->GetProject();
+        foreach (($project['floors'] ?? []) as $floor) {
+            foreach (($floor['items'] ?? []) as $item) {
+                $id = (int) ($item['variableID'] ?? 0);
+                if ($id > 0 && IPS_VariableExists($id)) {
+                    $ids[$id] = true;
+                }
+            }
+            foreach (($floor['openings'] ?? []) as $opening) {
+                foreach (['variableID', 'secondaryVariableID'] as $field) {
+                    $id = (int) ($opening[$field] ?? 0);
+                    if ($id > 0 && IPS_VariableExists($id)) {
+                        $ids[$id] = true;
+                    }
+                }
+            }
+        }
+
+        $registered = array_map('intval', array_keys($ids));
+        foreach ($registered as $variableID) {
+            $this->RegisterMessage($variableID, VM_UPDATE);
+        }
+
+        $this->SetBuffer('RegisteredVariables', json_encode($registered));
+    }
+
+    private function PushRuntimeValueUpdates(int $VariableID): void
+    {
+        if ($VariableID <= 0 || !IPS_VariableExists($VariableID)) {
+            return;
+        }
+
+        $valueText = $this->GetSafeValueText($VariableID);
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            $floorID = (string) ($floor['id'] ?? '');
+
+            foreach (($floor['items'] ?? []) as $item) {
+                if ((int) ($item['variableID'] ?? 0) === $VariableID) {
+                    $this->SendRuntimeValueMessage(
+                        $floorID,
+                        'item',
+                        (string) ($item['id'] ?? ''),
+                        'variableID',
+                        $valueText
+                    );
+                }
+            }
+
+            foreach (($floor['openings'] ?? []) as $opening) {
+                foreach (['variableID', 'secondaryVariableID'] as $field) {
+                    if ((int) ($opening[$field] ?? 0) === $VariableID) {
+                        $this->SendRuntimeValueMessage(
+                            $floorID,
+                            'opening',
+                            (string) ($opening['id'] ?? ''),
+                            $field,
+                            $valueText
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    private function SendRuntimeValueMessage(
+        string $FloorID,
+        string $EntityType,
+        string $EntityID,
+        string $Field,
+        string $ValueText
+    ): void {
+        $message = json_encode(
+            [
+                'type'       => 'runtimeValue',
+                'floorId'    => $FloorID,
+                'entityType' => $EntityType,
+                'entityId'   => $EntityID,
+                'field'      => $Field,
+                'valueText'  => $ValueText
+            ],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+
+        if ($message !== false) {
+            $this->UpdateVisualizationValue($message);
+        }
     }
 
     private function PublishEasyFloorplanAssets(): void
@@ -1876,6 +2008,12 @@ class Floorplaner extends IPSModuleStrict
     window.handleMessage = message => {
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
+
+            if (data?.command === 'reloadHtml') {
+                window.location.reload();
+                return;
+            }
+
             if (data?.type === 'project' && data.project) {
                 state = normalizeProject(data.project);
                 selected = null;
@@ -1896,10 +2034,30 @@ class Floorplaner extends IPSModuleStrict
                 statusEl.textContent = 'Objektbaum – Variable auswählen';
             } else if (data?.type === 'runtimeValue') {
                 const floor = state.floors.find(f => f.id === data.floorId);
-                const item = floor?.items.find(i => i.id === data.itemId);
-                if (item) {
-                    item._valueText = data.valueText || '';
+                if (!floor) {
+                    return;
+                }
+
+                const entityType = data.entityType || 'item';
+                const entityId = data.entityId || data.itemId || '';
+                const field = data.field || 'variableID';
+
+                let entity = null;
+                if (entityType === 'opening') {
+                    entity = floor.openings?.find(o => o.id === entityId) || null;
+                } else {
+                    entity = floor.items?.find(i => i.id === entityId) || null;
+                }
+
+                if (entity) {
+                    const valueKey = field === 'variableID'
+                        ? '_valueText'
+                        : '_' + field.replace(/ID$/, '') + 'ValueText';
+                    entity[valueKey] = data.valueText || '';
                     render();
+                    if (selected?.id === entityId) {
+                        renderProperties();
+                    }
                 }
             }
         } catch (e) {
@@ -1942,9 +2100,20 @@ class Floorplaner extends IPSModuleStrict
 </html>
 HTML;
 
+        $assetVersion = '0';
+        $sourceJS = __DIR__ . DIRECTORY_SEPARATOR . self::EASY_FLOORPLAN_VENDOR_DIR
+            . DIRECTORY_SEPARATOR . self::EASY_FLOORPLAN_JS_FILE;
+        if (is_file($sourceJS)) {
+            $hash = @hash_file('sha256', $sourceJS);
+            if (is_string($hash) && $hash !== '') {
+                $assetVersion = substr($hash, 0, 12);
+            }
+        }
+        $easyFloorplanUrl = self::EASY_FLOORPLAN_WEB_JS . '?v=' . rawurlencode($assetVersion);
+
         return str_replace(
             ['__INITIAL_PROJECT__', '__EASY_FLOORPLAN_JS__', '__EASY_FLOORPLAN_VERSION__'],
-            [$initial, self::EASY_FLOORPLAN_WEB_JS, self::EASY_FLOORPLAN_BASELINE],
+            [$initial, $easyFloorplanUrl, self::EASY_FLOORPLAN_BASELINE],
             $html
         );
     }
@@ -1973,6 +2142,7 @@ HTML;
                 }
 
                 $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+                $this->RegisterVariableMessages();
                 $this->ReloadForm();
                 break;
 
@@ -2038,6 +2208,7 @@ HTML;
         }
 
         $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+        $this->RegisterVariableMessages();
         $this->UpdateVisualizationValue(
             json_encode(
                 ['type' => 'project', 'project' => $project],
@@ -2429,12 +2600,12 @@ HTML;
     {
         $project = $this->GetProject();
 
-        foreach ($project['floors'] as $floor) {
+        foreach (($project['floors'] ?? []) as $floor) {
             if ((string) ($floor['id'] ?? '') !== $FloorID) {
                 continue;
             }
 
-            foreach ($floor['items'] as $item) {
+            foreach (($floor['items'] ?? []) as $item) {
                 if ((string) ($item['id'] ?? '') !== $ItemID) {
                     continue;
                 }
@@ -2445,28 +2616,33 @@ HTML;
                 }
 
                 $variable = IPS_GetVariable($variableID);
-                $variableType = (int) $variable['VariableType'];
-
-                // In der ersten Bedienversion werden Boolean-Variablen direkt
-                // umgeschaltet. Numerische Werte werden zunächst nur angezeigt.
-                if ($variableType === 0) {
-                    $newValue = !GetValueBoolean($variableID);
-                    RequestAction($variableID, $newValue);
-
-                    $message = json_encode(
-                        [
-                            'type'      => 'runtimeValue',
-                            'floorId'   => $FloorID,
-                            'itemId'    => $ItemID,
-                            'valueText' => $this->GetSafeValueText($variableID)
-                        ],
-                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-                    );
-                    if ($message !== false) {
-                        $this->UpdateVisualizationValue($message);
-                    }
+                if ((int) ($variable['VariableType'] ?? -1) !== 0) {
+                    return;
                 }
 
+                $newValue = !GetValueBoolean($variableID);
+                $actionID = (int) (($variable['VariableCustomAction'] ?? 0) ?: ($variable['VariableAction'] ?? 0));
+
+                try {
+                    // Mit hinterlegter Aktion sauber über RequestAction schalten.
+                    // Reine Boolean-Variablen ohne Aktion werden direkt gesetzt.
+                    if ($actionID > 0) {
+                        \RequestAction($variableID, $newValue);
+                    } else {
+                        SetValueBoolean($variableID, $newValue);
+                    }
+                } catch (Throwable $e) {
+                    $this->SendDebug(
+                        'OperateItem',
+                        'Variable ' . $variableID . ' konnte nicht geschaltet werden: ' . $e->getMessage(),
+                        0
+                    );
+                    return;
+                }
+
+                // Sofortige Rückmeldung; externe Änderungen kommen zusätzlich
+                // automatisch über VM_UPDATE/MessageSink.
+                $this->PushRuntimeValueUpdates($variableID);
                 return;
             }
         }
