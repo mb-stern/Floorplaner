@@ -2241,7 +2241,14 @@ class Floorplaner extends IPSModuleStrict
                 variableModal.setAttribute('aria-hidden', 'false');
                 variableSearch.focus();
                 statusEl.textContent = 'Objektbaum – Variable auswählen';
-            }
+            } else if (data?.type === 'runtimeValue') {
+                const floor = state.floors.find(f => f.id === data.floorId);
+                const item = floor?.items.find(i => i.id === data.itemId);
+                if (item) {
+                    item._valueText = data.valueText || '';
+                    if ('rawValue' in data) item._rawValue = data.rawValue;
+                    render();
+                }
             }
         } catch (e) {
             console.error('handleMessage', e);
@@ -2854,9 +2861,8 @@ HTML;
                     return;
                 }
 
-                // Absichtlich KEIN UpdateVisualizationValue() nach Bedienung.
-                // Die HTML-SDK-Kachel bleibt unverändert und wird nur bei einem
-                // Modul-/Konfigurationsupdate über ReloadHtml() frisch geladen.
+                // Die Bedienung wirkt nur auf das reale IP-Symcon-Gerät.
+                // Die HTML-SDK-Kachel wird dabei absichtlich nicht neu gerendert.
                 return;
             }
         }
