@@ -470,6 +470,8 @@ class Floorplaner extends IPSModuleStrict
             transform: translateX(-50%);
             z-index: 50;
             pointer-events: auto;
+            gap: 6px;
+            align-items: center;
         }
 
         #viewbar button {
@@ -716,7 +718,7 @@ class Floorplaner extends IPSModuleStrict
                 Tür/Fenster: auf eine Wand klicken.<br>
                 Gerät/Text: Position anklicken.<br>
                 Auswahl: Element anklicken und ziehen.<br>
-                Mausrad: zoomen. Mittlere Maustaste: verschieben.<br>
+                Mittlere Maustaste: verschieben.<br>
                 Entf: ausgewähltes Element löschen.
             </div>
         </aside>
@@ -753,6 +755,7 @@ class Floorplaner extends IPSModuleStrict
     </div>
 
     <div id="viewbar">
+        <button id="liveFloorBtn" type="button" title="Etage wechseln" aria-label="Etage wechseln">▤</button>
         <button id="editBtn" type="button" title="Floorplan bearbeiten" aria-label="Floorplan bearbeiten">✎</button>
     </div>
 </div>
@@ -789,6 +792,7 @@ class Floorplaner extends IPSModuleStrict
     const properties = document.getElementById('properties');
     const propTitle = document.getElementById('propTitle');
     const floorSelect = document.getElementById('floorSelect');
+    const liveFloorBtn = document.getElementById('liveFloorBtn');
     const statusEl = document.getElementById('status');
     const app = document.getElementById('app');
     const variableModal = document.getElementById('variableModal');
@@ -1062,6 +1066,22 @@ class Floorplaner extends IPSModuleStrict
         floorSelect.innerHTML = state.floors.map(f =>
             `<option value="${escapeHtml(f.id)}"${f.id === state.activeFloor ? ' selected' : ''}>${escapeHtml(f.name)}</option>`
         ).join('');
+
+        if (liveFloorBtn) {
+            const floor = currentFloor();
+            const count = state.floors.length;
+            liveFloorBtn.style.display = count > 1 ? '' : 'none';
+            liveFloorBtn.disabled = count <= 1;
+            liveFloorBtn.title = count > 1
+                ? `Etage wechseln – aktuell: ${floor?.name || 'Etage'}`
+                : 'Nur eine Etage vorhanden';
+            liveFloorBtn.setAttribute(
+                'aria-label',
+                count > 1
+                    ? `Etage wechseln – aktuell ${floor?.name || 'Etage'}`
+                    : 'Nur eine Etage vorhanden'
+            );
+        }
     }
 
     function renderGrid(parts, bounds) {
@@ -1509,6 +1529,22 @@ class Floorplaner extends IPSModuleStrict
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
 
+    liveFloorBtn?.addEventListener('click', () => {
+        if (!Array.isArray(state.floors) || state.floors.length <= 1) return;
+
+        const currentIndex = Math.max(
+            0,
+            state.floors.findIndex(f => f.id === state.activeFloor)
+        );
+        const nextIndex = (currentIndex + 1) % state.floors.length;
+
+        state.activeFloor = state.floors[nextIndex].id;
+        selected = null;
+        wallStart = null;
+        render();
+        requestAnimationFrame(fit);
+    });
+
     document.getElementById('addFloorBtn').addEventListener('click', () => {
         const name = prompt('Name der neuen Etage:', 'Obergeschoss');
         if (name === null) return;
@@ -1729,24 +1765,9 @@ class Floorplaner extends IPSModuleStrict
         drag = null;
     });
 
-    svg.addEventListener('wheel', evt => {
-        evt.preventDefault();
-
-        const rect = svg.getBoundingClientRect();
-        const sx = evt.clientX - rect.left;
-        const sy = evt.clientY - rect.top;
-        const oldZoom = zoom;
-        const factor = evt.deltaY < 0 ? 1.12 : 0.89;
-        zoom = Math.max(.15, Math.min(8, zoom * factor));
-
-        const wx = (sx - panX) / oldZoom;
-        const wy = (sy - panY) / oldZoom;
-
-        panX = sx - wx * zoom;
-        panY = sy - wy * zoom;
-        setTransform();
-        render();
-    }, {passive: false});
+    // Absichtlich kein Mausrad-Zoom: Die Visualisierungskachel soll das
+    // normale Scrollen der Oberfläche nicht abfangen. Zoom erfolgt nur
+    // über Einpassen bzw. die Editor-Ansicht selbst.
 
     window.addEventListener('keydown', evt => {
         if (evt.target instanceof HTMLInputElement || evt.target instanceof HTMLSelectElement) {
