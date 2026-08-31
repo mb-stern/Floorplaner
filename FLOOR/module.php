@@ -982,12 +982,13 @@ class Floorplaner extends IPSModuleStrict
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
             <button data-tool="device">Gerät</button>
-            <button data-tool="furniture">Möbel</button>
+            <button data-tool="text">Text</button>
+                <button data-tool="furniture">Möbel</button>
             <div class="grid-editor-controls" title="Raster">
                 <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
                 <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
             </div>
-            <button data-tool="text">Text</button>
+            
         </div>
 
         <div class="group">
