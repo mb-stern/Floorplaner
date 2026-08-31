@@ -502,6 +502,21 @@ class Floorplaner extends IPSModuleStrict
             opacity: .72;
         }
 
+        .resize-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+            cursor: nwse-resize;
+            pointer-events: all;
+        }
+
+        .device .resize-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 2;
+        }
+
         .device-label {
             pointer-events: none;
         }
@@ -1441,6 +1456,16 @@ class Floorplaner extends IPSModuleStrict
                 `<text class="furniture-label" x="0" y="${(Number(f.height) || 60) / 2 + 16}">` +
                 `${escapeHtml(f.name || furnitureTemplates[f.type]?.name || 'Möbel')}</text>`
             );
+
+            if (selected?.type === 'furniture' && selected.id === f.id) {
+                const fw = Math.max(20, Number(f.width) || 100);
+                const fh = Math.max(20, Number(f.height) || 60);
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="furniture" data-id="${f.id}" ` +
+                    `cx="${fw / 2}" cy="${fh / 2}" r="7"/>`
+                );
+            }
+
             parts.push(`</g>`);
         }
 
@@ -1473,6 +1498,9 @@ class Floorplaner extends IPSModuleStrict
                 `<circle r="${radius}"/>` +
                 `<text text-anchor="middle" dominant-baseline="central" font-size="${Math.max(10,radius*0.72)}">${escapeHtml(icon)}</text>` +
                 (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
+                (selected?.type === 'item' && selected.id === item.id
+                    ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="7"/>`
+                    : '') +
                 `</g>`
             );
         }
@@ -2052,9 +2080,32 @@ class Floorplaner extends IPSModuleStrict
 
         if (evt.button !== 0) return;
 
+        const resizeHandle = evt.target.closest('[data-resize-type]');
         const target = evt.target.closest('[data-type]');
         const p = svgPoint(evt);
         const floor = currentFloor();
+
+        if (state.mode !== 'view' && resizeHandle) {
+            const resizeType = resizeHandle.dataset.resizeType;
+            const id = resizeHandle.dataset.id;
+            const obj = findEntity(resizeType, id);
+
+            if (obj) {
+                selected = {type: resizeType, id};
+                drag = {
+                    mode: 'resize',
+                    type: resizeType,
+                    id,
+                    start: p,
+                    original: structuredClone(obj)
+                };
+                svg.setPointerCapture(evt.pointerId);
+                evt.preventDefault();
+                evt.stopPropagation();
+                render();
+                return;
+            }
+        }
 
         if (state.mode === 'view') {
             if (target && target.dataset.type === 'item') {
@@ -2235,18 +2286,47 @@ class Floorplaner extends IPSModuleStrict
                 obj.y1 = snapValue(drag.original.y1 + dy);
                 obj.x2 = snapValue(drag.original.x2 + dx);
                 obj.y2 = snapValue(drag.original.y2 + dy);
-            } else if (drag.type === 'item' || drag.type === 'text') {
+            } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture') {
                 obj.x = snapValue(drag.original.x + dx);
                 obj.y = snapValue(drag.original.y + dy);
             }
             render();
+            return;
+        }
+
+        if (drag.mode === 'resize' && drag.original) {
+            const obj = findEntity(drag.type, drag.id);
+            if (!obj) return;
+
+            if (drag.type === 'furniture') {
+                const cx = Number(drag.original.x) || 0;
+                const cy = Number(drag.original.y) || 0;
+                const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                const dx = p.x - cx;
+                const dy = p.y - cy;
+
+                // Mausposition in das lokale, gedrehte Möbelsystem zurückrechnen.
+                const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+                obj.width = Math.max(20, Math.round(Math.abs(localX) * 2));
+                obj.height = Math.max(20, Math.round(Math.abs(localY) * 2));
+            } else if (drag.type === 'item') {
+                const cx = Number(drag.original.x) || 0;
+                const cy = Number(drag.original.y) || 0;
+                const radius = Math.hypot(p.x - cx, p.y - cy);
+                obj.size = Math.max(8, Math.min(80, Math.round(radius)));
+            }
+
+            render();
+            return;
         }
     });
 
     svg.addEventListener('pointerup', evt => {
         if (!drag) return;
 
-        if (drag.mode === 'move') {
+        if (drag.mode === 'move' || drag.mode === 'resize') {
             pushHistory();
             markDirty();
         }
