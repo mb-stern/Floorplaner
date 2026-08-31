@@ -241,12 +241,13 @@ class Floorplaner extends IPSModuleStrict
         html[data-theme="light"] {
             color-scheme: light;
             --fp-bg: transparent;
-            --fp-panel: rgba(250,250,250,.96);
-            --fp-panel-2: rgba(238,238,238,.98);
-            --fp-border: rgba(0,0,0,.18);
-            --fp-text: #202020;
-            --fp-muted: #606060;
-            --fp-grid: rgba(0,0,0,.14);
+            --fp-panel: rgba(232,232,232,.98);
+            --fp-panel-2: rgba(218,218,218,.98);
+            --fp-border: rgba(0,0,0,.34);
+            --fp-text: #111111;
+            --fp-muted: #444444;
+            --fp-grid: rgba(0,0,0,.24);
+            --fp-accent: #1769aa;
         }
 
         * { box-sizing: border-box; }
@@ -876,6 +877,77 @@ class Floorplaner extends IPSModuleStrict
 
         html, body, #app, .main, .canvas-wrap, #viewport {
             background: transparent !important;
+        }
+
+
+        html[data-theme="light"] .wall,
+        html[data-theme="light"] .opening,
+        html[data-theme="light"] .furniture,
+        html[data-theme="light"] .device,
+        html[data-theme="light"] .label,
+        html[data-theme="light"] text,
+        html[data-theme="light"] tspan {
+            color: #111111;
+        }
+
+        html[data-theme="light"] .wall {
+            stroke: #181818;
+        }
+
+        html[data-theme="light"] .furniture {
+            color: #222222;
+        }
+
+        html[data-theme="light"] .device circle {
+            stroke: rgba(0,0,0,.62);
+        }
+
+        html[data-theme="light"] .device-glyph {
+            color: #111111;
+        }
+
+        html[data-theme="light"] .opening {
+            stroke: #202020;
+        }
+
+        html[data-theme="light"] .grid-line {
+            stroke: rgba(0,0,0,.24);
+        }
+
+        html[data-theme="light"] button,
+        html[data-theme="light"] input,
+        html[data-theme="light"] select {
+            color: #111111;
+            border-color: rgba(0,0,0,.34);
+        }
+
+        html[data-theme="light"] button {
+            background: rgba(224,224,224,.98);
+        }
+
+        html[data-theme="light"] button:hover {
+            background: rgba(205,205,205,.98);
+        }
+
+        html[data-theme="light"] input,
+        html[data-theme="light"] select {
+            background: rgba(245,245,245,.98);
+        }
+
+        html[data-theme="light"] .properties,
+        html[data-theme="light"] .toolbar,
+        html[data-theme="light"] .bottom-bar,
+        html[data-theme="light"] .modal,
+        html[data-theme="light"] .picker {
+            background: var(--fp-panel);
+            color: var(--fp-text);
+            border-color: var(--fp-border);
+        }
+
+        html[data-theme="light"] .status,
+        html[data-theme="light"] .hint,
+        html[data-theme="light"] small {
+            color: var(--fp-muted);
         }
 
 </style>
