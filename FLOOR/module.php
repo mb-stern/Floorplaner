@@ -120,12 +120,25 @@ class Floorplaner extends IPSModuleStrict
                 'caption'  => 'Projekt',
                 'expanded' => true,
                 'items'    => [
+
+                    [
+                        'type'    => 'NumberSpinner',
+                        'name'    => 'GridSize',
+                        'caption' => 'Raster',
+                        'minimum' => 5,
+                        'maximum' => 200
+                    ],
                     [
                         'type'    => 'NumberSpinner',
                         'name'    => 'SnapSize',
                         'caption' => 'Snap-Schritt',
                         'minimum' => 0,
                         'maximum' => 200
+                    ],
+                    [
+                        'type'    => 'SelectColor',
+                        'name'    => 'BackgroundColor',
+                        'caption' => 'Hintergrund'
                     ],
                     [
                         'type'    => 'CheckBox',
@@ -907,11 +920,6 @@ class Floorplaner extends IPSModuleStrict
             --fp-grid: color-mix(in srgb, var(--fp-text) 12%, transparent);
         }
 
-
-        .view-mode .grid-editor-controls {
-            display: none !important;
-        }
-
 </style>
 </head>
 <body>
@@ -1028,7 +1036,6 @@ class Floorplaner extends IPSModuleStrict
     const controlCloseBtn = document.getElementById('controlCloseBtn');
 
     let state = normalizeProject(initial);
-    editorGridSize = Math.max(2, Number(state.grid) || 20);
     let variablePickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
@@ -1164,20 +1171,14 @@ class Floorplaner extends IPSModuleStrict
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
         statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
-
-        const gridControls = document.querySelector('.grid-editor-controls');
-        if (gridControls) {
-            gridControls.style.display = isView ? 'none' : 'inline-flex';
-        }
     }
 
     function setMode(mode) {
-        state.mode = mode === 'view' ? 'view' : 'edit';
-
         const gridControls = document.querySelector('.grid-editor-controls');
         if (gridControls) {
-            gridControls.style.display = state.mode === 'edit' ? 'inline-flex' : 'none';
+            gridControls.style.display = mode === 'edit' ? 'inline-flex' : 'none';
         }
+        state.mode = mode === 'view' ? 'view' : 'edit';
         selected = null;
         wallStart = null;
         preview = null;
@@ -1499,144 +1500,22 @@ class Floorplaner extends IPSModuleStrict
         return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
-    function isUsableColor(value) {
-        if (!value) return false;
-        const v = String(value).trim().toLowerCase();
-        return v !== '' &&
-            v !== 'transparent' &&
-            v !== 'rgba(0, 0, 0, 0)' &&
-            v !== 'rgba(0,0,0,0)';
-    }
-
-    function firstCssVariable(style, names) {
-        for (const name of names) {
-            const value = style?.getPropertyValue(name)?.trim();
-            if (isUsableColor(value)) return value;
-        }
-        return '';
-    }
-
     function syncHostTheme() {
-        let bg = '';
-        let fg = '';
-        let panel = '';
-        let border = '';
+        const hostStyle = getComputedStyle(document.documentElement);
+        const bodyStyle = getComputedStyle(document.body);
 
-        // Zuerst die Symcon-Visu außerhalb des HTML-SDK-Iframes auslesen.
-        // CSS-Variablen werden in ein iframe nicht automatisch vererbt.
-        try {
-            if (window.parent && window.parent !== window && window.parent.document) {
-                const pdoc = window.parent.document;
-                const root = pdoc.documentElement;
-                const body = pdoc.body;
-                const frame = window.frameElement;
+        const bg =
+            hostStyle.getPropertyValue('--card-background-color').trim() ||
+            hostStyle.getPropertyValue('--primary-background-color').trim() ||
+            bodyStyle.backgroundColor;
 
-                const rootStyle = root ? window.parent.getComputedStyle(root) : null;
-                const bodyStyle = body ? window.parent.getComputedStyle(body) : null;
-                const frameParentStyle = frame?.parentElement
-                    ? window.parent.getComputedStyle(frame.parentElement)
-                    : null;
-
-                const bgVars = [
-                    '--card-background-color',
-                    '--primary-background-color',
-                    '--background-color',
-                    '--content-background-color',
-                    '--surface-color',
-                    '--md-sys-color-background',
-                    '--md-sys-color-surface'
-                ];
-                const fgVars = [
-                    '--primary-text-color',
-                    '--text-color',
-                    '--foreground-color',
-                    '--md-sys-color-on-background',
-                    '--md-sys-color-on-surface'
-                ];
-                const panelVars = [
-                    '--secondary-background-color',
-                    '--card-background-color',
-                    '--surface-color',
-                    '--md-sys-color-surface-container'
-                ];
-                const borderVars = [
-                    '--divider-color',
-                    '--border-color',
-                    '--md-sys-color-outline-variant'
-                ];
-
-                bg =
-                    firstCssVariable(frameParentStyle, bgVars) ||
-                    firstCssVariable(rootStyle, bgVars) ||
-                    firstCssVariable(bodyStyle, bgVars);
-
-                fg =
-                    firstCssVariable(frameParentStyle, fgVars) ||
-                    firstCssVariable(rootStyle, fgVars) ||
-                    firstCssVariable(bodyStyle, fgVars);
-
-                panel =
-                    firstCssVariable(frameParentStyle, panelVars) ||
-                    firstCssVariable(rootStyle, panelVars) ||
-                    firstCssVariable(bodyStyle, panelVars);
-
-                border =
-                    firstCssVariable(frameParentStyle, borderVars) ||
-                    firstCssVariable(rootStyle, borderVars) ||
-                    firstCssVariable(bodyStyle, borderVars);
-
-                // Falls Symcon keine passenden CSS-Variablen bereitstellt:
-                // die tatsächlich berechnete Hintergrundfarbe des Kachelcontainers übernehmen.
-                if (!bg && frameParentStyle && isUsableColor(frameParentStyle.backgroundColor)) {
-                    bg = frameParentStyle.backgroundColor;
-                }
-                if (!bg && bodyStyle && isUsableColor(bodyStyle.backgroundColor)) {
-                    bg = bodyStyle.backgroundColor;
-                }
-                if (!fg && frameParentStyle && isUsableColor(frameParentStyle.color)) {
-                    fg = frameParentStyle.color;
-                }
-                if (!fg && bodyStyle && isUsableColor(bodyStyle.color)) {
-                    fg = bodyStyle.color;
-                }
-            }
-        } catch (e) {
-            // Bei abweichender iframe-Origin auf lokale Werte zurückfallen.
-        }
-
-        // Lokale Symcon-/Theme-Variablen als Fallback.
-        const localRoot = getComputedStyle(document.documentElement);
-        const localBody = getComputedStyle(document.body);
-
-        if (!bg) {
-            bg =
-                firstCssVariable(localRoot, [
-                    '--card-background-color',
-                    '--primary-background-color',
-                    '--background-color',
-                    '--content-background-color'
-                ]) ||
-                (isUsableColor(localBody.backgroundColor) ? localBody.backgroundColor : '');
-        }
-
-        if (!fg) {
-            fg =
-                firstCssVariable(localRoot, ['--primary-text-color', '--text-color']) ||
-                (isUsableColor(localBody.color) ? localBody.color : '');
-        }
+        const fg =
+            hostStyle.getPropertyValue('--primary-text-color').trim() ||
+            bodyStyle.color;
 
         if (bg) document.documentElement.style.setProperty('--fp-bg', bg);
         if (fg) document.documentElement.style.setProperty('--fp-text', fg);
-        if (panel) document.documentElement.style.setProperty('--fp-panel', panel);
-        if (border) document.documentElement.style.setProperty('--fp-border', border);
-
-        // Farbe des Rasters aus der aktuellen Textfarbe ableiten.
-        document.documentElement.style.setProperty(
-            '--fp-grid',
-            'color-mix(in srgb, var(--fp-text) 14%, transparent)'
-        );
     }
-
 
     function renderEditorGrid(parts) {
         if (state.mode !== 'edit' || !editorShowGrid) return;
@@ -1670,8 +1549,9 @@ class Floorplaner extends IPSModuleStrict
         parts.push(
             `<rect x="${bounds.minX}" y="${bounds.minY}" ` +
             `width="${bounds.maxX - bounds.minX}" height="${bounds.maxY - bounds.minY}" ` +
-            `fill="var(--fp-bg)"/>`
+            `fill="${escapeHtml(state.background)}"/>`
         );
+        renderGrid(parts, bounds);
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
@@ -2068,9 +1948,15 @@ class Floorplaner extends IPSModuleStrict
                     <label>Etagenname</label>
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
-                <div class="field">
-                    <label>Snap</label>
-                    <input value="${state.snap}" disabled>
+                <div class="row2">
+                    <div class="field">
+                        <label>Raster</label>
+                        <input value="${state.grid}" disabled>
+                    </div>
+                    <div class="field">
+                        <label>Snap</label>
+                        <input value="${state.snap}" disabled>
+                    </div>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -3132,32 +3018,6 @@ class Floorplaner extends IPSModuleStrict
     });
     themeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['class','style','data-theme']});
     themeObserver.observe(document.body, {attributes: true, attributeFilter: ['class','style','data-theme']});
-
-    try {
-        if (window.parent && window.parent !== window && window.parent.document) {
-            const pdoc = window.parent.document;
-            if (pdoc.documentElement) {
-                themeObserver.observe(pdoc.documentElement, {
-                    attributes: true,
-                    attributeFilter: ['class','style','data-theme']
-                });
-            }
-            if (pdoc.body) {
-                themeObserver.observe(pdoc.body, {
-                    attributes: true,
-                    attributeFilter: ['class','style','data-theme']
-                });
-            }
-            if (window.frameElement?.parentElement) {
-                themeObserver.observe(window.frameElement.parentElement, {
-                    attributes: true,
-                    attributeFilter: ['class','style','data-theme']
-                });
-            }
-        }
-    } catch (e) {
-        // Cross-Origin: kein Parent-Observer möglich.
-    }
 
 })();
 </script>
