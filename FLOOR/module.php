@@ -865,6 +865,8 @@ class Floorplaner extends IPSModuleStrict
         }
 
 
+        .device-glyph { color: currentColor; pointer-events: none; }
+        .device-glyph * { vector-effect: non-scaling-stroke; }
 </style>
 </head>
 <body>
@@ -883,7 +885,7 @@ class Floorplaner extends IPSModuleStrict
                 <b>Bedienung</b><br>
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>
+                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: MDI-Symbol in den Eigenschaften auswählen.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
                 Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
                 Mittlere Maustaste: Grundriss verschieben.<br>
                 Entf: ausgewähltes Element löschen.<br>Einpassen: kompletten Grundriss automatisch in die Kachel einpassen.
@@ -1304,97 +1306,134 @@ class Floorplaner extends IPSModuleStrict
 
     function iconForKind(kind) {
         const icons = {
-            light: '💡',
-            switch: '⏻',
-            socket: '⌁',
-            shutter: '▥',
-            temperature: '°',
-            humidity: '%',
-            motion: '◉',
-            window: '▯',
-            door: '▭',
-            climate: '◎',
-            generic: '●'
+            light: 'mdi:lightbulb',
+            switch: 'mdi:toggle-switch',
+            socket: 'mdi:power-socket-eu',
+            shutter: 'mdi:blinds',
+            temperature: 'mdi:thermometer',
+            humidity: 'mdi:water-percent',
+            motion: 'mdi:motion-sensor',
+            window: 'mdi:window-closed',
+            door: 'mdi:door',
+            climate: 'mdi:thermostat',
+            generic: 'mdi:circle'
         };
         return icons[kind] || icons.generic;
     }
 
-    const furnitureTemplates = {
-        sofa:    { name: 'Sofa', width: 140, height: 65 },
-        bed:     { name: 'Bett', width: 110, height: 190 },
-        table:   { name: 'Tisch', width: 110, height: 75 },
-        chair:   { name: 'Stuhl', width: 45, height: 45 },
-        cabinet: { name: 'Schrank', width: 120, height: 45 },
-        kitchen: { name: 'Küchenblock', width: 160, height: 60 },
-        toilet:  { name: 'WC', width: 55, height: 75 },
-        shower:  { name: 'Dusche', width: 90, height: 90 },
-        tub:     { name: 'Badewanne', width: 170, height: 75 }
-    };
+    const mdiIconChoices = [
+        ['mdi:lightbulb','Licht'],['mdi:toggle-switch','Schalter'],['mdi:power-socket-eu','Steckdose'],
+        ['mdi:thermometer','Temperatur'],['mdi:water-percent','Feuchte'],['mdi:motion-sensor','Bewegung'],
+        ['mdi:door','Tür'],['mdi:window-closed','Fenster'],['mdi:blinds','Rollladen'],['mdi:thermostat','Thermostat'],
+        ['mdi:fan','Ventilator'],['mdi:radiator','Heizung'],['mdi:television','TV'],['mdi:camera','Kamera'],
+        ['mdi:washing-machine','Waschmaschine'],['mdi:dishwasher','Geschirrspüler'],['mdi:water-boiler','Boiler'],
+        ['mdi:car-electric','Elektroauto'],['mdi:robot-vacuum','Saugroboter'],['mdi:lock','Schloss'],
+        ['mdi:home','Haus'],['mdi:cog','Allgemein']
+    ];
 
-    function addFurniture(type) {
-        const floor = currentFloor();
-        if (!floor) return;
-        const tpl = furnitureTemplates[type] || furnitureTemplates.sofa;
+    function renderMdiGlyph(iconName, radius) {
+        const r = Math.max(8, Number(radius) || 18);
+        const s = r * 1.05;
+        const sw = Math.max(.9, r * .085);
+        const common = `fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`;
 
-        const box = svg.getBoundingClientRect();
-        const cx = (box.width / 2 - panX) / zoom;
-        const cy = (box.height / 2 - panY) / zoom;
+        switch (iconName) {
+            case 'mdi:lightbulb': return `<g ${common}><circle cx="0" cy="-2" r="${s*.42}"/><path d="M${-s*.22} ${s*.33} L${-s*.14} ${s*.58} L${s*.14} ${s*.58} L${s*.22} ${s*.33}"/><line x1="${-s*.13}" y1="${s*.72}" x2="${s*.13}" y2="${s*.72}"/></g>`;
+            case 'mdi:toggle-switch': return `<g ${common}><rect x="${-s*.62}" y="${-s*.28}" width="${s*1.24}" height="${s*.56}" rx="${s*.28}"/><circle cx="${s*.26}" cy="0" r="${s*.20}" fill="currentColor" stroke="none"/></g>`;
+            case 'mdi:power-socket-eu': return `<g ${common}><circle r="${s*.56}"/><circle cx="${-s*.20}" cy="${-s*.08}" r="${s*.06}" fill="currentColor" stroke="none"/><circle cx="${s*.20}" cy="${-s*.08}" r="${s*.06}" fill="currentColor" stroke="none"/><path d="M${-s*.22} ${s*.23} Q0 ${s*.40} ${s*.22} ${s*.23}"/></g>`;
+            case 'mdi:thermometer': return `<g ${common}><rect x="${-s*.14}" y="${-s*.70}" width="${s*.28}" height="${s*.98}" rx="${s*.14}"/><line y1="${-s*.48}" y2="${s*.26}"/><circle cy="${s*.43}" r="${s*.24}"/></g>`;
+            case 'mdi:water-percent': return `<g ${common}><path d="M0 ${-s*.68} C${-s*.38} ${-s*.25},${-s*.48} ${s*.05},0 ${s*.62} C${s*.48} ${s*.05},${s*.38} ${-s*.25},0 ${-s*.68} Z"/><line x1="${-s*.24}" y1="${s*.25}" x2="${s*.24}" y2="${-s*.25}"/><circle cx="${-s*.22}" cy="${-s*.20}" r="${s*.07}"/><circle cx="${s*.22}" cy="${s*.20}" r="${s*.07}"/></g>`;
+            case 'mdi:motion-sensor': return `<g ${common}><circle cx="${-s*.12}" cy="${-s*.35}" r="${s*.10}"/><path d="M${-s*.12} ${-s*.23} L${-s*.30} ${s*.08} L${-s*.06} ${s*.20} L${-s*.24} ${s*.58} M${-s*.08} ${s*.02} L${s*.20} ${s*.20}"/><path d="M${s*.24} ${-s*.34} Q${s*.58} 0 ${s*.24} ${s*.34} M${s*.43} ${-s*.52} Q${s*.86} 0 ${s*.43} ${s*.52}"/></g>`;
+            case 'mdi:door': return `<g ${common}><rect x="${-s*.48}" y="${-s*.68}" width="${s*.96}" height="${s*1.36}"/><line x1="${-s*.30}" y1="${-s*.58}" x2="${-s*.30}" y2="${s*.58}"/><circle cx="${s*.20}" cy="${s*.02}" r="${s*.045}" fill="currentColor" stroke="none"/></g>`;
+            case 'mdi:window-closed': return `<g ${common}><rect x="${-s*.60}" y="${-s*.55}" width="${s*1.20}" height="${s*1.10}"/><line y1="${-s*.55}" y2="${s*.55}"/><line x1="${-s*.60}" x2="${s*.60}"/></g>`;
+            case 'mdi:blinds': return `<g ${common}><rect x="${-s*.58}" y="${-s*.60}" width="${s*1.16}" height="${s*1.20}"/><line x1="${-s*.48}" y1="${-s*.32}" x2="${s*.48}" y2="${-s*.32}"/><line x1="${-s*.48}" y1="${-s*.08}" x2="${s*.48}" y2="${-s*.08}"/><line x1="${-s*.48}" y1="${s*.16}" x2="${s*.48}" y2="${s*.16}"/><line x1="${-s*.48}" y1="${s*.40}" x2="${s*.48}" y2="${s*.40}"/></g>`;
+            case 'mdi:thermostat': return `<g ${common}><circle r="${s*.58}"/><line y1="${-s*.34}" y2="${s*.12}"/><circle cy="${s*.28}" r="${s*.15}"/></g>`;
+            case 'mdi:fan': return `<g fill="currentColor"><circle r="${s*.09}"/><ellipse cy="${-s*.34}" ry="${s*.35}" rx="${s*.15}"/><ellipse transform="rotate(120)" cy="${-s*.34}" ry="${s*.35}" rx="${s*.15}"/><ellipse transform="rotate(240)" cy="${-s*.34}" ry="${s*.35}" rx="${s*.15}"/></g>`;
+            case 'mdi:radiator': return `<g ${common}><rect x="${-s*.60}" y="${-s*.50}" width="${s*1.20}" height="${s}"/><line x1="${-s*.36}" y1="${-s*.42}" x2="${-s*.36}" y2="${s*.42}"/><line x1="${-s*.12}" y1="${-s*.42}" x2="${-s*.12}" y2="${s*.42}"/><line x1="${s*.12}" y1="${-s*.42}" x2="${s*.12}" y2="${s*.42}"/><line x1="${s*.36}" y1="${-s*.42}" x2="${s*.36}" y2="${s*.42}"/></g>`;
+            case 'mdi:television': return `<g ${common}><rect x="${-s*.64}" y="${-s*.48}" width="${s*1.28}" height="${s*.88}" rx="${s*.07}"/><path d="M${-s*.24} ${s*.60} H${s*.24} M0 ${s*.40} V${s*.60}"/></g>`;
+            case 'mdi:camera': return `<g ${common}><rect x="${-s*.62}" y="${-s*.40}" width="${s*1.24}" height="${s*.88}" rx="${s*.08}"/><path d="M${-s*.28} ${-s*.40} L${-s*.14} ${-s*.58} H${s*.16} L${s*.30} ${-s*.40}"/><circle cy="${s*.03}" r="${s*.24}"/></g>`;
+            case 'mdi:washing-machine':
+            case 'mdi:dishwasher': return `<g ${common}><rect x="${-s*.52}" y="${-s*.64}" width="${s*1.04}" height="${s*1.28}" rx="${s*.06}"/><line x1="${-s*.42}" y1="${-s*.38}" x2="${s*.42}" y2="${-s*.38}"/><circle cy="${s*.12}" r="${s*.30}"/></g>`;
+            case 'mdi:water-boiler': return `<g ${common}><rect x="${-s*.44}" y="${-s*.62}" width="${s*.88}" height="${s*1.24}" rx="${s*.22}"/><path d="M${-s*.16} ${s*.10} Q0 ${-s*.14} ${s*.16} ${s*.10} Q0 ${s*.34} ${-s*.16} ${s*.10} Z"/></g>`;
+            case 'mdi:car-electric': return `<g ${common}><path d="M${-s*.62} ${s*.18} L${-s*.44} ${-s*.26} Q${-s*.36} ${-s*.48} ${-s*.10} ${-s*.48} H${s*.30} Q${s*.46} ${-s*.48} ${s*.54} ${-s*.24} L${s*.66} ${s*.18} V${s*.42} H${-s*.66} Z"/><circle cx="${-s*.36}" cy="${s*.42}" r="${s*.14}"/><circle cx="${s*.36}" cy="${s*.42}" r="${s*.14}"/></g>`;
+            case 'mdi:robot-vacuum': return `<g ${common}><circle r="${s*.58}"/><circle cx="${-s*.20}" cy="${-s*.12}" r="${s*.05}" fill="currentColor" stroke="none"/><circle cx="${s*.20}" cy="${-s*.12}" r="${s*.05}" fill="currentColor" stroke="none"/><path d="M${-s*.24} ${s*.18} Q0 ${s*.34} ${s*.24} ${s*.18}"/></g>`;
+            case 'mdi:lock': return `<g ${common}><rect x="${-s*.46}" y="${-s*.12}" width="${s*.92}" height="${s*.72}" rx="${s*.08}"/><path d="M${-s*.28} ${-s*.12} V${-s*.34} A${s*.28} ${s*.28} 0 0 1 ${s*.28} ${-s*.34} V${-s*.12}"/></g>`;
+            case 'mdi:home': return `<g ${common}><path d="M${-s*.66} ${-s*.04} L0 ${-s*.62} L${s*.66} ${-s*.04} M${-s*.48} ${-s*.12} V${s*.58} H${s*.48} V${-s*.12}"/><rect x="${-s*.13}" y="${s*.16}" width="${s*.26}" height="${s*.42}"/></g>`;
+            case 'mdi:cog': return `<g ${common}><circle r="${s*.22}"/><circle r="${s*.52}" stroke-dasharray="${s*.20} ${s*.13}"/></g>`;
+            default: return `<g ${common}><circle r="${s*.48}"/></g>`;
+        }
+    }
 
-        const furniture = {
-            id: uid('furniture'),
-            type,
-            name: tpl.name,
-            x: cx,
-            y: cy,
-            width: tpl.width,
-            height: tpl.height,
-            rotation: 0
+    const furnitureTemplates = {"airHandler":{"id":"airHandler","name":"Lüftungsgerät","category":"utility","size":{"w":60,"h":56},"parts":[{"rect":[0,0,100,100],"rx":7.142857},{"line":[8,8,92,92],"role":"detail","opacity":0.8},{"line":[8,92,92,8],"role":"detail","opacity":0.8}]},"bathtub":{"id":"bathtub","name":"Badewanne","category":"bath","size":{"w":150,"h":76},"parts":[{"rect":[0,0,100,100],"rx":5.263158},{"rect":[6,12,88,76],"rx":12,"role":"line"},{"circle":[14,50,5.5],"role":"thin"}]},"bed":{"id":"bed","name":"Bett","category":"bedroom","size":{"w":150,"h":200},"parts":[{"rect":[0,0,100,100],"rx":2.666667},{"line":[0,26,100,26],"role":"line"},{"rect":[10,6,34,14],"rx":2,"role":"thin"},{"rect":[56,6,34,14],"rx":2,"role":"thin"}]},"chair":{"id":"chair","name":"Stuhl","category":"living","size":{"w":44,"h":44},"parts":[{"rect":[0,0,100,100],"rx":9.090909},{"line":[0,22,100,22],"role":"line"}]},"desk":{"id":"desk","name":"Schreibtisch","category":"living","size":{"w":120,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,55,100,55],"role":"detail"}]},"dishwasher":{"id":"dishwasher","name":"Geschirrspüler","category":"kitchen","size":{"w":60,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"rect":[10,24,80,62],"rx":5,"role":"detail","opacity":0.8},{"line":[6,88,94,88],"role":"line"}]},"dryer":{"id":"dryer","name":"Trockner","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[50,56,13.5],"role":"detail"}]},"fishTank":{"id":"fishTank","name":"Aquarium","category":"living","size":{"w":100,"h":40},"parts":[{"rect":[0,0,100,100],"rx":10},{"rect":[5,12,90,76],"role":"hint"},{"ellipse":[32,40,7,9],"role":"thin"},{"path":[["M",39,40],["L",44,32],["L",44,48],["Z"]],"role":"solid"},{"ellipse":[68,60,7,9],"role":"thin"},{"path":[["M",61,60],["L",56,52],["L",56,68],["Z"]],"role":"solid"},{"circle":[82,32,4],"role":"hint"}]},"fridge":{"id":"fridge","name":"Kühlschrank","category":"kitchen","size":{"w":60,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,40,100,40],"role":"line"},{"line":[84,12,84,30],"role":"line"},{"line":[84,50,84,84],"role":"line"}]},"hotTub":{"id":"hotTub","name":"Whirlpool","category":"bath","size":{"w":120,"h":120},"parts":[{"rect":[0,0,100,100],"rx":3.333333},{"circle":[50,50,36],"role":"line"},{"circle":[27.68,27.68,5],"role":"hint","space":"square"},{"circle":[72.32,27.68,5],"role":"hint","space":"square"},{"circle":[27.68,72.32,5],"role":"hint","space":"square"},{"circle":[72.32,72.32,5],"role":"hint","space":"square"}]},"piano":{"id":"piano","name":"Klavier","category":"living","size":{"w":140,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[4,70,96,70],"role":"thin"},{"repeat":7,"step":[12.5,0],"part":{"line":[12.5,70,12.5,94],"role":"hint"}},{"line":[4,22,96,22],"role":"hint","opacity":0.5}]},"plant":{"id":"plant","name":"Pflanze","category":"living","size":{"w":44,"h":44},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,38,18],"role":"thin"},{"circle":[34,58,18],"role":"thin"},{"circle":[66,58,18],"role":"thin"}]},"roundTable":{"id":"roundTable","name":"Runder Tisch","category":"living","size":{"w":100,"h":100},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"}]},"rug":{"id":"rug","name":"Teppich","category":"living","size":{"w":180,"h":120},"parts":[{"rect":[0,0,100,100],"rx":12,"role":"body","fillOpacity":0.08,"dash":[8,5]},{"rect":[10,10,80,80],"rx":8,"role":"detail","opacity":0.6}]},"sectional":{"id":"sectional","name":"Ecksofa","category":"living","size":{"w":230,"h":180},"parts":[{"polygon":[[0,0],[100,0],[100,100],[58,100],[58,55],[0,55]],"role":"body"},{"line":[0,16,100,16],"role":"line"},{"line":[9,16,9,55],"role":"line"},{"line":[58,16,58,100],"role":"line"}]},"sink":{"id":"sink","name":"Spüle","category":"kitchen","size":{"w":64,"h":48},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[12,18,76,50],"rx":8.333333,"role":"line"},{"circle":[50,10,5],"role":"line"}]},"sofa":{"id":"sofa","name":"Sofa","category":"living","size":{"w":170,"h":72},"parts":[{"rect":[0,0,100,100],"rx":5.555556},{"line":[0,30,100,30],"role":"line"},{"line":[12,30,12,100],"role":"line"},{"line":[88,30,88,100],"role":"line"}]},"stairs":{"id":"stairs","name":"Treppe","category":"utility","size":{"w":90,"h":170},"parts":[{"rect":[0,0,100,100],"rx":4.444444},{"repeat":6,"step":[0,14.285714],"part":{"line":[0,14.285714,100,14.285714],"role":"thin"}},{"line":[50,96.470588,50,3.529412],"role":"thin"},{"path":[["M",38,16],["L",50,2.352941],["L",62,16]],"role":"thin"}]},"stove":{"id":"stove","name":"Herd","category":"kitchen","size":{"w":64,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.25},{"circle":[28,28,16],"role":"line"},{"circle":[72,28,16],"role":"line"},{"circle":[28,72,16],"role":"line"},{"circle":[72,72,16],"role":"line"}]},"table":{"id":"table","name":"Tisch","category":"living","size":{"w":120,"h":80},"parts":[{"rect":[0,0,100,100],"rx":5}]},"toilet":{"id":"toilet","name":"WC","category":"bath","size":{"w":48,"h":68},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[10,0,80,22],"rx":6.25,"role":"line"},{"ellipse":[50,68,34,30],"role":"line"}]},"tv":{"id":"tv","name":"TV","category":"living","size":{"w":110,"h":18},"parts":[{"rect":[0,0,100,100],"rx":22.222222},{"line":[32,100,68,200],"role":"line"}]},"vanity":{"id":"vanity","name":"Waschtisch","category":"bath","size":{"w":110,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"ellipse":[50,56,20,26],"role":"line"},{"circle":[50,14,5],"role":"thin"}]},"wardrobe":{"id":"wardrobe","name":"Schrank","category":"bedroom","size":{"w":120,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"line":[50,0,50,100],"role":"line"},{"line":[44,40,44,60],"role":"line"},{"line":[56,40,56,60],"role":"line"}]},"washer":{"id":"washer","name":"Waschmaschine","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[16,9,4.5],"role":"thin"}]},"waterHeater":{"id":"waterHeater","name":"Boiler","category":"utility","size":{"w":52,"h":52},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,50,17],"role":"thin"}]}};
+
+    function furnitureRoleStyle(part) {
+        const role = part.role || ((part.rect || part.ellipse || part.polygon) ? 'body' : 'line');
+        const map = {
+            body: {fill:.12,width:2,opacity:1}, line: {fill:0,width:2,opacity:1},
+            thin: {fill:0,width:1.5,opacity:1}, detail: {fill:0,width:1.5,opacity:.7},
+            hint: {fill:0,width:1,opacity:.6}, solid: {fill:.7,width:0,opacity:.7}
         };
-
-        floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
-        floor.furniture.push(furniture);
-        selected = { type: 'furniture', id: furniture.id };
-        pushHistory();
-        markDirty();
-        renderAll();
+        return map[role] || map.line;
     }
 
     function furnitureShape(f) {
-        const w = Math.max(20, Number(f.width) || 100);
-        const h = Math.max(20, Number(f.height) || 60);
-        const x = -w / 2;
-        const y = -h / 2;
+        const tpl = furnitureTemplates[f.type] || furnitureTemplates.sofa;
+        const w = Math.max(20, Number(f.width) || tpl.size.w);
+        const h = Math.max(20, Number(f.height) || tpl.size.h);
+        const view = tpl.viewBox || [0,0,100,100];
+        const [vx,vy,vw,vh] = view;
+        const fullX = x => -w/2 + ((x-vx)/vw)*w;
+        const fullY = y => -h/2 + ((y-vy)/vh)*h;
+        const square = Math.min(w,h);
+        const sqX = x => -square/2 + ((x-vx)/vw)*square;
+        const sqY = y => -square/2 + ((y-vy)/vh)*square;
+        const lenX = v => (v/vw)*w;
+        const lenY = v => (v/vh)*h;
+        const lenMin = v => (v/Math.min(vw,vh))*Math.min(w,h);
 
-        if (f.type === 'table') {
-            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/>`;
-        }
-        if (f.type === 'chair') {
-            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>
-                    <line class="furniture-shape" x1="${x}" y1="${y + h*.25}" x2="${x+w}" y2="${y + h*.25}"/>`;
-        }
-        if (f.type === 'bed') {
-            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/>
-                    <rect class="furniture-shape" x="${x+8}" y="${y+8}" width="${w-16}" height="${Math.max(20,h*.28)}" rx="6"/>`;
-        }
-        if (f.type === 'sofa') {
-            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="12"/>
-                    <line class="furniture-shape" x1="${x+w*.18}" y1="${y}" x2="${x+w*.18}" y2="${y+h}"/>
-                    <line class="furniture-shape" x1="${x+w*.82}" y1="${y}" x2="${x+w*.82}" y2="${y+h}"/>`;
-        }
-        if (f.type === 'toilet') {
-            return `<ellipse class="furniture-shape" cx="0" cy="${h*.08}" rx="${w*.38}" ry="${h*.42}"/>
-                    <rect class="furniture-shape" x="${-w*.34}" y="${-h*.5}" width="${w*.68}" height="${h*.24}" rx="5"/>`;
-        }
-        if (f.type === 'shower') {
-            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>
-                    <line class="furniture-shape" x1="${x}" y1="${y}" x2="${x+w}" y2="${y+h}"/>
-                    <line class="furniture-shape" x1="${x+w}" y1="${y}" x2="${x}" y2="${y+h}"/>`;
-        }
-        if (f.type === 'tub') {
-            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(22,h/2)}"/>
-                    <rect class="furniture-shape" x="${x+8}" y="${y+8}" width="${w-16}" height="${h-16}" rx="${Math.min(18,(h-16)/2)}"/>`;
-        }
-        return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="4"/>`;
+        const drawPart = (part, ox=0, oy=0) => {
+            if (part.repeat) {
+                const step = part.step || [0,0];
+                let out = '';
+                for (let i=0;i<part.repeat;i++) out += drawPart(part.part, ox+step[0]*i, oy+step[1]*i);
+                return out;
+            }
+            const squareSpace = part.space === 'square';
+            const X = x => squareSpace ? sqX(x+ox) : fullX(x+ox);
+            const Y = y => squareSpace ? sqY(y+oy) : fullY(y+oy);
+            const st = furnitureRoleStyle(part);
+            const strokeWidth = part.width ?? st.width;
+            const opacity = part.opacity ?? st.opacity;
+            const fillOpacity = part.fillOpacity ?? st.fill;
+            const dash = part.dash ? ` stroke-dasharray="${part.dash.map(lenMin).join(' ')}"` : '';
+            const style = `stroke="currentColor" stroke-width="${strokeWidth}" vector-effect="non-scaling-stroke" opacity="${opacity}"` +
+                (fillOpacity > 0 ? ` fill="currentColor" fill-opacity="${fillOpacity}"` : ' fill="none"') + dash;
+
+            if (part.rect) {
+                const [x,y,pw,ph]=part.rect;
+                return `<rect ${style} x="${X(x)}" y="${Y(y)}" width="${squareSpace?lenMin(pw):lenX(pw)}" height="${squareSpace?lenMin(ph):lenY(ph)}" rx="${lenMin(part.rx||0)}"/>`;
+            }
+            if (part.line) { const [x1,y1,x2,y2]=part.line; return `<line ${style} x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}"/>`; }
+            if (part.circle) { const [cx,cy,r]=part.circle; return `<circle ${style} cx="${X(cx)}" cy="${Y(cy)}" r="${lenMin(r)}"/>`; }
+            if (part.ellipse) { const [cx,cy,rx,ry]=part.ellipse; return `<ellipse ${style} cx="${X(cx)}" cy="${Y(cy)}" rx="${squareSpace?lenMin(rx):lenX(rx)}" ry="${squareSpace?lenMin(ry):lenY(ry)}"/>`; }
+            if (part.polygon || part.polyline) {
+                const pts=(part.polygon||part.polyline).map(p=>`${X(p[0])},${Y(p[1])}`).join(' ');
+                return `<${part.polygon?'polygon':'polyline'} ${style} points="${pts}"/>`;
+            }
+            if (part.path) {
+                let d='';
+                for (const cmd of part.path) {
+                    const op=cmd[0];
+                    if(op==='Z') d+=' Z';
+                    else if(op==='M'||op==='L') d+=` ${op} ${X(cmd[1])} ${Y(cmd[2])}`;
+                    else if(op==='Q') d+=` Q ${X(cmd[1])} ${Y(cmd[2])} ${X(cmd[3])} ${Y(cmd[4])}`;
+                    else if(op==='C') d+=` C ${X(cmd[1])} ${Y(cmd[2])} ${X(cmd[3])} ${Y(cmd[4])} ${X(cmd[5])} ${Y(cmd[6])}`;
+                }
+                return `<path ${style} d="${d.trim()}"/>`;
+            }
+            return '';
+        };
+        return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
     function render() {
@@ -1556,7 +1595,7 @@ class Floorplaner extends IPSModuleStrict
             parts.push(
                 `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
                 `<circle r="${radius}"/>` +
-                `<text text-anchor="middle" dominant-baseline="central" font-size="${Math.max(10,radius*0.72)}">${escapeHtml(icon)}</text>` +
+                `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` +
                 (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
                 (selected?.type === 'item' && selected.id === item.id
                     ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="1.4"/>`
@@ -1739,28 +1778,7 @@ class Floorplaner extends IPSModuleStrict
         render();
     }
 
-    const deviceIconChoices = [
-        // Licht / Strom
-        '💡','🔦','🕯️','✨','⚡','🔌','🔋','🪫','⏻','☀️','🌙',
-        // Klima / Wetter / Luft
-        '🌡️','🔥','❄️','💨','💧','☔','🌧️','🌤️','☁️','🌀','♨️',
-        // Türen / Fenster / Sicherheit
-        '🚪','🪟','🔒','🔓','🔑','🗝️','🔔','🛎️','🚨','🧯','🛡️','👁️',
-        // Sensorik
-        '📡','📶','📍','🧭','⏱️','⏰','🕒','🎚️','🎛️','📊','📈',
-        // Multimedia / IT
-        '📺','📻','🔊','🔉','🔇','🎵','🎬','📷','🎥','📹','🖥️','💻','⌨️','🖱️','📱','☎️',
-        // Haushalt
-        '🧺','🧹','🧽','🪣','🧼','🧴','🧻','🪥','🧊','☕','🍳','🥘','🍽️','🥤',
-        // Bad
-        '🚿','🛁','🚽','🪞',
-        // Möbel / Räume
-        '🛋️','🛏️','🪑','🗄️','🗃️','🪴','🖼️','📚',
-        // Fahrzeuge / Garage / Garten
-        '🚗','🚙','🚲','🛴','🏍️','🚘','⛽','🔧','🛠️','🪛','🌱','🌳','🌻','💦',
-        // Personen / Status
-        '👤','👥','🏠','🏡','🏢','✅','❌','⚠️','ℹ️','🔴','🟢','🟡','🔵','⚙️'
-    ];
+    const deviceIconChoices = mdiIconChoices;
 
     function getDeviceIconPicker() {
         return document.getElementById('deviceIconPicker');
@@ -1778,7 +1796,10 @@ class Floorplaner extends IPSModuleStrict
         picker.innerHTML =
             `<button type="button" data-device-icon="" title="Standardsymbol des Gerätetyps">↩</button>` +
             deviceIconChoices
-                .map(icon => `<button type="button" data-device-icon="${escapeHtml(icon)}" title="${escapeHtml(icon)}">${escapeHtml(icon)}</button>`)
+                .map(([icon,label]) =>
+                    `<button type="button" data-device-icon="${escapeHtml(icon)}" title="${escapeHtml(label + ' · ' + icon)}">` +
+                    `<svg viewBox="-16 -16 32 32" width="22" height="22">${renderMdiGlyph(icon, 12)}</svg>` +
+                    `</button>`)
                 .join('');
 
         const rect = input.getBoundingClientRect();
@@ -1962,7 +1983,10 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
                 </div>
-                <div class="field"><label>Symbolgröße</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+                <div class="row2">
+                    <div class="field"><label>Symbolgröße</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+                    <div class="field"><label>Drehung</label><input data-field="angle" type="number" min="-360" max="360" step="5" value="${Number(obj.angle) || 0}"></div>
+                </div>
             `;
         } else if (selected.type === 'furniture') {
             propTitle.textContent = 'Möbel';
@@ -1971,15 +1995,9 @@ class Floorplaner extends IPSModuleStrict
                 <div class="field">
                     <label>Möbeltyp</label>
                     <select data-field="type">
-                        <option value="sofa"${ftype === 'sofa' ? ' selected' : ''}>Sofa</option>
-                        <option value="bed"${ftype === 'bed' ? ' selected' : ''}>Bett</option>
-                        <option value="table"${ftype === 'table' ? ' selected' : ''}>Tisch</option>
-                        <option value="chair"${ftype === 'chair' ? ' selected' : ''}>Stuhl</option>
-                        <option value="cabinet"${ftype === 'cabinet' ? ' selected' : ''}>Schrank</option>
-                        <option value="kitchen"${ftype === 'kitchen' ? ' selected' : ''}>Küchenblock</option>
-                        <option value="toilet"${ftype === 'toilet' ? ' selected' : ''}>WC</option>
-                        <option value="shower"${ftype === 'shower' ? ' selected' : ''}>Dusche</option>
-                        <option value="tub"${ftype === 'tub' ? ' selected' : ''}>Badewanne</option>
+                        ${Object.entries(furnitureTemplates)
+                            .map(([key,tpl]) => `<option value="${key}"${key === ftype ? ' selected' : ''}>${escapeHtml(tpl.name)}</option>`)
+                            .join('')}
                     </select>
                 </div>
                 <div class="field">
@@ -2045,8 +2063,8 @@ class Floorplaner extends IPSModuleStrict
                     const newTpl = furnitureTemplates[value];
                     if (newTpl) {
                         if (!obj.name || (oldTpl && obj.name === oldTpl.name)) obj.name = newTpl.name;
-                        if (!obj.width || (oldTpl && Number(obj.width) === Number(oldTpl.width))) obj.width = newTpl.width;
-                        if (!obj.height || (oldTpl && Number(obj.height) === Number(oldTpl.height))) obj.height = newTpl.height;
+                        if (!obj.width || (oldTpl && Number(obj.width) === Number(oldTpl.size?.w))) obj.width = newTpl.size.w;
+                        if (!obj.height || (oldTpl && Number(obj.height) === Number(oldTpl.size?.h))) obj.height = newTpl.size.h;
                     }
                 }
 
@@ -2351,6 +2369,7 @@ class Floorplaner extends IPSModuleStrict
                 variableID: 0,
                 icon: '',
                 size: 18,
+                angle: 0,
                 kind: 'generic',
                 showName: false,
                 showState: false,
@@ -2374,8 +2393,8 @@ class Floorplaner extends IPSModuleStrict
                 name: tpl.name,
                 x: p.x,
                 y: p.y,
-                width: tpl.width,
-                height: tpl.height,
+                width: tpl.size.w,
+                height: tpl.size.h,
                 rotation: 0,
                 showName: false
             };
