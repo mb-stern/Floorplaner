@@ -23,7 +23,7 @@ declare(strict_types=1);
 
 class Floorplaner extends IPSModuleStrict
 {
-    private const PROPERTY_DATA = 'FloorplanData';
+    private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;
 
     public function Create(): void
@@ -35,9 +35,7 @@ class Floorplaner extends IPSModuleStrict
         $this->RegisterPropertyString('BackgroundColor', '#303030');
         $this->RegisterPropertyBoolean('ShowGrid', true);
 
-        // Kompletter Projektstand als Property.
-        // Dadurch wird der Floorplan beim Klonen der Instanz automatisch mitkopiert.
-        $this->RegisterPropertyString(self::PROPERTY_DATA, '');
+        $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
@@ -48,19 +46,14 @@ class Floorplaner extends IPSModuleStrict
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
 
-        $storedProject = $this->ReadPropertyString(self::PROPERTY_DATA);
-
-        if ($storedProject === '') {
-            $storedProject = json_encode(
-                $this->CreateDefaultProject(),
-                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        if ($this->ReadAttributeString(self::ATTRIBUTE_DATA) === '') {
+            $this->WriteAttributeString(
+                self::ATTRIBUTE_DATA,
+                json_encode(
+                    $this->CreateDefaultProject(),
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                )
             );
-
-            if (!is_string($storedProject) || $storedProject === '') {
-                throw new RuntimeException('Floorplan konnte nicht initialisiert werden.');
-            }
-
-            IPS_SetProperty($this->InstanceID, self::PROPERTY_DATA, $storedProject);
         }
 
         $this->SetSummary('Floorplan Editor');
@@ -3189,7 +3182,7 @@ HTML;
                     throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
                 }
 
-                $this->StoreProjectJson($json);
+                $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
                 $this->ReloadForm();
                 break;
 
@@ -3269,7 +3262,7 @@ HTML;
             throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
         }
 
-        $this->StoreProjectJson($json);
+        $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
         $this->UpdateVisualizationValue(
             json_encode(
                 ['type' => 'project', 'project' => $project],
@@ -3292,7 +3285,7 @@ HTML;
             throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
         }
 
-        $this->StoreProjectJson($json);
+        $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
 
         $message = json_encode(
             ['type' => 'project', 'project' => $project],
@@ -3324,7 +3317,7 @@ HTML;
             throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
         }
 
-        $this->StoreProjectJson($json);
+        $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
 
         $message = json_encode(
             ['type' => 'project', 'project' => $project],
@@ -3338,24 +3331,9 @@ HTML;
         $this->ReloadForm();
     }
 
-    private function StoreProjectJson(string $JSON): void
-    {
-        $project = $this->DecodeAndValidateProject($JSON);
-        $json = json_encode(
-            $project,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-
-        if ($json === false) {
-            throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
-        }
-
-        IPS_SetProperty($this->InstanceID, self::PROPERTY_DATA, $json);
-    }
-
     private function GetProject(): array
     {
-        $raw = $this->ReadPropertyString(self::PROPERTY_DATA);
+        $raw = $this->ReadAttributeString(self::ATTRIBUTE_DATA);
 
         if ($raw === '') {
             return $this->CreateDefaultProject();
