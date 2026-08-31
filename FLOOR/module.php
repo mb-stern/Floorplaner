@@ -505,7 +505,7 @@ class Floorplaner extends IPSModuleStrict
         .resize-handle {
             fill: #ffffff;
             stroke: #74b9ff;
-            stroke-width: 2;
+            stroke-width: 0.2;
             vector-effect: non-scaling-stroke;
             cursor: nwse-resize;
             pointer-events: all;
@@ -514,7 +514,7 @@ class Floorplaner extends IPSModuleStrict
         .device .resize-handle {
             fill: #ffffff;
             stroke: #74b9ff;
-            stroke-width: 2;
+            stroke-width: 0.2;
         }
 
         .device-label {
@@ -1462,7 +1462,7 @@ class Floorplaner extends IPSModuleStrict
                 const fh = Math.max(20, Number(f.height) || 60);
                 parts.push(
                     `<circle class="resize-handle" data-resize-type="furniture" data-id="${f.id}" ` +
-                    `cx="${fw / 2}" cy="${fh / 2}" r="7"/>`
+                    `cx="${fw / 2}" cy="${fh / 2}" r="0.7"/>`
                 );
             }
 
@@ -1499,7 +1499,7 @@ class Floorplaner extends IPSModuleStrict
                 `<text text-anchor="middle" dominant-baseline="central" font-size="${Math.max(10,radius*0.72)}">${escapeHtml(icon)}</text>` +
                 (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
                 (selected?.type === 'item' && selected.id === item.id
-                    ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="7"/>`
+                    ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="0.7"/>`
                     : '') +
                 `</g>`
             );
