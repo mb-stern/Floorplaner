@@ -117,25 +117,6 @@ class Floorplaner extends IPSModuleStrict
             ],
             [
                 'type'     => 'ExpansionPanel',
-                'caption'  => 'Projekt',
-                'expanded' => true,
-                'items'    => [
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'SnapSize',
-                        'caption' => 'Snap-Schritt',
-                        'minimum' => 0,
-                        'maximum' => 200
-                    ],
-                    [
-                        'type'    => 'CheckBox',
-                        'name'    => 'ShowGrid',
-                        'caption' => 'Raster im Editor anzeigen'
-                    ]
-                ]
-            ],
-            [
-                'type'     => 'ExpansionPanel',
                 'caption'  => 'Projektstatus',
                 'expanded' => true,
                 'items'    => [
