@@ -113,7 +113,7 @@ class Floorplaner extends IPSModuleStrict
             ],
             [
                 'type'    => 'Label',
-                'caption' => 'Basis: Easy Floorplan (MIT). Die Zeichenfläche hat keine feste Projektgröße und passt sich dynamisch an die verfügbare HTML-SDK-Fläche an.'
+                'caption' => 'Basis: Easy Floorplan (MIT).'
             ],
             [
                 'type'     => 'ExpansionPanel',
@@ -816,6 +816,7 @@ class Floorplaner extends IPSModuleStrict
         <div class="group">
             <button id="addFloorBtn">+ Etage</button>
             <select id="floorSelect"></select>
+            <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
         </div>
 
         <div class="group">
@@ -1099,30 +1100,46 @@ class Floorplaner extends IPSModuleStrict
         const bounds = contentBounds();
         if (!bounds) {
             zoom = 1;
-            panX = 40;
-            panY = 40;
+            panX = box.width / 2;
+            panY = box.height / 2;
             setTransform();
             render();
             return;
         }
 
-        const margin = 60;
         const width = Math.max(1, bounds.maxX - bounds.minX);
         const height = Math.max(1, bounds.maxY - bounds.minY);
+
+        // Immer die tatsächlich sichtbare Kachel als Ziel verwenden.
+        // Unten bleibt etwas Platz für Etagenwahl/Editorbutton, damit der
+        // Grundriss niemals von der Leiste abgeschnitten oder halb verdeckt wird.
+        const sideMargin = 24;
+        const topMargin = 24;
+        const bottomMargin = state.mode === 'view' ? 72 : 54;
+
+        const usableWidth = Math.max(1, box.width - sideMargin * 2);
+        const usableHeight = Math.max(1, box.height - topMargin - bottomMargin);
 
         zoom = Math.max(
             0.05,
             Math.min(
                 20,
                 Math.min(
-                    (box.width - margin * 2) / width,
-                    (box.height - margin * 2) / height
+                    usableWidth / width,
+                    usableHeight / height
                 )
             )
         );
 
-        panX = (box.width - width * zoom) / 2 - bounds.minX * zoom;
-        panY = (box.height - height * zoom) / 2 - bounds.minY * zoom;
+        const centerX = (bounds.minX + bounds.maxX) / 2;
+        const centerY = (bounds.minY + bounds.maxY) / 2;
+
+        const targetX = box.width / 2;
+        const targetY = topMargin + usableHeight / 2;
+
+        panX = targetX - centerX * zoom;
+        panY = targetY - centerY * zoom;
+
         setTransform();
         render();
     }
@@ -1508,10 +1525,6 @@ class Floorplaner extends IPSModuleStrict
                     <label>Etagenname</label>
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
-                <div class="field">
-                    <label>Zeichenfläche</label>
-                    <input value="Dynamisch – passt sich dem Fenster an" disabled>
-                </div>
                 <div class="row2">
                     <div class="field">
                         <label>Raster</label>
@@ -1733,6 +1746,47 @@ class Floorplaner extends IPSModuleStrict
         requestAnimationFrame(fit);
     });
 
+    document.getElementById('deleteFloorBtn')?.addEventListener('click', () => {
+        const floor = currentFloor();
+        if (!floor) return;
+
+        if (!confirm(`Etage "${floor.name}" wirklich komplett löschen?`)) {
+            return;
+        }
+
+        const index = state.floors.findIndex(f => f.id === floor.id);
+        if (index < 0) return;
+
+        state.floors.splice(index, 1);
+
+        // Der Editor benötigt immer mindestens eine Etage.
+        // Wird die letzte gelöscht, entsteht eine wirklich leere neue Etage.
+        if (state.floors.length === 0) {
+            const replacement = {
+                id: uid('floor'),
+                name: 'Erdgeschoss',
+                walls: [],
+                openings: [],
+                items: [],
+                texts: [],
+                furniture: [],
+                areas: [],
+                trackers: []
+            };
+            state.floors.push(replacement);
+            state.activeFloor = replacement.id;
+        } else {
+            state.activeFloor = state.floors[Math.min(index, state.floors.length - 1)].id;
+        }
+
+        selected = null;
+        wallStart = null;
+        pushHistory();
+        markDirty();
+        renderAll();
+        requestAnimationFrame(fit);
+    });
+
     document.getElementById('addFloorBtn').addEventListener('click', () => {
         const name = prompt('Name der neuen Etage:', 'Obergeschoss');
         if (name === null) return;
@@ -1753,7 +1807,7 @@ class Floorplaner extends IPSModuleStrict
         pushHistory();
         markDirty();
         render();
-        fit();
+        requestAnimationFrame(fit);
     });
 
     floorSelect.addEventListener('change', () => {
@@ -1761,6 +1815,7 @@ class Floorplaner extends IPSModuleStrict
         selected = null;
         wallStart = null;
         render();
+        requestAnimationFrame(fit);
     });
 
     svg.addEventListener('pointerdown', evt => {
