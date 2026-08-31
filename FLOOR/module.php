@@ -1428,6 +1428,22 @@ class Floorplaner extends IPSModuleStrict
             parts.push(`</g>`);
         }
 
+        for (const f of floor.furniture || []) {
+            const sel = selected?.type === 'furniture' && selected.id === f.id ? ' selected' : '';
+            const rot = Number(f.rotation) || 0;
+
+            parts.push(
+                `<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" ` +
+                `transform="translate(${Number(f.x) || 0} ${Number(f.y) || 0}) rotate(${rot})">`
+            );
+            parts.push(furnitureShape(f));
+            parts.push(
+                `<text class="furniture-label" x="0" y="${(Number(f.height) || 60) / 2 + 16}">` +
+                `${escapeHtml(f.name || furnitureTemplates[f.type]?.name || 'Möbel')}</text>`
+            );
+            parts.push(`</g>`);
+        }
+
         for (const item of floor.items) {
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
@@ -2533,16 +2549,7 @@ class Floorplaner extends IPSModuleStrict
                 const meta = data.meta || {};
 
                 for (const floor of state.floors || []) {
-                    for (const f of floor.furniture || []) {
-            const sel = selected?.type === 'furniture' && selected.id === f.id ? ' selected' : '';
-            const rot = Number(f.rotation) || 0;
-            parts.push(`<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" transform="translate(${Number(f.x)||0} ${Number(f.y)||0}) rotate(${rot})">`);
-            parts.push(furnitureShape(f));
-            parts.push(`<text class="furniture-label" x="0" y="${(Number(f.height)||60)/2 + 16}">${escapeHtml(f.name || furnitureTemplates[f.type]?.name || 'Möbel')}</text>`);
-            parts.push(`</g>`);
-        }
-
-        for (const item of floor.items || []) {
+                            for (const item of floor.items || []) {
                         if (Number(item.variableID || 0) === variableID) {
                             Object.assign(item, meta);
                         }
