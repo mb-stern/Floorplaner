@@ -867,6 +867,10 @@ class Floorplaner extends IPSModuleStrict
     const properties = document.getElementById('properties');
     const propTitle = document.getElementById('propTitle');
     const floorSelect = document.getElementById('floorSelect');
+
+    let resizeFitTimer = null;
+    let lastTileWidth = 0;
+    let lastTileHeight = 0;
     const liveFloorSelect = document.getElementById('liveFloorSelect');
     const statusEl = document.getElementById('status');
     const app = document.getElementById('app');
@@ -1732,6 +1736,35 @@ class Floorplaner extends IPSModuleStrict
     document.getElementById('redoBtn').addEventListener('click', () => restoreHistory(historyIndex + 1));
     document.getElementById('fitBtn').addEventListener('click', fit);
     document.getElementById('saveBtn').addEventListener('click', saveProject);
+    function scheduleResponsiveFit() {
+        if (resizeFitTimer) {
+            clearTimeout(resizeFitTimer);
+        }
+
+        resizeFitTimer = setTimeout(() => {
+            const rect = svg.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+
+            const widthChanged = Math.abs(rect.width - lastTileWidth) > 1;
+            const heightChanged = Math.abs(rect.height - lastTileHeight) > 1;
+
+            lastTileWidth = rect.width;
+            lastTileHeight = rect.height;
+
+            if (widthChanged || heightChanged) {
+                fit();
+            }
+        }, 80);
+    }
+
+    const tileResizeObserver = new ResizeObserver(() => {
+        scheduleResponsiveFit();
+    });
+
+    tileResizeObserver.observe(svg);
+
+    window.addEventListener('resize', scheduleResponsiveFit);
+
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
 
