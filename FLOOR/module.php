@@ -453,6 +453,29 @@ class Floorplaner extends IPSModuleStrict
             vector-effect: non-scaling-stroke;
         }
 
+        .furniture {
+            cursor: move;
+        }
+
+        .furniture-shape {
+            fill: rgba(150, 160, 175, .18);
+            stroke: #9ca9ba;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .furniture.selected .furniture-shape {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
+        .furniture-label {
+            fill: var(--fp-text);
+            font-size: 11px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
         .device {
             cursor: pointer;
         }
@@ -815,6 +838,7 @@ class Floorplaner extends IPSModuleStrict
 
         <div class="group">
             <button id="addFloorBtn">+ Etage</button>
+            <button id="addFurnitureBtn" type="button" title="Möbel einfügen">🛋 Möbel</button>
             <select id="floorSelect"></select>
             <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
         </div>
@@ -933,6 +957,7 @@ class Floorplaner extends IPSModuleStrict
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
             floor.items = Array.isArray(floor.items) ? floor.items : [];
+            floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             floor.texts = Array.isArray(floor.texts) ? floor.texts : [];
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
@@ -1209,6 +1234,84 @@ class Floorplaner extends IPSModuleStrict
             generic: '●'
         };
         return icons[kind] || icons.generic;
+    }
+
+    const furnitureTemplates = {
+        sofa:    { name: 'Sofa', width: 140, height: 65 },
+        bed:     { name: 'Bett', width: 110, height: 190 },
+        table:   { name: 'Tisch', width: 110, height: 75 },
+        chair:   { name: 'Stuhl', width: 45, height: 45 },
+        cabinet: { name: 'Schrank', width: 120, height: 45 },
+        kitchen: { name: 'Küchenblock', width: 160, height: 60 },
+        toilet:  { name: 'WC', width: 55, height: 75 },
+        shower:  { name: 'Dusche', width: 90, height: 90 },
+        tub:     { name: 'Badewanne', width: 170, height: 75 }
+    };
+
+    function addFurniture(type) {
+        const floor = currentFloor();
+        if (!floor) return;
+        const tpl = furnitureTemplates[type] || furnitureTemplates.sofa;
+
+        const box = svg.getBoundingClientRect();
+        const cx = (box.width / 2 - panX) / zoom;
+        const cy = (box.height / 2 - panY) / zoom;
+
+        const furniture = {
+            id: uid('furniture'),
+            type,
+            name: tpl.name,
+            x: cx,
+            y: cy,
+            width: tpl.width,
+            height: tpl.height,
+            rotation: 0
+        };
+
+        floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
+        floor.furniture.push(furniture);
+        selected = { type: 'furniture', id: furniture.id };
+        pushHistory();
+        markDirty();
+        renderAll();
+    }
+
+    function furnitureShape(f) {
+        const w = Math.max(20, Number(f.width) || 100);
+        const h = Math.max(20, Number(f.height) || 60);
+        const x = -w / 2;
+        const y = -h / 2;
+
+        if (f.type === 'table') {
+            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/>`;
+        }
+        if (f.type === 'chair') {
+            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>
+                    <line class="furniture-shape" x1="${x}" y1="${y + h*.25}" x2="${x+w}" y2="${y + h*.25}"/>`;
+        }
+        if (f.type === 'bed') {
+            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/>
+                    <rect class="furniture-shape" x="${x+8}" y="${y+8}" width="${w-16}" height="${Math.max(20,h*.28)}" rx="6"/>`;
+        }
+        if (f.type === 'sofa') {
+            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="12"/>
+                    <line class="furniture-shape" x1="${x+w*.18}" y1="${y}" x2="${x+w*.18}" y2="${y+h}"/>
+                    <line class="furniture-shape" x1="${x+w*.82}" y1="${y}" x2="${x+w*.82}" y2="${y+h}"/>`;
+        }
+        if (f.type === 'toilet') {
+            return `<ellipse class="furniture-shape" cx="0" cy="${h*.08}" rx="${w*.38}" ry="${h*.42}"/>
+                    <rect class="furniture-shape" x="${-w*.34}" y="${-h*.5}" width="${w*.68}" height="${h*.24}" rx="5"/>`;
+        }
+        if (f.type === 'shower') {
+            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>
+                    <line class="furniture-shape" x1="${x}" y1="${y}" x2="${x+w}" y2="${y+h}"/>
+                    <line class="furniture-shape" x1="${x+w}" y1="${y}" x2="${x}" y2="${y+h}"/>`;
+        }
+        if (f.type === 'tub') {
+            return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(22,h/2)}"/>
+                    <rect class="furniture-shape" x="${x+8}" y="${y+8}" width="${w-16}" height="${h-16}" rx="${Math.min(18,(h-16)/2)}"/>`;
+        }
+        return `<rect class="furniture-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="4"/>`;
     }
 
     function render() {
@@ -1764,6 +1867,25 @@ class Floorplaner extends IPSModuleStrict
     tileResizeObserver.observe(svg);
 
     window.addEventListener('resize', scheduleResponsiveFit);
+
+    document.getElementById('addFurnitureBtn')?.addEventListener('click', () => {
+        const labels = [
+            ['sofa','Sofa'], ['bed','Bett'], ['table','Tisch'], ['chair','Stuhl'],
+            ['cabinet','Schrank'], ['kitchen','Küchenblock'], ['toilet','WC'],
+            ['shower','Dusche'], ['tub','Badewanne']
+        ];
+
+        const choice = prompt(
+            'Möbeltyp:\n' +
+            labels.map(([,label], i) => `${i+1} = ${label}`).join('\n'),
+            '1'
+        );
+
+        const index = Number(choice) - 1;
+        if (Number.isInteger(index) && labels[index]) {
+            addFurniture(labels[index][0]);
+        }
+    });
 
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
@@ -2335,7 +2457,16 @@ class Floorplaner extends IPSModuleStrict
                 const meta = data.meta || {};
 
                 for (const floor of state.floors || []) {
-                    for (const item of floor.items || []) {
+                    for (const f of floor.furniture || []) {
+            const sel = selected?.type === 'furniture' && selected.id === f.id ? ' selected' : '';
+            const rot = Number(f.rotation) || 0;
+            parts.push(`<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" transform="translate(${Number(f.x)||0} ${Number(f.y)||0}) rotate(${rot})">`);
+            parts.push(furnitureShape(f));
+            parts.push(`<text class="furniture-label" x="0" y="${(Number(f.height)||60)/2 + 16}">${escapeHtml(f.name || furnitureTemplates[f.type]?.name || 'Möbel')}</text>`);
+            parts.push(`</g>`);
+        }
+
+        for (const item of floor.items || []) {
                         if (Number(item.variableID || 0) === variableID) {
                             Object.assign(item, meta);
                         }
