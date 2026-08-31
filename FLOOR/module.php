@@ -120,25 +120,12 @@ class Floorplaner extends IPSModuleStrict
                 'caption'  => 'Projekt',
                 'expanded' => true,
                 'items'    => [
-
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'GridSize',
-                        'caption' => 'Raster',
-                        'minimum' => 5,
-                        'maximum' => 200
-                    ],
                     [
                         'type'    => 'NumberSpinner',
                         'name'    => 'SnapSize',
                         'caption' => 'Snap-Schritt',
                         'minimum' => 0,
                         'maximum' => 200
-                    ],
-                    [
-                        'type'    => 'SelectColor',
-                        'name'    => 'BackgroundColor',
-                        'caption' => 'Hintergrund'
                     ],
                     [
                         'type'    => 'CheckBox',
@@ -920,6 +907,11 @@ class Floorplaner extends IPSModuleStrict
             --fp-grid: color-mix(in srgb, var(--fp-text) 12%, transparent);
         }
 
+
+        .view-mode .grid-editor-controls {
+            display: none !important;
+        }
+
 </style>
 </head>
 <body>
@@ -1045,7 +1037,7 @@ class Floorplaner extends IPSModuleStrict
     let preview = null;
     let drag = null;
     let editorShowGrid = true;
-    let editorGridSize = 20;
+    let editorGridSize = Math.max(2, Number(state.grid) || 20);
 
     let zoom = 1;
     let panX = 0;
@@ -1171,14 +1163,20 @@ class Floorplaner extends IPSModuleStrict
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
         statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
+
+        const gridControls = document.querySelector('.grid-editor-controls');
+        if (gridControls) {
+            gridControls.style.display = isView ? 'none' : 'inline-flex';
+        }
     }
 
     function setMode(mode) {
+        state.mode = mode === 'view' ? 'view' : 'edit';
+
         const gridControls = document.querySelector('.grid-editor-controls');
         if (gridControls) {
-            gridControls.style.display = mode === 'edit' ? 'inline-flex' : 'none';
+            gridControls.style.display = state.mode === 'edit' ? 'inline-flex' : 'none';
         }
-        state.mode = mode === 'view' ? 'view' : 'edit';
         selected = null;
         wallStart = null;
         preview = null;
@@ -1500,22 +1498,133 @@ class Floorplaner extends IPSModuleStrict
         return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
+    function isUsableColor(value) {
+        if (!value) return false;
+        const v = String(value).trim().toLowerCase();
+        return v !== '' &&
+            v !== 'transparent' &&
+            v !== 'rgba(0, 0, 0, 0)' &&
+            v !== 'rgba(0,0,0,0)';
+    }
+
+    function firstCssVariable(style, names) {
+        for (const name of names) {
+            const value = style?.getPropertyValue(name)?.trim();
+            if (isUsableColor(value)) return value;
+        }
+        return '';
+    }
+
+    function isUsableColor(value) {
+        if (!value) return false;
+        const v = String(value).trim().toLowerCase();
+        return v !== '' &&
+            v !== 'transparent' &&
+            v !== 'rgba(0, 0, 0, 0)' &&
+            v !== 'rgba(0,0,0,0)';
+    }
+
+    function firstCssVariable(style, names) {
+        for (const name of names) {
+            const value = style?.getPropertyValue(name)?.trim();
+            if (isUsableColor(value)) return value;
+        }
+        return '';
+    }
+
     function syncHostTheme() {
-        const hostStyle = getComputedStyle(document.documentElement);
+        let bg = '';
+        let fg = '';
+        let panel = '';
+        let border = '';
+
+        const bgVars = [
+            '--card-background-color',
+            '--primary-background-color',
+            '--background-color',
+            '--content-background-color',
+            '--surface-color',
+            '--md-sys-color-background',
+            '--md-sys-color-surface'
+        ];
+        const fgVars = [
+            '--primary-text-color',
+            '--text-color',
+            '--foreground-color',
+            '--md-sys-color-on-background',
+            '--md-sys-color-on-surface'
+        ];
+        const panelVars = [
+            '--secondary-background-color',
+            '--card-background-color',
+            '--surface-color',
+            '--md-sys-color-surface-container'
+        ];
+        const borderVars = [
+            '--divider-color',
+            '--border-color',
+            '--md-sys-color-outline-variant'
+        ];
+
+        try {
+            if (window.parent && window.parent !== window && window.parent.document) {
+                const pdoc = window.parent.document;
+                const candidates = [];
+
+                let node = window.frameElement;
+                while (node) {
+                    candidates.push(node);
+                    node = node.parentElement;
+                }
+
+                if (pdoc.body) candidates.push(pdoc.body);
+                if (pdoc.documentElement) candidates.push(pdoc.documentElement);
+
+                for (const el of candidates) {
+                    const st = window.parent.getComputedStyle(el);
+
+                    if (!bg) bg = firstCssVariable(st, bgVars);
+                    if (!fg) fg = firstCssVariable(st, fgVars);
+                    if (!panel) panel = firstCssVariable(st, panelVars);
+                    if (!border) border = firstCssVariable(st, borderVars);
+
+                    if (!bg && isUsableColor(st.backgroundColor)) bg = st.backgroundColor;
+                    if (!fg && isUsableColor(st.color)) fg = st.color;
+
+                    if (bg && fg && panel && border) break;
+                }
+            }
+        } catch (e) {
+            // Parent ggf. nicht lesbar.
+        }
+
+        const rootStyle = getComputedStyle(document.documentElement);
         const bodyStyle = getComputedStyle(document.body);
 
-        const bg =
-            hostStyle.getPropertyValue('--card-background-color').trim() ||
-            hostStyle.getPropertyValue('--primary-background-color').trim() ||
-            bodyStyle.backgroundColor;
-
-        const fg =
-            hostStyle.getPropertyValue('--primary-text-color').trim() ||
-            bodyStyle.color;
+        if (!bg) {
+            bg =
+                firstCssVariable(rootStyle, bgVars) ||
+                (isUsableColor(bodyStyle.backgroundColor) ? bodyStyle.backgroundColor : '');
+        }
+        if (!fg) {
+            fg =
+                firstCssVariable(rootStyle, fgVars) ||
+                (isUsableColor(bodyStyle.color) ? bodyStyle.color : '');
+        }
+        if (!panel) panel = firstCssVariable(rootStyle, panelVars);
+        if (!border) border = firstCssVariable(rootStyle, borderVars);
 
         if (bg) document.documentElement.style.setProperty('--fp-bg', bg);
         if (fg) document.documentElement.style.setProperty('--fp-text', fg);
+        if (panel) document.documentElement.style.setProperty('--fp-panel', panel);
+        if (border) document.documentElement.style.setProperty('--fp-border', border);
+
+        document.documentElement.style.setProperty(
+            '--fp-grid',
+            'color-mix(in srgb, var(--fp-text) 14%, transparent)'
+        );
     }
+
 
     function renderEditorGrid(parts) {
         if (state.mode !== 'edit' || !editorShowGrid) return;
@@ -1549,9 +1658,8 @@ class Floorplaner extends IPSModuleStrict
         parts.push(
             `<rect x="${bounds.minX}" y="${bounds.minY}" ` +
             `width="${bounds.maxX - bounds.minX}" height="${bounds.maxY - bounds.minY}" ` +
-            `fill="${escapeHtml(state.background)}"/>`
+            `fill="var(--fp-bg)"/>`
         );
-        renderGrid(parts, bounds);
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
@@ -1948,15 +2056,9 @@ class Floorplaner extends IPSModuleStrict
                     <label>Etagenname</label>
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
-                <div class="row2">
-                    <div class="field">
-                        <label>Raster</label>
-                        <input value="${state.grid}" disabled>
-                    </div>
-                    <div class="field">
-                        <label>Snap</label>
-                        <input value="${state.snap}" disabled>
-                    </div>
+                <div class="field">
+                    <label>Snap</label>
+                    <input value="${state.snap}" disabled>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -3010,14 +3112,46 @@ class Floorplaner extends IPSModuleStrict
 
     pushHistory();
     updateModeUI();
+    syncHostTheme();
     renderAll();
     requestAnimationFrame(fit);
-    const themeObserver = new MutationObserver(() => {
-        syncHostTheme();
-        render();
+    let themeSyncTimer = null;
+
+    function scheduleThemeSync() {
+        clearTimeout(themeSyncTimer);
+        themeSyncTimer = setTimeout(() => {
+            syncHostTheme();
+            render();
+        }, 40);
+    }
+
+    const themeObserver = new MutationObserver(scheduleThemeSync);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class','style','data-theme']
     });
-    themeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['class','style','data-theme']});
-    themeObserver.observe(document.body, {attributes: true, attributeFilter: ['class','style','data-theme']});
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class','style','data-theme']
+    });
+
+    try {
+        if (window.parent && window.parent !== window && window.parent.document) {
+            const pdoc = window.parent.document;
+            if (pdoc.documentElement) {
+                themeObserver.observe(pdoc.documentElement, {
+                    attributes: true,
+                    subtree: true,
+                    attributeFilter: ['class','style','data-theme']
+                });
+            }
+        }
+    } catch (e) {
+        // Cross-Origin: kein Parent-Observer möglich.
+    }
+
+    // Symcon kann das Theme auch über berechnete Styles ändern.
+    setInterval(syncHostTheme, 1000);
 
 })();
 </script>
