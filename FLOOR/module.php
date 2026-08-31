@@ -23,7 +23,8 @@ declare(strict_types=1);
 
 class Floorplaner extends IPSModuleStrict
 {
-    private const ATTRIBUTE_DATA = 'FloorplanData';
+    private const PROPERTY_DATA = 'FloorplanData';
+    private const BUFFER_INTERNAL_PROJECT_SAVE = 'InternalProjectSave';
     private const VISUALIZATION_TYPE_HTML = 1;
 
     public function Create(): void
@@ -35,7 +36,9 @@ class Floorplaner extends IPSModuleStrict
         $this->RegisterPropertyString('BackgroundColor', '#303030');
         $this->RegisterPropertyBoolean('ShowGrid', true);
 
-        $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
+        // Kompletter Projektstand als Property.
+        // Dadurch wird der Floorplan beim Klonen der Instanz automatisch mitkopiert.
+        $this->RegisterPropertyString(self::PROPERTY_DATA, '');
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
@@ -46,20 +49,28 @@ class Floorplaner extends IPSModuleStrict
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
 
-        if ($this->ReadAttributeString(self::ATTRIBUTE_DATA) === '') {
-            $this->WriteAttributeString(
-                self::ATTRIBUTE_DATA,
-                json_encode(
-                    $this->CreateDefaultProject(),
-                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-                )
+        $storedProject = $this->ReadPropertyString(self::PROPERTY_DATA);
+
+        if ($storedProject === '') {
+            $storedProject = json_encode(
+                $this->CreateDefaultProject(),
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
             );
+
+            if (!is_string($storedProject) || $storedProject === '') {
+                throw new RuntimeException('Floorplan konnte nicht initialisiert werden.');
+            }
+
+            IPS_SetProperty($this->InstanceID, self::PROPERTY_DATA, $storedProject);
         }
 
         $this->SetSummary('Floorplan Editor');
         $this->RegisterRuntimeVariableMessages();
 
-        if (IPS_GetKernelRunlevel() === KR_READY) {
+        if (
+            IPS_GetKernelRunlevel() === KR_READY
+            && $this->GetBuffer(self::BUFFER_INTERNAL_PROJECT_SAVE) !== '1'
+        ) {
             $this->ReloadHtml();
         }
     }
@@ -3182,7 +3193,7 @@ HTML;
                     throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
                 }
 
-                $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+                $this->StoreProjectJson($json);
                 $this->ReloadForm();
                 break;
 
@@ -3262,7 +3273,7 @@ HTML;
             throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
         }
 
-        $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+        $this->StoreProjectJson($json);
         $this->UpdateVisualizationValue(
             json_encode(
                 ['type' => 'project', 'project' => $project],
@@ -3285,7 +3296,7 @@ HTML;
             throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
         }
 
-        $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+        $this->StoreProjectJson($json);
 
         $message = json_encode(
             ['type' => 'project', 'project' => $project],
@@ -3317,7 +3328,7 @@ HTML;
             throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
         }
 
-        $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+        $this->StoreProjectJson($json);
 
         $message = json_encode(
             ['type' => 'project', 'project' => $project],
@@ -3331,9 +3342,39 @@ HTML;
         $this->ReloadForm();
     }
 
+    private function StoreProjectJson(string $JSON): void
+    {
+        $project = $this->DecodeAndValidateProject($JSON);
+        $json = json_encode(
+            $project,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+
+        if ($json === false) {
+            throw new RuntimeException('Floorplan konnte nicht serialisiert werden.');
+        }
+
+        if ($this->ReadPropertyString(self::PROPERTY_DATA) === $json) {
+            return;
+        }
+
+        // Properties werden von IP-Symcon erst mit ApplyChanges für die laufende
+        // Modulinstanz wirksam. Ohne diesen Schritt liest GetProject() weiterhin
+        // den alten Stand und neu zugeordnete Geräte erhalten keine VM_UPDATE-
+        // Registrierung. Das interne ApplyChanges darf aber den Editor nicht neu laden.
+        $this->SetBuffer(self::BUFFER_INTERNAL_PROJECT_SAVE, '1');
+
+        try {
+            IPS_SetProperty($this->InstanceID, self::PROPERTY_DATA, $json);
+            IPS_ApplyChanges($this->InstanceID);
+        } finally {
+            $this->SetBuffer(self::BUFFER_INTERNAL_PROJECT_SAVE, '0');
+        }
+    }
+
     private function GetProject(): array
     {
-        $raw = $this->ReadAttributeString(self::ATTRIBUTE_DATA);
+        $raw = $this->ReadPropertyString(self::PROPERTY_DATA);
 
         if ($raw === '') {
             return $this->CreateDefaultProject();
