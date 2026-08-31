@@ -1625,35 +1625,6 @@ class Floorplaner extends IPSModuleStrict
             floor.items = floor.items.filter(v => v.id !== selected.id);
         } else if (selected.type === 'furniture') {
             floor.furniture = (floor.furniture || []).filter(v => v.id !== selected.id);
-        } else if (selected.type === 'furniture') {
-            propTitle.textContent = 'Möbel';
-            const ftype = obj.type || 'sofa';
-            properties.innerHTML = `
-                <div class="field">
-                    <label>Möbeltyp</label>
-                    <select data-field="type">
-                        <option value="sofa"${ftype === 'sofa' ? ' selected' : ''}>Sofa</option>
-                        <option value="bed"${ftype === 'bed' ? ' selected' : ''}>Bett</option>
-                        <option value="table"${ftype === 'table' ? ' selected' : ''}>Tisch</option>
-                        <option value="chair"${ftype === 'chair' ? ' selected' : ''}>Stuhl</option>
-                        <option value="cabinet"${ftype === 'cabinet' ? ' selected' : ''}>Schrank</option>
-                        <option value="kitchen"${ftype === 'kitchen' ? ' selected' : ''}>Küchenblock</option>
-                        <option value="toilet"${ftype === 'toilet' ? ' selected' : ''}>WC</option>
-                        <option value="shower"${ftype === 'shower' ? ' selected' : ''}>Dusche</option>
-                        <option value="tub"${ftype === 'tub' ? ' selected' : ''}>Badewanne</option>
-                    </select>
-                </div>
-                <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || furnitureTemplates[ftype]?.name || 'Möbel')}"></div>
-                <div class="row2">
-                    <div class="field"><label>X</label><input data-field="x" type="number" value="${Number(obj.x) || 0}"></div>
-                    <div class="field"><label>Y</label><input data-field="y" type="number" value="${Number(obj.y) || 0}"></div>
-                </div>
-                <div class="row2">
-                    <div class="field"><label>Breite</label><input data-field="width" type="number" min="20" step="5" value="${Number(obj.width) || 100}"></div>
-                    <div class="field"><label>Tiefe</label><input data-field="height" type="number" min="20" step="5" value="${Number(obj.height) || 60}"></div>
-                </div>
-                <div class="field"><label>Drehung</label><input data-field="rotation" type="number" min="-360" max="360" step="5" value="${Number(obj.rotation) || 0}"></div>
-            `;
         } else if (selected.type === 'text') {
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
         }
@@ -1813,6 +1784,53 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
                 </div>
                 <div class="field"><label>Symbolgröße</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+            `;
+        } else if (selected.type === 'furniture') {
+            propTitle.textContent = 'Möbel';
+            const ftype = obj.type || 'sofa';
+            properties.innerHTML = `
+                <div class="field">
+                    <label>Möbeltyp</label>
+                    <select data-field="type">
+                        <option value="sofa"${ftype === 'sofa' ? ' selected' : ''}>Sofa</option>
+                        <option value="bed"${ftype === 'bed' ? ' selected' : ''}>Bett</option>
+                        <option value="table"${ftype === 'table' ? ' selected' : ''}>Tisch</option>
+                        <option value="chair"${ftype === 'chair' ? ' selected' : ''}>Stuhl</option>
+                        <option value="cabinet"${ftype === 'cabinet' ? ' selected' : ''}>Schrank</option>
+                        <option value="kitchen"${ftype === 'kitchen' ? ' selected' : ''}>Küchenblock</option>
+                        <option value="toilet"${ftype === 'toilet' ? ' selected' : ''}>WC</option>
+                        <option value="shower"${ftype === 'shower' ? ' selected' : ''}>Dusche</option>
+                        <option value="tub"${ftype === 'tub' ? ' selected' : ''}>Badewanne</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Name</label>
+                    <input data-field="name" value="${escapeHtml(obj.name || furnitureTemplates[ftype]?.name || 'Möbel')}">
+                </div>
+                <div class="row2">
+                    <div class="field">
+                        <label>X</label>
+                        <input data-field="x" type="number" value="${Number(obj.x) || 0}">
+                    </div>
+                    <div class="field">
+                        <label>Y</label>
+                        <input data-field="y" type="number" value="${Number(obj.y) || 0}">
+                    </div>
+                </div>
+                <div class="row2">
+                    <div class="field">
+                        <label>Breite</label>
+                        <input data-field="width" type="number" min="20" step="5" value="${Number(obj.width) || 100}">
+                    </div>
+                    <div class="field">
+                        <label>Tiefe</label>
+                        <input data-field="height" type="number" min="20" step="5" value="${Number(obj.height) || 60}">
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Drehung</label>
+                    <input data-field="rotation" type="number" min="-360" max="360" step="5" value="${Number(obj.rotation) || 0}">
+                </div>
             `;
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
@@ -2149,7 +2167,7 @@ class Floorplaner extends IPSModuleStrict
             pushHistory();
             markDirty();
             setTool('select');
-            render();
+            renderAll();
             return;
         }
 
