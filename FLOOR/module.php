@@ -810,7 +810,37 @@ class Floorplaner extends IPSModuleStrict
                 border-top: 1px solid var(--fp-border);
             }
         }
-    </style>
+            .icon-picker {
+            position: absolute;
+            z-index: 90;
+            display: none;
+            grid-template-columns: repeat(6, minmax(34px, auto));
+            gap: 5px;
+            padding: 8px;
+            border: 1px solid var(--fp-border);
+            border-radius: 8px;
+            background: var(--fp-panel);
+            box-shadow: 0 4px 14px rgba(0,0,0,.28);
+            max-width: min(320px, calc(100vw - 24px));
+            max-height: min(300px, calc(100vh - 24px));
+            overflow: auto;
+        }
+
+        .icon-picker button {
+            min-width: 34px;
+            min-height: 32px;
+            padding: 4px 6px;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .icon-input-clickable {
+            cursor: pointer;
+        }
+
+
+</style>
 </head>
 <body>
 <div id="app">
@@ -973,6 +1003,9 @@ class Floorplaner extends IPSModuleStrict
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
             floor.items = Array.isArray(floor.items) ? floor.items : [];
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
+            for (const furniture of floor.furniture) {
+                if (typeof furniture.showName !== 'boolean') furniture.showName = false;
+            }
             floor.texts = Array.isArray(floor.texts) ? floor.texts : [];
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
@@ -1452,10 +1485,12 @@ class Floorplaner extends IPSModuleStrict
                 `transform="translate(${Number(f.x) || 0} ${Number(f.y) || 0}) rotate(${rot})">`
             );
             parts.push(furnitureShape(f));
-            parts.push(
-                `<text class="furniture-label" x="0" y="${(Number(f.height) || 60) / 2 + 16}">` +
-                `${escapeHtml(f.name || furnitureTemplates[f.type]?.name || 'Möbel')}</text>`
-            );
+            if (f.showName === true) {
+                parts.push(
+                    `<text class="furniture-label" x="0" y="${(Number(f.height) || 60) / 2 + 16}">` +
+                    `${escapeHtml(f.name || furnitureTemplates[f.type]?.name || 'Möbel')}</text>`
+                );
+            }
 
             if (selected?.type === 'furniture' && selected.id === f.id) {
                 const fw = Math.max(20, Number(f.width) || 100);
@@ -1679,6 +1714,40 @@ class Floorplaner extends IPSModuleStrict
         render();
     }
 
+    const deviceIconChoices = [
+        '💡','🔌','🔋','⚡','☀️','🌡️','💧','🔥','❄️','💨',
+        '🚪','🪟','🔒','🔓','📺','📻','🔊','📷','🎥','🛎️',
+        '🚗','🔌','🌀','🖥️','💻','📱','🧺','🍳','☕','🧊',
+        '🚿','🛁','🚽','🛋️','🛏️','🪑','🧯','🔔','⏻','⚙️'
+    ];
+
+    const deviceIconPicker = document.getElementById('deviceIconPicker');
+
+    function closeDeviceIconPicker() {
+        if (deviceIconPicker) deviceIconPicker.style.display = 'none';
+    }
+
+    function openDeviceIconPicker(input) {
+        if (!deviceIconPicker || !input) return;
+
+        deviceIconPicker.innerHTML = deviceIconChoices
+            .map(icon => `<button type="button" data-device-icon="${escapeHtml(icon)}" title="${escapeHtml(icon)}">${escapeHtml(icon)}</button>`)
+            .join('');
+
+        const rect = input.getBoundingClientRect();
+        deviceIconPicker.style.left = `${Math.min(rect.left, Math.max(8, window.innerWidth - 330))}px`;
+        deviceIconPicker.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 310))}px`;
+        deviceIconPicker.style.display = 'grid';
+
+        deviceIconPicker.querySelectorAll('[data-device-icon]').forEach(button => {
+            button.addEventListener('click', () => {
+                input.value = button.dataset.deviceIcon || '';
+                input.dispatchEvent(new Event('input', {bubbles: true}));
+                closeDeviceIconPicker();
+            });
+        });
+    }
+
     function renderProperties() {
         const floor = currentFloor();
 
@@ -1822,7 +1891,7 @@ class Floorplaner extends IPSModuleStrict
                         </select>
                     </div>
                 </div>
-                <div class="field"><label>Eigenes Symbol (optional)</label><input data-field="icon" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
+                <div class="field"><label>Eigenes Symbol (optional)</label><input class="icon-input-clickable" data-icon-picker="device" readonly data-field="icon" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
                 <div class="row2">
                     <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
@@ -1851,6 +1920,7 @@ class Floorplaner extends IPSModuleStrict
                     <label>Name</label>
                     <input data-field="name" value="${escapeHtml(obj.name || furnitureTemplates[ftype]?.name || 'Möbel')}">
                 </div>
+                <label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label>
                 <div class="row2">
                     <div class="field">
                         <label>X</label>
@@ -1984,6 +2054,20 @@ class Floorplaner extends IPSModuleStrict
 
     window.addEventListener('resize', scheduleResponsiveFit);
 
+
+    document.addEventListener('click', evt => {
+        const iconInput = evt.target.closest('[data-icon-picker="device"]');
+        if (iconInput) {
+            evt.preventDefault();
+            evt.stopPropagation();
+            openDeviceIconPicker(iconInput);
+            return;
+        }
+
+        if (!evt.target.closest('#deviceIconPicker')) {
+            closeDeviceIconPicker();
+        }
+    });
 
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
@@ -2226,7 +2310,8 @@ class Floorplaner extends IPSModuleStrict
                 y: p.y,
                 width: tpl.width,
                 height: tpl.height,
-                rotation: 0
+                rotation: 0,
+                showName: false
             };
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             floor.furniture.push(furniture);
@@ -2722,6 +2807,9 @@ class Floorplaner extends IPSModuleStrict
     requestAnimationFrame(fit);
 })();
 </script>
+
+    <div id="deviceIconPicker" class="icon-picker" aria-label="Symbol auswählen"></div>
+
 </body>
 </html>
 HTML;
