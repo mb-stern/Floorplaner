@@ -225,12 +225,14 @@ class Floorplaner extends IPSModuleStrict
 
         #app {
             display: grid;
-            grid-template-rows: auto 1fr;
+            grid-template-rows: 1fr auto;
             width: 100%;
             height: 100%;
             min-height: 420px;
         }
 
+        /* HTML-SDK: Bedienelemente bewusst UNTEN.
+           Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
         .toolbar {
             display: flex;
             flex-wrap: wrap;
@@ -238,7 +240,7 @@ class Floorplaner extends IPSModuleStrict
             align-items: center;
             padding: 8px;
             background: var(--fp-panel);
-            border-bottom: 1px solid var(--fp-border);
+            border-top: 1px solid var(--fp-border);
         }
 
         .toolbar .group {
@@ -445,6 +447,27 @@ class Floorplaner extends IPSModuleStrict
 </head>
 <body>
 <div id="app">
+    <div class="main">
+        <div class="canvas-wrap">
+            <svg id="viewport" xmlns="http://www.w3.org/2000/svg">
+                <g id="scene"></g>
+            </svg>
+        </div>
+
+        <aside class="sidebar">
+            <h3 id="propTitle">Projekteigenschaften</h3>
+            <div id="properties"></div>
+            <div class="help">
+                <b>Bedienung</b><br>
+                Wand: Start- und Endpunkt anklicken.<br>
+                Tür/Fenster: auf eine Wand klicken.<br>
+                Gerät/Text: Position anklicken.<br>
+                Auswahl: Element anklicken und ziehen.<br>
+                Mausrad: zoomen. Mittlere Maustaste: verschieben.<br>
+                Entf: ausgewähltes Element löschen.
+            </div>
+        </aside>
+    </div>
     <div class="toolbar">
         <div class="group">
             <button data-tool="select" class="active">Auswahl</button>
@@ -473,28 +496,6 @@ class Floorplaner extends IPSModuleStrict
 
         <div class="spacer"></div>
         <div id="status" class="status">Bereit</div>
-    </div>
-
-    <div class="main">
-        <div class="canvas-wrap">
-            <svg id="viewport" xmlns="http://www.w3.org/2000/svg">
-                <g id="scene"></g>
-            </svg>
-        </div>
-
-        <aside class="sidebar">
-            <h3 id="propTitle">Projekteigenschaften</h3>
-            <div id="properties"></div>
-            <div class="help">
-                <b>Bedienung</b><br>
-                Wand: Start- und Endpunkt anklicken.<br>
-                Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Text: Position anklicken.<br>
-                Auswahl: Element anklicken und ziehen.<br>
-                Mausrad: zoomen. Mittlere Maustaste: verschieben.<br>
-                Entf: ausgewähltes Element löschen.
-            </div>
-        </aside>
     </div>
 </div>
 
