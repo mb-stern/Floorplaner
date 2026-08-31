@@ -883,10 +883,10 @@ class Floorplaner extends IPSModuleStrict
                 <b>Bedienung</b><br>
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Text: Position anklicken.<br>
-                Auswahl: Element anklicken und ziehen.<br>
-                Mittlere Maustaste: verschieben.<br>
-                Entf: ausgewähltes Element löschen.
+                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>
+                Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
+                Mittlere Maustaste: Grundriss verschieben.<br>
+                Entf: ausgewähltes Element löschen.<br>Einpassen: kompletten Grundriss automatisch in die Kachel einpassen.
             </div>
         </aside>
     </div>
