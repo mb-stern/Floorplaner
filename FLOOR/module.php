@@ -30,8 +30,6 @@ class Floorplaner extends IPSModuleStrict
     {
         parent::Create();
 
-        $this->RegisterPropertyInteger('CanvasWidth', 1000);
-        $this->RegisterPropertyInteger('CanvasHeight', 650);
         $this->RegisterPropertyInteger('GridSize', 20);
         $this->RegisterPropertyInteger('SnapSize', 20);
         $this->RegisterPropertyString('BackgroundColor', '#303030');
@@ -73,27 +71,14 @@ class Floorplaner extends IPSModuleStrict
             ],
             [
                 'type'    => 'Label',
-                'caption' => 'Basis: Easy Floorplan (MIT). Der eigentliche grafische Editor läuft über das HTML-SDK der Instanz.'
+                'caption' => 'Basis: Easy Floorplan (MIT). Die Zeichenfläche hat keine feste Projektgröße und passt sich dynamisch an die verfügbare HTML-SDK-Fläche an.'
             ],
             [
                 'type'     => 'ExpansionPanel',
                 'caption'  => 'Projekt',
                 'expanded' => true,
                 'items'    => [
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'CanvasWidth',
-                        'caption' => 'Breite',
-                        'minimum' => 300,
-                        'maximum' => 5000
-                    ],
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'CanvasHeight',
-                        'caption' => 'Höhe',
-                        'minimum' => 200,
-                        'maximum' => 5000
-                    ],
+
                     [
                         'type'    => 'NumberSpinner',
                         'name'    => 'GridSize',
@@ -193,8 +178,6 @@ class Floorplaner extends IPSModuleStrict
          * Properties aus dem Konfigurationsformular sind führend für
          * Canvas-Größe, Raster und Hintergrund.
          */
-        $project['width'] = max(300, $this->ReadPropertyInteger('CanvasWidth'));
-        $project['height'] = max(200, $this->ReadPropertyInteger('CanvasHeight'));
         $project['grid'] = max(5, $this->ReadPropertyInteger('GridSize'));
         $project['snap'] = max(0, $this->ReadPropertyInteger('SnapSize'));
         $project['background'] = $this->ReadPropertyString('BackgroundColor');
@@ -547,8 +530,10 @@ class Floorplaner extends IPSModuleStrict
 
     function normalizeProject(p) {
         const q = (p && typeof p === 'object') ? structuredClone(p) : {};
-        q.width = Number(q.width) || 1000;
-        q.height = Number(q.height) || 650;
+        // Kein festes Projektformat: der Zeichenbereich entspricht immer
+        // dynamisch der verfügbaren HTML-SDK-Fläche.
+        delete q.width;
+        delete q.height;
         q.grid = Number(q.grid) || 20;
         q.snap = Number.isFinite(Number(q.snap)) ? Number(q.snap) : q.grid;
         q.background = q.background || '#303030';
@@ -657,8 +642,8 @@ class Floorplaner extends IPSModuleStrict
         if (!matrix) return {x: 0, y: 0};
         const p = pt.matrixTransform(matrix.inverse());
         return {
-            x: Math.max(0, Math.min(state.width, snapValue(p.x))),
-            y: Math.max(0, Math.min(state.height, snapValue(p.y)))
+            x: snapValue(p.x),
+            y: snapValue(p.y)
         };
     }
 
@@ -666,14 +651,89 @@ class Floorplaner extends IPSModuleStrict
         scene.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
     }
 
+    function visibleWorldBounds(extra = 80) {
+        const box = svg.getBoundingClientRect();
+        const z = Math.max(0.0001, zoom);
+        return {
+            minX: (-panX / z) - extra,
+            minY: (-panY / z) - extra,
+            maxX: ((box.width - panX) / z) + extra,
+            maxY: ((box.height - panY) / z) + extra
+        };
+    }
+
+    function contentBounds() {
+        const floor = currentFloor();
+        const points = [];
+
+        for (const w of floor.walls) {
+            points.push([w.x1, w.y1], [w.x2, w.y2]);
+        }
+
+        for (const o of floor.openings) {
+            const wall = floor.walls.find(w => w.id === o.wallId);
+            if (!wall) continue;
+            const g = openingGeometry(wall, o);
+            points.push(
+                [g.x1, g.y1], [g.x2, g.y2],
+                [g.dx, g.dy], [g.wx1, g.wy1], [g.wx2, g.wy2]
+            );
+        }
+
+        for (const item of floor.items) {
+            const r = Number(item.size || 18) + 35;
+            points.push([item.x - r, item.y - r], [item.x + r, item.y + r]);
+        }
+
+        for (const t of floor.texts) {
+            const s = Number(t.size || 18);
+            const width = Math.max(40, String(t.text || 'Text').length * s * 0.65);
+            points.push([t.x, t.y - s * 1.4], [t.x + width, t.y + s * 0.4]);
+        }
+
+        if (!points.length) return null;
+
+        return {
+            minX: Math.min(...points.map(p => p[0])),
+            minY: Math.min(...points.map(p => p[1])),
+            maxX: Math.max(...points.map(p => p[0])),
+            maxY: Math.max(...points.map(p => p[1]))
+        };
+    }
+
     function fit() {
         const box = svg.getBoundingClientRect();
         if (!box.width || !box.height) return;
-        const z = Math.min(box.width / state.width, box.height / state.height) * 0.94;
-        zoom = Math.max(0.1, z);
-        panX = (box.width - state.width * zoom) / 2;
-        panY = (box.height - state.height * zoom) / 2;
+
+        const bounds = contentBounds();
+        if (!bounds) {
+            zoom = 1;
+            panX = 40;
+            panY = 40;
+            setTransform();
+            render();
+            return;
+        }
+
+        const margin = 60;
+        const width = Math.max(1, bounds.maxX - bounds.minX);
+        const height = Math.max(1, bounds.maxY - bounds.minY);
+
+        zoom = Math.max(
+            0.05,
+            Math.min(
+                20,
+                Math.min(
+                    (box.width - margin * 2) / width,
+                    (box.height - margin * 2) / height
+                )
+            )
+        );
+
+        panX = (box.width - width * zoom) / 2 - bounds.minX * zoom;
+        panY = (box.height - height * zoom) / 2 - bounds.minY * zoom;
         setTransform();
+        render();
     }
 
     function escapeHtml(value) {
@@ -691,23 +751,42 @@ class Floorplaner extends IPSModuleStrict
         ).join('');
     }
 
-    function renderGrid(parts) {
+    function renderGrid(parts, bounds) {
         if (!state.showGrid || state.grid <= 0) return;
-        const g = state.grid;
-        for (let x = 0; x <= state.width; x += g) {
-            parts.push(`<line class="grid-line" x1="${x}" y1="0" x2="${x}" y2="${state.height}"/>`);
+
+        const g = Number(state.grid);
+        const startX = Math.floor(bounds.minX / g) * g;
+        const endX = Math.ceil(bounds.maxX / g) * g;
+        const startY = Math.floor(bounds.minY / g) * g;
+        const endY = Math.ceil(bounds.maxY / g) * g;
+
+        // Sicherheitsgrenze bei sehr weitem Herauszoomen.
+        const maxLines = 500;
+        let count = 0;
+
+        for (let x = startX; x <= endX && count < maxLines; x += g, count++) {
+            parts.push(`<line class="grid-line" x1="${x}" y1="${startY}" x2="${x}" y2="${endY}"/>`);
         }
-        for (let y = 0; y <= state.height; y += g) {
-            parts.push(`<line class="grid-line" x1="0" y1="${y}" x2="${state.width}" y2="${y}"/>`);
+
+        count = 0;
+        for (let y = startY; y <= endY && count < maxLines; y += g, count++) {
+            parts.push(`<line class="grid-line" x1="${startX}" y1="${y}" x2="${endX}" y2="${y}"/>`);
         }
     }
 
     function render() {
         const floor = currentFloor();
         const parts = [];
+        const bounds = visibleWorldBounds(120);
 
-        parts.push(`<rect x="0" y="0" width="${state.width}" height="${state.height}" fill="${escapeHtml(state.background)}"/>`);
-        renderGrid(parts);
+        // Der Hintergrund deckt immer nur den aktuell sichtbaren Bereich ab.
+        // Es existiert bewusst keine feste Projektbreite oder Projekthöhe.
+        parts.push(
+            `<rect x="${bounds.minX}" y="${bounds.minY}" ` +
+            `width="${bounds.maxX - bounds.minX}" height="${bounds.maxY - bounds.minY}" ` +
+            `fill="${escapeHtml(state.background)}"/>`
+        );
+        renderGrid(parts, bounds);
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
@@ -865,15 +944,9 @@ class Floorplaner extends IPSModuleStrict
                     <label>Etagenname</label>
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
-                <div class="row2">
-                    <div class="field">
-                        <label>Breite</label>
-                        <input value="${state.width}" disabled>
-                    </div>
-                    <div class="field">
-                        <label>Höhe</label>
-                        <input value="${state.height}" disabled>
-                    </div>
+                <div class="field">
+                    <label>Zeichenfläche</label>
+                    <input value="Dynamisch – passt sich dem Fenster an" disabled>
                 </div>
                 <div class="row2">
                     <div class="field">
@@ -1150,6 +1223,7 @@ class Floorplaner extends IPSModuleStrict
             panX = drag.panX + (evt.clientX - drag.x);
             panY = drag.panY + (evt.clientY - drag.y);
             setTransform();
+            render();
             return;
         }
 
@@ -1201,6 +1275,7 @@ class Floorplaner extends IPSModuleStrict
         panX = sx - wx * zoom;
         panY = sy - wy * zoom;
         setTransform();
+        render();
     }, {passive: false});
 
     window.addEventListener('keydown', evt => {
@@ -1248,6 +1323,13 @@ class Floorplaner extends IPSModuleStrict
             console.error('handleMessage', e);
         }
     };
+
+    const resizeObserver = new ResizeObserver(() => {
+        // Keine Projektgröße ändern – lediglich den dynamischen sichtbaren
+        // Bereich neu zeichnen.
+        render();
+    });
+    resizeObserver.observe(svg);
 
     pushHistory();
     renderAll();
@@ -1358,8 +1440,6 @@ HTML;
     {
         $project = $this->GetProject();
 
-        $project['width'] = max(300, $this->ReadPropertyInteger('CanvasWidth'));
-        $project['height'] = max(200, $this->ReadPropertyInteger('CanvasHeight'));
         $project['grid'] = max(5, $this->ReadPropertyInteger('GridSize'));
         $project['snap'] = max(0, $this->ReadPropertyInteger('SnapSize'));
         $project['background'] = $this->ReadPropertyString('BackgroundColor');
@@ -1416,8 +1496,9 @@ HTML;
             throw new InvalidArgumentException('Floorplan muss ein JSON-Objekt sein.');
         }
 
-        $data['width'] = max(300, (int) ($data['width'] ?? 1000));
-        $data['height'] = max(200, (int) ($data['height'] ?? 650));
+        // Alte Projekte dürfen width/height enthalten. Diese Werte werden
+        // ab dieser Version bewusst ignoriert, da die Zeichenfläche dynamisch ist.
+        unset($data['width'], $data['height']);
         $data['grid'] = max(5, (int) ($data['grid'] ?? 20));
         $data['snap'] = max(0, (int) ($data['snap'] ?? $data['grid']));
         $data['background'] = (string) ($data['background'] ?? '#303030');
@@ -1467,8 +1548,6 @@ HTML;
         return [
             'type'         => 'easy-floorplan-compatible',
             'version'      => 1,
-            'width'        => max(300, $this->ReadPropertyInteger('CanvasWidth')),
-            'height'       => max(200, $this->ReadPropertyInteger('CanvasHeight')),
             'grid'         => max(5, $this->ReadPropertyInteger('GridSize')),
             'snap'         => max(0, $this->ReadPropertyInteger('SnapSize')),
             'background'   => $this->ReadPropertyString('BackgroundColor'),
