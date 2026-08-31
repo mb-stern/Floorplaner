@@ -950,6 +950,26 @@ class Floorplaner extends IPSModuleStrict
             color: var(--fp-muted);
         }
 
+
+        /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
+        #controlModal {
+            background: transparent;
+            padding: 0;
+            align-items: initial;
+            justify-content: initial;
+            pointer-events: none;
+        }
+
+        #controlModal.open {
+            display: block;
+        }
+
+        #controlModal .control-modal {
+            position: fixed;
+            margin: 0;
+            pointer-events: auto;
+        }
+
 </style>
 </head>
 <body>
@@ -2454,7 +2474,7 @@ class Floorplaner extends IPSModuleStrict
                             itemId: target.dataset.id
                         }));
                     } else if (Number(item._variableType) === 1) {
-                        openItemControl(item);
+                        openItemControl(item, evt.clientX, evt.clientY);
                     }
                 }
             }
@@ -2907,7 +2927,7 @@ class Floorplaner extends IPSModuleStrict
         }));
     }
 
-    function openItemControl(item) {
+    function openItemControl(item, clientX = null, clientY = null) {
         if (!controlModal || !controlBody) return;
 
         const profile = item._profile || {};
@@ -2943,6 +2963,40 @@ class Floorplaner extends IPSModuleStrict
 
         controlModal.classList.add('open');
         controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            dialog.style.left = '';
+            dialog.style.top = '';
+            dialog.style.right = '';
+            dialog.style.bottom = '';
+
+            requestAnimationFrame(() => {
+                const x = Number(clientX);
+                const y = Number(clientY);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = x + offset;
+                let top = y + offset;
+
+                if (left + rect.width > window.innerWidth - margin) {
+                    left = x - rect.width - offset;
+                }
+                if (top + rect.height > window.innerHeight - margin) {
+                    top = y - rect.height - offset;
+                }
+
+                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+            });
+        }
     }
 
     controlCloseBtn?.addEventListener('click', () => {
