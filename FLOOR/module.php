@@ -57,9 +57,37 @@ class Floorplaner extends IPSModuleStrict
         }
 
         $this->SetSummary('Floorplan Editor');
+        $this->RegisterRuntimeVariableMessages();
 
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->ReloadHtml();
+        }
+    }
+
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
+    {
+        if ($Message !== VM_UPDATE || !IPS_VariableExists($SenderID)) {
+            return;
+        }
+
+        try {
+            $meta = $this->GetVariableRuntimeMeta($SenderID);
+            $payload = json_encode(
+                [
+                    'type'       => 'variableUpdate',
+                    'variableID' => $SenderID,
+                    'meta'       => $meta
+                ],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            );
+
+            if ($payload !== false) {
+                // Nur den Zustand der betroffenen Variable übertragen.
+                // KEIN komplettes Projekt neu laden -> Etage und Ansicht bleiben unverändert.
+                $this->UpdateVisualizationValue($payload);
+            }
+        } catch (Throwable $e) {
+            $this->SendDebug('VariableUpdate', $e->getMessage(), 0);
         }
     }
 
@@ -2214,6 +2242,45 @@ class Floorplaner extends IPSModuleStrict
                 window.location.reload();
                 return;
             }
+            if (data?.type === 'variableUpdate' && data.variableID && data.meta) {
+                const variableID = Number(data.variableID);
+                const meta = data.meta || {};
+
+                for (const floor of state.floors || []) {
+                    for (const item of floor.items || []) {
+                        if (Number(item.variableID || 0) === variableID) {
+                            Object.assign(item, meta);
+                        }
+                    }
+
+                    for (const opening of floor.openings || []) {
+                        const mappings = [
+                            ['variableID', ''],
+                            ['secondaryVariableID', 'secondaryVariable'],
+                            ['shutterVariableID', 'shutterVariable'],
+                            ['shutterSecondaryVariableID', 'shutterSecondaryVariable']
+                        ];
+
+                        for (const [field, prefix] of mappings) {
+                            if (Number(opening[field] || 0) !== variableID) continue;
+
+                            for (const [key, value] of Object.entries(meta)) {
+                                if (!key.startsWith('_')) continue;
+                                const suffix = key.slice(1);
+                                const targetKey = prefix
+                                    ? `_${prefix}${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}`
+                                    : key;
+                                opening[targetKey] = value;
+                            }
+                        }
+                    }
+                }
+
+                // Nur neu zeichnen, kein normalizeProject(), kein fit(), kein Etagenwechsel.
+                render();
+                return;
+            }
+
             if (data?.type === 'project' && data.project) {
                 // Runtime-Updates dürfen die im Live-Modus gewählte Etage
                 // nicht auf die im gespeicherten Projekt hinterlegte Etage zurücksetzen.
@@ -2568,6 +2635,39 @@ HTML;
         ];
     }
 
+    private function RegisterRuntimeVariableMessages(): void
+    {
+        $project = $this->GetProject();
+        $ids = [];
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            foreach (($floor['items'] ?? []) as $item) {
+                $id = (int) ($item['variableID'] ?? 0);
+                if ($id > 0 && IPS_VariableExists($id)) {
+                    $ids[$id] = true;
+                }
+            }
+
+            foreach (($floor['openings'] ?? []) as $opening) {
+                foreach ([
+                    'variableID',
+                    'secondaryVariableID',
+                    'shutterVariableID',
+                    'shutterSecondaryVariableID'
+                ] as $field) {
+                    $id = (int) ($opening[$field] ?? 0);
+                    if ($id > 0 && IPS_VariableExists($id)) {
+                        $ids[$id] = true;
+                    }
+                }
+            }
+        }
+
+        foreach (array_keys($ids) as $id) {
+            $this->RegisterMessage((int) $id, VM_UPDATE);
+        }
+    }
+
     private function AddRuntimeValues(array $Project): array
     {
         if (!isset($Project['floors']) || !is_array($Project['floors'])) {
@@ -2612,9 +2712,21 @@ HTML;
                             $meta = $this->GetVariableRuntimeMeta($variableID);
                             foreach ($meta as $key => $value) {
                                 $suffix = ltrim($key, '_');
-                                $targetKey = $prefix === ''
-                                    ? $key
-                                    : '_' . $prefix . ucfirst($suffix);
+
+                                if ($prefix === '') {
+                                    $targetKey = $key;
+                                } else {
+                                    $mapSuffix = [
+                                        'variableType'   => 'Type',
+                                        'variablePath'   => 'Path',
+                                        'rawValue'       => 'RawValue',
+                                        'valueText'      => 'ValueText',
+                                        'profileName'    => 'ProfileName',
+                                        'profileSummary' => 'ProfileSummary',
+                                        'profile'        => 'Profile'
+                                    ];
+                                    $targetKey = '_' . $prefix . ($mapSuffix[$suffix] ?? ucfirst($suffix));
+                                }
                                 $Project['floors'][$floorIndex]['openings'][$openingIndex][$targetKey] = $value;
                             }
                         } catch (Throwable $e) {
