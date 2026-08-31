@@ -23,10 +23,6 @@ declare(strict_types=1);
 
 class Floorplaner extends IPSModuleStrict
 {
-    // Portierungsbasis:
-    // Easy Floorplan by Nicolas Sandller, MIT License
-    // https://github.com/nicosandller/easy-floorplan
-    private const EASY_FLOORPLAN_BASELINE = '1.5.5';
     private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;
 
@@ -62,7 +58,6 @@ class Floorplaner extends IPSModuleStrict
 
         $this->SetSummary('Floorplan Editor');
 
-        // HTML-SDK nach Modul-/Konfigurationsupdate neu laden.
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->ReloadHtml();
         }
@@ -429,6 +424,20 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 3;
         }
 
+        .device.active-light circle {
+            fill: #5b5422;
+            stroke: #ffe66d;
+            filter: drop-shadow(0 0 7px #ffe66d);
+        }
+
+        .device.inactive-light {
+            opacity: .72;
+        }
+
+        .device-label {
+            pointer-events: none;
+        }
+
         .device text,
         .plan-text {
             fill: white;
@@ -553,48 +562,6 @@ class Floorplaner extends IPSModuleStrict
         .variable-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .variable-type { color: var(--fp-muted); font-size: 11px; }
 
-        .object-tree { padding: 4px 2px 10px; }
-        .tree-node { user-select: none; }
-        .tree-row {
-            min-height: 31px;
-            display: grid;
-            grid-template-columns: 22px 24px minmax(120px, 1fr) auto auto;
-            gap: 5px;
-            align-items: center;
-            padding: 3px 8px 3px calc(8px + (var(--depth, 0) * 18px));
-            border-radius: 5px;
-        }
-        .tree-row:hover { background: rgba(255,255,255,.07); }
-        .tree-toggle {
-            width: 22px;
-            text-align: center;
-            color: var(--fp-muted);
-            cursor: pointer;
-        }
-        .tree-icon { text-align: center; }
-        .tree-name {
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .tree-id { color: #9fc7ff; font-family: monospace; font-size: 11px; }
-        .tree-value {
-            color: var(--fp-muted);
-            font-size: 11px;
-            max-width: 150px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .tree-row.variable { cursor: pointer; }
-        .tree-row.variable.selected-variable {
-            outline: 1px solid #74b9ff;
-            background: rgba(116,185,255,.12);
-        }
-        .tree-children.collapsed { display: none; }
-        .tree-empty { padding: 16px; color: var(--fp-muted); text-align: center; }
-
         .modal-actions {
             display: flex;
             justify-content: flex-end;
@@ -615,16 +582,83 @@ class Floorplaner extends IPSModuleStrict
 
         .runtime-value {
             fill: #d7e9ff !important;
+        }
+
+        .control-modal {
+            width: min(420px, 92vw);
+            max-height: min(620px, 86vh);
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            overflow: hidden;
+            border: 1px solid var(--fp-border);
+            border-radius: 10px;
+            background: var(--fp-panel);
+            box-shadow: 0 16px 60px rgba(0,0,0,.45);
+        }
+
+        .control-modal h3 {
+            margin: 0;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--fp-border);
+        }
+
+        .control-body {
+            padding: 14px;
+            overflow: auto;
+        }
+
+        .control-associations {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .control-associations button,
+        .control-actions button,
+        #controlRangeApply {
+            min-height: 36px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
+        .control-associations button.current {
+            border-color: #74b9ff;
+            box-shadow: inset 0 0 0 1px #74b9ff;
+        }
+
+        .control-range {
+            display: grid;
+            gap: 8px;
+        }
+
+        .control-range input[type="range"] {
+            width: 100%;
+        }
+
+        .control-range-value {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .control-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--fp-border);
+        }
+
+        .profile-hint {
+            color: var(--fp-muted);
             font-size: 11px;
-        }
-
-        .variable-select-field {
-            cursor: pointer !important;
-            caret-color: transparent;
-        }
-
-        .variable-select-field:hover {
-            outline: 1px solid #74b9ff;
+            line-height: 1.35;
+            margin-top: 8px;
         }
 
         @media (max-width: 800px) {
@@ -701,14 +735,24 @@ class Floorplaner extends IPSModuleStrict
 
 <div id="variableModal" class="modal-backdrop" aria-hidden="true">
     <div class="modal">
-        <h3>IP-Symcon Objektbaum</h3>
+        <h3>IP-Symcon Variable auswählen</h3>
         <div class="modal-search">
-            <input id="variableSearch" placeholder="Objekt, Variable oder ID suchen …">
+            <input id="variableSearch" placeholder="ID, Name oder Pfad suchen …">
         </div>
         <div id="variableList" class="variable-list"></div>
         <div class="modal-actions">
             <button id="variableClearBtn" type="button">Zuordnung entfernen</button>
             <button id="variableCloseBtn" type="button">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<div id="controlModal" class="modal-backdrop" aria-hidden="true">
+    <div class="control-modal">
+        <h3 id="controlTitle">Gerät bedienen</h3>
+        <div id="controlBody" class="control-body"></div>
+        <div class="control-actions">
+            <button id="controlCloseBtn" type="button">Schließen</button>
         </div>
     </div>
 </div>
@@ -726,11 +770,14 @@ class Floorplaner extends IPSModuleStrict
     const variableModal = document.getElementById('variableModal');
     const variableList = document.getElementById('variableList');
     const variableSearch = document.getElementById('variableSearch');
+    const controlModal = document.getElementById('controlModal');
+    const controlTitle = document.getElementById('controlTitle');
+    const controlBody = document.getElementById('controlBody');
+    const controlCloseBtn = document.getElementById('controlCloseBtn');
 
     let state = normalizeProject(initial);
     let variablePickerTarget = null;
-    let objectTree = [];
-    const expandedObjectIDs = new Set([0]);
+    let variableRows = [];
     let tool = 'select';
     let selected = null;
     let wallStart = null;
@@ -1017,7 +1064,7 @@ class Floorplaner extends IPSModuleStrict
 
     function iconForKind(kind) {
         const icons = {
-            light: '☀',
+            light: '💡',
             switch: '⏻',
             socket: '⌁',
             shutter: '▥',
@@ -1073,15 +1120,33 @@ class Floorplaner extends IPSModuleStrict
 
         for (const item of floor.items) {
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
-            const label = item.name || (item.variableID ? '#' + item.variableID : 'Gerät');
+            const raw = item._rawValue;
+            const boolActive = item._variableType === 0 && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+            const lightClass = item.kind === 'light' ? (boolActive ? ' active-light' : ' inactive-light') : '';
             const icon = item.icon || iconForKind(item.kind);
-            const valueText = item._valueText ? String(item._valueText) : '';
+
+            const showName = item.showName === true;
+            const showState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
+            const labelParts = [];
+            if (showName && item.name) labelParts.push(String(item.name));
+            if (showState && item._valueText !== undefined && item._valueText !== '') labelParts.push(String(item._valueText));
+            const labelText = labelParts.join(' · ');
+            const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
+            const pos = ['left','right','below'].includes(item.labelPosition) ? item.labelPosition : 'below';
+            const radius = Number(item.size) || 18;
+
+            let lx = 0, ly = radius + labelSize + 5, anchor = 'middle';
+            if (pos === 'left') {
+                lx = -(radius + 7); ly = 4; anchor = 'end';
+            } else if (pos === 'right') {
+                lx = radius + 7; ly = 4; anchor = 'start';
+            }
+
             parts.push(
-                `<g class="device${sel}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
-                `<circle r="${item.size || 18}"/>` +
-                `<text text-anchor="middle" dominant-baseline="central" font-size="${Math.max(10,(item.size || 18)*0.7)}">${escapeHtml(icon)}</text>` +
-                `<text x="0" y="${(item.size || 18)+17}" text-anchor="middle" font-size="13">${escapeHtml(label)}</text>` +
-                (valueText ? `<text class="runtime-value" x="0" y="${(item.size || 18)+32}" text-anchor="middle">${escapeHtml(valueText)}</text>` : '') +
+                `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
+                `<circle r="${radius}"/>` +
+                `<text text-anchor="middle" dominant-baseline="central" font-size="${Math.max(10,radius*0.72)}">${escapeHtml(icon)}</text>` +
+                (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
                 `</g>`
             );
         }
@@ -1195,17 +1260,6 @@ class Floorplaner extends IPSModuleStrict
         render();
     }
 
-    function variableFieldText(obj, field) {
-        const id = Number(obj?.[field] || 0);
-        if (!id) return 'Klicken zum Auswählen …';
-
-        const pathKey = field === 'variableID'
-            ? '_variablePath'
-            : '_' + field.replace(/ID$/, '') + 'Path';
-        const path = obj?.[pathKey] || '';
-        return '#' + id + (path ? ' – ' + escapeHtml(path) : '');
-    }
-
     function renderProperties() {
         const floor = currentFloor();
 
@@ -1270,22 +1324,7 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="field"><label>Länge</label><input data-field="length" type="number" min="20" value="${obj.length || 80}"></div>
                 <div class="field"><label>Position auf Wand (0–1)</label><input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}"></div>
-                <div class="field">
-                    <label>IP-Symcon Variable – Flügel / Kontakt 1</label>
-                    <input class="variable-select-field"
-                           data-variable-field="variableID"
-                           value="${variableFieldText(obj, 'variableID')}"
-                           readonly
-                           title="Klicken, um den IP-Symcon Objektbaum zu öffnen">
-                </div>
-                <div class="field">
-                    <label>IP-Symcon Variable – Flügel / Kontakt 2</label>
-                    <input class="variable-select-field"
-                           data-variable-field="secondaryVariableID"
-                           value="${variableFieldText(obj, 'secondaryVariableID')}"
-                           readonly
-                           title="Optional: zweiter Flügel / zweiter Kontakt">
-                </div>
+                <div class="field"><label>IP-Symcon VariableID</label><input data-field="variableID" type="number" min="0" value="${obj.variableID || 0}"></div>
             `;
         } else if (selected.type === 'item') {
             propTitle.textContent = 'Gerät';
@@ -1310,18 +1349,31 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="field">
                     <label>IP-Symcon Variable</label>
-                    <input class="variable-select-field"
-                           data-variable-field="variableID"
-                           value="${variableFieldText(obj, 'variableID')}"
-                           readonly
-                           title="Klicken, um den IP-Symcon Objektbaum zu öffnen">
+                    <input id="variableField" readonly style="cursor:pointer" title="Variable auswählen"
+                        value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    ${obj._profileName ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>` : ''}
+                </div>
+                <div class="row2">
+                    <div class="field"><label><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
+                    <div class="field"><label><input data-field="showState" type="checkbox"${obj.showState === true || (obj.showState == null && ['temperature','humidity'].includes(kind)) ? ' checked' : ''}> Wert anzeigen</label></div>
+                </div>
+                <div class="row2">
+                    <div class="field"><label>Schriftgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
+                    <div class="field">
+                        <label>Beschriftung</label>
+                        <select data-field="labelPosition">
+                            <option value="below"${(obj.labelPosition || 'below') === 'below' ? ' selected' : ''}>unten</option>
+                            <option value="left"${obj.labelPosition === 'left' ? ' selected' : ''}>links</option>
+                            <option value="right"${obj.labelPosition === 'right' ? ' selected' : ''}>rechts</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="field"><label>Eigenes Symbol (optional)</label><input data-field="icon" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
                 <div class="row2">
                     <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
                 </div>
-                <div class="field"><label>Größe</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+                <div class="field"><label>Symbolgröße</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
             `;
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
@@ -1345,7 +1397,7 @@ class Floorplaner extends IPSModuleStrict
                 const obj = findEntity(selected.type, selected.id);
                 if (!obj) return;
 
-                let value = input.value;
+                let value = input.type === 'checkbox' ? input.checked : input.value;
                 if (input.type === 'number') value = Number(value);
                 obj[input.dataset.field] = value;
 
@@ -1355,17 +1407,14 @@ class Floorplaner extends IPSModuleStrict
             });
         });
 
-        properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
-            field.addEventListener('click', () => {
-                if (!selected) return;
-                openVariableTree({
-                    floorId: state.activeFloor,
-                    entityType: selected.type,
-                    entityId: selected.id,
-                    field: field.dataset.variableField || 'variableID'
-                });
+        const variableField = document.getElementById('variableField');
+        if (variableField && selected?.type === 'item') {
+            variableField.addEventListener('click', () => {
+                variablePickerTarget = {floorId: state.activeFloor, itemId: selected.id};
+                statusEl.textContent = 'Objektbaum wird geladen …';
+                requestAction('getVariableTree', '');
             });
-        });
+        }
 
         properties.querySelectorAll('[data-project]').forEach(input => {
             input.addEventListener('change', () => {
@@ -1436,10 +1485,17 @@ class Floorplaner extends IPSModuleStrict
 
         if (state.mode === 'view') {
             if (target && target.dataset.type === 'item') {
-                requestAction('operate', JSON.stringify({
-                    floorId: state.activeFloor,
-                    itemId: target.dataset.id
-                }));
+                const item = floor.items.find(i => i.id === target.dataset.id);
+                if (item) {
+                    if (Number(item._variableType) === 0) {
+                        requestAction('operate', JSON.stringify({
+                            floorId: state.activeFloor,
+                            itemId: target.dataset.id
+                        }));
+                    } else if (Number(item._variableType) === 1) {
+                        openItemControl(item);
+                    }
+                }
             }
             return;
         }
@@ -1495,8 +1551,7 @@ class Floorplaner extends IPSModuleStrict
                 wallId: near.wall.id,
                 position: near.position,
                 length: tool === 'door' ? 80 : 120,
-                variableID: 0,
-                secondaryVariableID: 0
+                variableID: 0
             };
             floor.openings.push(o);
             selected = {type: 'opening', id: o.id};
@@ -1516,7 +1571,11 @@ class Floorplaner extends IPSModuleStrict
                 variableID: 0,
                 icon: '',
                 size: 18,
-                kind: 'generic'
+                kind: 'generic',
+                showName: false,
+                showState: false,
+                labelSize: 12,
+                labelPosition: 'below'
             };
             floor.items.push(item);
             selected = {type: 'item', id: item.id};
@@ -1642,147 +1701,43 @@ class Floorplaner extends IPSModuleStrict
         }
     });
 
-    function treeIcon(node) {
-        switch (Number(node.objectType)) {
-            case 0: return '▾'; // Kategorie
-            case 1: return '◇'; // Instanz
-            case 2: return '●'; // Variable
-            case 3: return '⌁'; // Script
-            case 4: return '▣'; // Ereignis
-            case 5: return '▤'; // Media
-            case 6: return '↗'; // Link
-            default: return '•';
-        }
-    }
-
-    function nodeMatches(node, needle) {
-        if (!needle) return true;
-        const hay = [
-            node.id,
-            node.name,
-            node.path,
-            node.valueText,
-            node.variableTypeName
-        ].join(' ').toLowerCase();
-        if (hay.includes(needle)) return true;
-        return Array.isArray(node.children) && node.children.some(child => nodeMatches(child, needle));
-    }
-
-    function renderTreeNode(node, depth, needle, currentVariableID) {
-        if (!nodeMatches(node, needle)) return '';
-
-        const children = Array.isArray(node.children) ? node.children : [];
-        const hasChildren = children.length > 0;
-        const isVariable = Number(node.objectType) === 2;
-        const forceOpen = !!needle;
-        const isOpen = forceOpen || expandedObjectIDs.has(Number(node.id));
-        const selectedClass = isVariable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
-        const rowClass = isVariable ? ' variable' : '';
-        const toggle = hasChildren ? (isOpen ? '▾' : '▸') : '';
-        const value = isVariable ? escapeHtml(node.valueText || '') : '';
-        const typeTitle = isVariable ? escapeHtml(node.variableTypeName || '') : escapeHtml(node.objectTypeName || '');
-
-        let html = `
-            <div class="tree-node">
-                <div class="tree-row${rowClass}${selectedClass}" style="--depth:${depth}" data-object-id="${node.id}" data-object-type="${node.objectType}" title="${escapeHtml(node.path || node.name || '')}">
-                    <div class="tree-toggle" data-tree-toggle="${node.id}">${toggle}</div>
-                    <div class="tree-icon">${treeIcon(node)}</div>
-                    <div class="tree-name">${escapeHtml(node.name || ('Objekt ' + node.id))}</div>
-                    <div class="tree-id">#${node.id}</div>
-                    <div class="tree-value" title="${typeTitle}">${value || typeTitle}</div>
-                </div>`;
-
-        if (hasChildren) {
-            const childHtml = children.map(child => renderTreeNode(child, depth + 1, needle, currentVariableID)).join('');
-            html += `<div class="tree-children${isOpen ? '' : ' collapsed'}" data-tree-children="${node.id}">${childHtml}</div>`;
-        }
-        html += '</div>';
-        return html;
-    }
-
-    function renderObjectTree(filter = '') {
+    function renderVariableRows(filter = '') {
         const needle = String(filter || '').trim().toLowerCase();
-        let currentVariableID = 0;
-
-        if (variablePickerTarget) {
-            const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
-            const collection = variablePickerTarget.entityType === 'opening' ? floor?.openings : floor?.items;
-            const entity = collection?.find(i => i.id === variablePickerTarget.entityId);
-            currentVariableID = Number(entity?.[variablePickerTarget.field || 'variableID'] || 0);
-        }
-
-        const html = objectTree
-            .map(node => renderTreeNode(node, 0, needle, currentVariableID))
-            .join('');
-
-        variableList.innerHTML = `<div class="object-tree">${html || '<div class="tree-empty">Keine passenden Objekte gefunden.</div>'}</div>`;
-
-        variableList.querySelectorAll('[data-tree-toggle]').forEach(toggle => {
-            toggle.addEventListener('click', evt => {
-                evt.stopPropagation();
-                const id = Number(toggle.dataset.treeToggle);
-                if (expandedObjectIDs.has(id)) expandedObjectIDs.delete(id);
-                else expandedObjectIDs.add(id);
-                renderObjectTree(variableSearch.value);
-            });
+        const rows = variableRows.filter(v => {
+            if (!needle) return true;
+            return String(v.id).includes(needle) ||
+                String(v.name || '').toLowerCase().includes(needle) ||
+                String(v.path || '').toLowerCase().includes(needle);
         });
 
-        variableList.querySelectorAll('.tree-row.variable').forEach(row => {
-            row.addEventListener('click', () => assignVariable(Number(row.dataset.objectId)));
+        variableList.innerHTML = rows.map(v => `
+            <div class="variable-row" data-variable-id="${v.id}">
+                <div class="variable-id">#${v.id}</div>
+                <div class="variable-path">${escapeHtml(v.path || v.name || '')}</div>
+                <div class="variable-type">${escapeHtml(v.type || '')}</div>
+            </div>
+        `).join('') || '<div class="help">Keine passende Variable gefunden.</div>';
+
+        variableList.querySelectorAll('[data-variable-id]').forEach(row => {
+            row.addEventListener('click', () => assignVariable(Number(row.dataset.variableId)));
         });
-
-        variableList.querySelectorAll('.tree-row:not(.variable)').forEach(row => {
-            row.addEventListener('dblclick', () => {
-                const id = Number(row.dataset.objectId);
-                if (expandedObjectIDs.has(id)) expandedObjectIDs.delete(id);
-                else expandedObjectIDs.add(id);
-                renderObjectTree(variableSearch.value);
-            });
-        });
-    }
-
-    function findTreeNode(nodes, id) {
-        for (const node of nodes) {
-            if (Number(node.id) === Number(id)) return node;
-            if (Array.isArray(node.children)) {
-                const found = findTreeNode(node.children, id);
-                if (found) return found;
-            }
-        }
-        return null;
-    }
-
-    function openVariableTree(target) {
-        variablePickerTarget = target;
-        statusEl.textContent = 'Objektbaum wird geladen …';
-        requestAction('getObjectTree', '');
     }
 
     function assignVariable(variableID) {
         if (!variablePickerTarget) return;
-
         const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
-        if (!floor) return;
+        const item = floor?.items.find(i => i.id === variablePickerTarget.itemId);
+        if (!item) return;
 
-        const collection = variablePickerTarget.entityType === 'opening'
-            ? floor.openings
-            : floor.items;
-        const entity = collection?.find(i => i.id === variablePickerTarget.entityId);
-        if (!entity) return;
-
-        const field = variablePickerTarget.field || 'variableID';
-        entity[field] = Number(variableID) || 0;
-
-        const node = entity[field] ? findTreeNode(objectTree, entity[field]) : null;
-        const pathKey = field === 'variableID'
-            ? '_variablePath'
-            : '_' + field.replace(/ID$/, '') + 'Path';
-        const valueKey = field === 'variableID'
-            ? '_valueText'
-            : '_' + field.replace(/ID$/, '') + 'ValueText';
-
-        entity[pathKey] = node?.path || '';
-        entity[valueKey] = node?.valueText || '';
+        item.variableID = Number(variableID) || 0;
+        const row = variableRows.find(v => Number(v.id) === item.variableID);
+        item._variablePath = row?.path || '';
+        item._valueText = row?.valueText || '';
+        item._rawValue = row?.rawValue ?? '';
+        item._variableType = Number.isFinite(Number(row?.variableType)) ? Number(row.variableType) : -1;
+        item._profileName = row?.profileName || '';
+        item._profileSummary = row?.profileSummary || '';
+        item._profile = row?.profile || null;
 
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
@@ -1792,10 +1747,10 @@ class Floorplaner extends IPSModuleStrict
     }
 
     if (!variableModal || !variableList || !variableSearch) {
-        throw new Error('Floorplaner: Objektbaum-Dialog fehlt im HTML.');
+        throw new Error('Floorplaner: Variablen-Auswahldialog fehlt im HTML.');
     }
 
-    variableSearch.addEventListener('input', () => renderObjectTree(variableSearch.value));
+    variableSearch.addEventListener('input', () => renderVariableRows(variableSearch.value));
     document.getElementById('variableCloseBtn').addEventListener('click', () => {
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
@@ -1808,15 +1763,99 @@ class Floorplaner extends IPSModuleStrict
         }
     });
 
+    function sendItemValue(item, value) {
+        requestAction('operateValue', JSON.stringify({
+            floorId: state.activeFloor,
+            itemId: item.id,
+            value
+        }));
+    }
+
+    function openItemControl(item) {
+        if (!controlModal || !controlBody) return;
+
+        const profile = item._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        const raw = Number(item._rawValue);
+        controlTitle.textContent = item.name || 'Gerät bedienen';
+
+        let html = '';
+
+        if (associations.length) {
+            html += '<div class="control-associations">';
+            for (const association of associations) {
+                const value = Number(association.value);
+                const current = Number.isFinite(raw) && raw === value ? ' current' : '';
+                html += `<button type="button" class="${current.trim()}" data-control-value="${value}">${escapeHtml(association.name || String(value))}</button>`;
+            }
+            html += '</div>';
+        }
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        const step = Math.max(Number(profile.step) || 1, 0.000001);
+        if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
+            const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+            const suffix = profile.suffix || '';
+            html += `
+                <div class="control-range">
+                    <div class="control-range-value" id="controlRangeValue">${escapeHtml(String(current) + suffix)}</div>
+                    <input id="controlRange" type="range" min="${min}" max="${max}" step="${step}" value="${current}">
+                    <button id="controlRangeApply" type="button">Wert übernehmen</button>
+                </div>`;
+        }
+
+        if (!html) {
+            html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil keine bedienbaren Werte hinterlegt.</div>';
+        }
+
+        controlBody.innerHTML = html;
+
+        controlBody.querySelectorAll('[data-control-value]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                sendItemValue(item, Number(btn.dataset.controlValue));
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        });
+
+        const range = document.getElementById('controlRange');
+        const rangeValue = document.getElementById('controlRangeValue');
+        const rangeApply = document.getElementById('controlRangeApply');
+        if (range) {
+            const suffix = profile.suffix || '';
+            range.addEventListener('input', () => {
+                if (rangeValue) rangeValue.textContent = range.value + suffix;
+            });
+            rangeApply?.addEventListener('click', () => {
+                sendItemValue(item, Number(range.value));
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        }
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+    }
+
+    controlCloseBtn?.addEventListener('click', () => {
+        controlModal.classList.remove('open');
+        controlModal.setAttribute('aria-hidden', 'true');
+    });
+    controlModal?.addEventListener('click', evt => {
+        if (evt.target === controlModal) {
+            controlModal.classList.remove('open');
+            controlModal.setAttribute('aria-hidden', 'true');
+        }
+    });
+
     window.handleMessage = message => {
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
-
             if (data?.command === 'reloadHtml') {
                 window.location.reload();
                 return;
             }
-
             if (data?.type === 'project' && data.project) {
                 state = normalizeProject(data.project);
                 selected = null;
@@ -1827,19 +1866,20 @@ class Floorplaner extends IPSModuleStrict
                 updateModeUI();
                 renderAll();
                 fit();
-            } else if (data?.type === 'objectTree' && Array.isArray(data.objects)) {
-                objectTree = data.objects;
+            } else if (data?.type === 'variableTree' && Array.isArray(data.variables)) {
+                variableRows = data.variables;
                 variableSearch.value = '';
-                renderObjectTree('');
+                renderVariableRows('');
                 variableModal.classList.add('open');
                 variableModal.setAttribute('aria-hidden', 'false');
                 variableSearch.focus();
-                statusEl.textContent = 'Objektbaum – Variable auswählen';
+                statusEl.textContent = 'Variable auswählen';
             } else if (data?.type === 'runtimeValue') {
                 const floor = state.floors.find(f => f.id === data.floorId);
                 const item = floor?.items.find(i => i.id === data.itemId);
                 if (item) {
                     item._valueText = data.valueText || '';
+                    if ('rawValue' in data) item._rawValue = data.rawValue;
                     render();
                 }
             }
@@ -1890,11 +1930,11 @@ HTML;
                 $this->ReloadForm();
                 break;
 
-            case 'getObjectTree':
+            case 'getVariableTree':
                 $message = json_encode(
                     [
-                        'type'    => 'objectTree',
-                        'objects' => $this->BuildObjectTree()
+                        'type'      => 'variableTree',
+                        'variables' => $this->BuildVariableList()
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
@@ -1914,6 +1954,21 @@ HTML;
                 $this->OperateItem(
                     (string) ($request['floorId'] ?? ''),
                     (string) ($request['itemId'] ?? '')
+                );
+                break;
+
+            case 'operateValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Bedienwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Bedienwert.');
+                }
+                $this->OperateItemValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['itemId'] ?? ''),
+                    $request['value'] ?? null
                 );
                 break;
 
@@ -2075,18 +2130,16 @@ HTML;
                 }
             }
 
-            foreach (['items', 'openings'] as $entityCollection) {
-                foreach ($floor[$entityCollection] as $entityIndex => $entity) {
-                    if (!is_array($entity)) {
-                        continue;
-                    }
-                    foreach (array_keys($entity) as $entityKey) {
-                        if (str_starts_with((string) $entityKey, '_')) {
-                            unset($entity[$entityKey]);
-                        }
-                    }
-                    $floor[$entityCollection][$entityIndex] = $entity;
+            foreach ($floor['items'] as $itemIndex => $item) {
+                if (!is_array($item)) {
+                    continue;
                 }
+                foreach (array_keys($item) as $itemKey) {
+                    if (str_starts_with((string) $itemKey, '_')) {
+                        unset($item[$itemKey]);
+                    }
+                }
+                $floor['items'][$itemIndex] = $item;
             }
 
             $data['floors'][$index] = $floor;
@@ -2150,34 +2203,23 @@ HTML;
         }
 
         foreach ($Project['floors'] as $floorIndex => $floor) {
-            // Geräte
-            if (isset($floor['items']) && is_array($floor['items'])) {
-                foreach ($floor['items'] as $itemIndex => $item) {
-                    $this->AddRuntimeVariableMetadata(
-                        $Project['floors'][$floorIndex]['items'][$itemIndex],
-                        'variableID',
-                        '_variablePath',
-                        '_valueText'
-                    );
-                }
+            if (!isset($floor['items']) || !is_array($floor['items'])) {
+                continue;
             }
 
-            // Türen / Fenster – Easy Floorplan unterstützt zwei Sensoren
-            // für zwei Flügel. Deshalb werden beide Symcon-Variablen geführt.
-            if (isset($floor['openings']) && is_array($floor['openings'])) {
-                foreach ($floor['openings'] as $openingIndex => $opening) {
-                    $this->AddRuntimeVariableMetadata(
-                        $Project['floors'][$floorIndex]['openings'][$openingIndex],
-                        'variableID',
-                        '_variablePath',
-                        '_valueText'
-                    );
-                    $this->AddRuntimeVariableMetadata(
-                        $Project['floors'][$floorIndex]['openings'][$openingIndex],
-                        'secondaryVariableID',
-                        '_secondaryVariablePath',
-                        '_secondaryVariableValueText'
-                    );
+            foreach ($floor['items'] as $itemIndex => $item) {
+                $variableID = (int) ($item['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    continue;
+                }
+
+                try {
+                    $meta = $this->GetVariableRuntimeMeta($variableID);
+                    foreach ($meta as $key => $value) {
+                        $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                    }
+                } catch (Throwable $e) {
+                    $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
                 }
             }
         }
@@ -2185,144 +2227,136 @@ HTML;
         return $Project;
     }
 
-    private function AddRuntimeVariableMetadata(
-        array &$Entity,
-        string $Field,
-        string $PathField,
-        string $ValueField
-    ): void {
-        $variableID = (int) ($Entity[$Field] ?? 0);
-        if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
-            return;
-        }
-
-        try {
-            $variable = IPS_GetVariable($variableID);
-            $Entity[$PathField] = $this->GetObjectPath($variableID);
-            $Entity[$ValueField] = $this->GetSafeValueText($variableID);
-
-            if ($Field === 'variableID') {
-                $Entity['_variableType'] = (int) ($variable['VariableType'] ?? -1);
-            }
-        } catch (Throwable $e) {
-            $this->SendDebug('RuntimeVariableMetadata', $e->getMessage(), 0);
-        }
-    }
-
-    private function BuildObjectTree(): array
-    {
-        return $this->BuildObjectChildren(0, '');
-    }
-
-    private function BuildObjectChildren(int $ParentID, string $ParentPath): array
+    private function BuildVariableList(): array
     {
         $result = [];
-
-        foreach (IPS_GetChildrenIDs($ParentID) as $objectID) {
-            if (!IPS_ObjectExists($objectID)) {
-                continue;
-            }
-
-            $object = IPS_GetObject($objectID);
-            $objectType = (int) ($object['ObjectType'] ?? -1);
-            $name = IPS_GetName($objectID);
-            $path = ($ParentPath === '') ? $name : ($ParentPath . ' / ' . $name);
-
-            $typeNames = [
-                0 => 'Kategorie',
-                1 => 'Instanz',
-                2 => 'Variable',
-                3 => 'Script',
-                4 => 'Ereignis',
-                5 => 'Medienobjekt',
-                6 => 'Link'
-            ];
-
-            $node = [
-                'id'             => $objectID,
-                'name'           => $name,
-                'path'           => $path,
-                'objectType'     => $objectType,
-                'objectTypeName' => $typeNames[$objectType] ?? ('Objekttyp ' . $objectType),
-                'children'       => []
-            ];
-
-            if ($objectType === 2 && IPS_VariableExists($objectID)) {
-                try {
-                    $variable = IPS_GetVariable($objectID);
-                    $variableType = (int) ($variable['VariableType'] ?? -1);
-                    $variableTypeNames = [
-                        0 => 'Boolean',
-                        1 => 'Integer',
-                        2 => 'Float',
-                        3 => 'String'
-                    ];
-
-                    $node['variableType'] = $variableType;
-                    $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
-                    $node['valueText'] = $this->GetSafeValueText($objectID);
-                } catch (Throwable $e) {
-                    $node['valueText'] = '';
-                    $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
-                }
-            }
-
-            // Kategorien und Instanzen sind die normalen sichtbaren Äste
-            // des Symcon-Objektbaums. Andere Objekte werden ebenfalls
-            // mitgeliefert, falls sie eigene Kinder besitzen.
-            $children = IPS_GetChildrenIDs($objectID);
-            if (count($children) > 0) {
-                $node['children'] = $this->BuildObjectChildren($objectID, $path);
-            }
-
-            $result[] = $node;
-        }
+        $this->CollectVariables(0, '', $result);
 
         usort(
             $result,
-            static function (array $a, array $b): int {
-                $typeOrder = [0 => 0, 1 => 1, 2 => 2, 6 => 3, 3 => 4, 5 => 5, 4 => 6];
-                $ao = $typeOrder[(int) $a['objectType']] ?? 99;
-                $bo = $typeOrder[(int) $b['objectType']] ?? 99;
-                if ($ao !== $bo) {
-                    return $ao <=> $bo;
-                }
-                return strnatcasecmp((string) $a['name'], (string) $b['name']);
-            }
+            static fn(array $a, array $b): int => strnatcasecmp((string) $a['path'], (string) $b['path'])
         );
 
         return $result;
     }
 
-    private function GetSafeValueText(int $VariableID): string
+    private function CollectVariables(int $ParentID, string $ParentPath, array &$Result): void
     {
-        if ($VariableID <= 0 || !IPS_VariableExists($VariableID)) {
-            return '';
+        foreach (IPS_GetChildrenIDs($ParentID) as $objectID) {
+            $object = IPS_GetObject($objectID);
+            $name = IPS_GetName($objectID);
+            $path = ($ParentPath === '') ? $name : ($ParentPath . ' / ' . $name);
+
+            if ((int) $object['ObjectType'] === 2 && IPS_VariableExists($objectID)) {
+                $variable = IPS_GetVariable($objectID);
+                $typeNames = ['Boolean', 'Integer', 'Float', 'String'];
+                $variableType = (int) $variable['VariableType'];
+
+                $meta = $this->GetVariableRuntimeMeta($objectID);
+
+                $Result[] = [
+                    'id'             => $objectID,
+                    'name'           => $name,
+                    'path'           => $path,
+                    'type'           => $typeNames[$variableType] ?? ('Typ ' . $variableType),
+                    'variableType'   => $variableType,
+                    'valueText'      => $meta['_valueText'] ?? '',
+                    'rawValue'       => $meta['_rawValue'] ?? '',
+                    'profileName'    => $meta['_profileName'] ?? '',
+                    'profileSummary' => $meta['_profileSummary'] ?? '',
+                    'profile'        => $meta['_profile'] ?? null
+                ];
+            }
+
+            if (in_array((int) $object['ObjectType'], [0, 1], true)) {
+                $this->CollectVariables($objectID, $path, $Result);
+            }
+        }
+    }
+
+    private function GetVariableRuntimeMeta(int $VariableID): array
+    {
+        $variable = IPS_GetVariable($VariableID);
+        $variableType = (int) ($variable['VariableType'] ?? -1);
+        $rawValue = GetValue($VariableID);
+
+        $profileName = (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
+        $profile = null;
+        $profileSummary = '';
+        $valueText = $this->FormatRawValue($rawValue);
+
+        if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
+            try {
+                $p = IPS_GetVariableProfile($profileName);
+                $associations = [];
+
+                foreach (($p['Associations'] ?? []) as $association) {
+                    $associations[] = [
+                        'value' => $association['Value'] ?? 0,
+                        'name'  => (string) ($association['Name'] ?? ''),
+                        'icon'  => (string) ($association['Icon'] ?? ''),
+                        'color' => (int) ($association['Color'] ?? -1)
+                    ];
+                }
+
+                $profile = [
+                    'name'         => $profileName,
+                    'min'          => $p['MinValue'] ?? null,
+                    'max'          => $p['MaxValue'] ?? null,
+                    'step'         => $p['StepSize'] ?? null,
+                    'prefix'       => (string) ($p['Prefix'] ?? ''),
+                    'suffix'       => (string) ($p['Suffix'] ?? ''),
+                    'associations' => $associations
+                ];
+
+                $parts = [];
+                if ($associations !== []) {
+                    $parts[] = count($associations) . ' Stellungen';
+                }
+                if (isset($p['MinValue'], $p['MaxValue']) && (float) $p['MaxValue'] > (float) $p['MinValue']) {
+                    $parts[] = $p['MinValue'] . '…' . $p['MaxValue'] . (string) ($p['Suffix'] ?? '');
+                }
+                $profileSummary = implode(' · ', $parts);
+
+                foreach ($associations as $association) {
+                    if ((float) $association['value'] === (float) $rawValue && $association['name'] !== '') {
+                        $valueText = $association['name'];
+                        break;
+                    }
+                }
+
+                if ($valueText === $this->FormatRawValue($rawValue)) {
+                    $valueText = (string) ($p['Prefix'] ?? '') . $valueText . (string) ($p['Suffix'] ?? '');
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('VariableProfile', $profileName . ': ' . $e->getMessage(), 0);
+            }
         }
 
-        try {
-            // Bewusst KEINE Profile verwenden.
-            // Der Floorplaner liest nur den Rohwert der Variable.
-            $value = GetValue($VariableID);
+        return [
+            '_variableType'   => $variableType,
+            '_variablePath'   => $this->GetObjectPath($VariableID),
+            '_rawValue'       => $rawValue,
+            '_valueText'      => $valueText,
+            '_profileName'    => $profileName,
+            '_profileSummary' => $profileSummary,
+            '_profile'        => $profile
+        ];
+    }
 
-            if (is_bool($value)) {
-                return $value ? 'True' : 'False';
-            }
-
-            if (is_float($value)) {
-                $formatted = rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.');
-                return $formatted === '-0' ? '0' : $formatted;
-            }
-
-            if (is_int($value) || is_string($value)) {
-                return (string) $value;
-            }
-
-            return '';
-        } catch (Throwable $e) {
-            $this->SendDebug('SafeValueText', $e->getMessage(), 0);
-            return '';
+    private function FormatRawValue(mixed $Value): string
+    {
+        if (is_bool($Value)) {
+            return $Value ? 'Ein' : 'Aus';
         }
+        if (is_float($Value)) {
+            $formatted = rtrim(rtrim(number_format($Value, 3, '.', ''), '0'), '.');
+            return $formatted === '-0' ? '0' : $formatted;
+        }
+        if (is_int($Value) || is_string($Value)) {
+            return (string) $Value;
+        }
+        return '';
     }
 
     private function GetObjectPath(int $ObjectID): string
@@ -2341,14 +2375,24 @@ HTML;
 
     private function OperateItem(string $FloorID, string $ItemID): void
     {
+        $this->OperateItemValueInternal($FloorID, $ItemID, null, true);
+    }
+
+    private function OperateItemValue(string $FloorID, string $ItemID, mixed $Value): void
+    {
+        $this->OperateItemValueInternal($FloorID, $ItemID, $Value, false);
+    }
+
+    private function OperateItemValueInternal(string $FloorID, string $ItemID, mixed $Value, bool $ToggleBoolean): void
+    {
         $project = $this->GetProject();
 
-        foreach ($project['floors'] as $floor) {
+        foreach (($project['floors'] ?? []) as $floor) {
             if ((string) ($floor['id'] ?? '') !== $FloorID) {
                 continue;
             }
 
-            foreach ($floor['items'] as $item) {
+            foreach (($floor['items'] ?? []) as $item) {
                 if ((string) ($item['id'] ?? '') !== $ItemID) {
                     continue;
                 }
@@ -2359,31 +2403,82 @@ HTML;
                 }
 
                 $variable = IPS_GetVariable($variableID);
-                $variableType = (int) $variable['VariableType'];
+                $variableType = (int) ($variable['VariableType'] ?? -1);
 
-                // In der ersten Bedienversion werden Boolean-Variablen direkt
-                // umgeschaltet. Numerische Werte werden zunächst nur angezeigt.
-                if ($variableType === 0) {
-                    $newValue = !GetValueBoolean($variableID);
-                    RequestAction($variableID, $newValue);
-
-                    $message = json_encode(
-                        [
-                            'type'      => 'runtimeValue',
-                            'floorId'   => $FloorID,
-                            'itemId'    => $ItemID,
-                            'valueText' => $this->GetSafeValueText($variableID)
-                        ],
-                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-                    );
-                    if ($message !== false) {
-                        $this->UpdateVisualizationValue($message);
+                if ($ToggleBoolean) {
+                    if ($variableType !== 0) {
+                        return;
+                    }
+                    $targetValue = !GetValueBoolean($variableID);
+                } else {
+                    if ($variableType === 1) {
+                        $targetValue = (int) round((float) $Value);
+                    } elseif ($variableType === 2) {
+                        $targetValue = (float) $Value;
+                    } elseif ($variableType === 0) {
+                        $targetValue = (bool) $Value;
+                    } else {
+                        return;
                     }
                 }
 
+                if (!$this->DispatchVariableAction($variableID, $targetValue)) {
+                    return;
+                }
+
+                usleep(50000);
+                $meta = $this->GetVariableRuntimeMeta($variableID);
+
+                $message = json_encode(
+                    [
+                        'type'      => 'runtimeValue',
+                        'floorId'   => $FloorID,
+                        'itemId'    => $ItemID,
+                        'valueText' => $meta['_valueText'] ?? '',
+                        'rawValue'  => $meta['_rawValue'] ?? null
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
                 return;
             }
         }
+    }
+
+    private function DispatchVariableAction(int $VariableID, mixed $Value): bool
+    {
+        $variable = IPS_GetVariable($VariableID);
+        $actionID = (int) (($variable['VariableCustomAction'] ?? 0) ?: ($variable['VariableAction'] ?? 0));
+
+        try {
+            if ($actionID > 0) {
+                \RequestAction($VariableID, $Value);
+                return true;
+            }
+
+            $object = IPS_GetObject($VariableID);
+            $parentID = (int) ($object['ParentID'] ?? 0);
+            $ident = (string) ($object['ObjectIdent'] ?? '');
+
+            if ($parentID > 0 && $ident !== '' && IPS_InstanceExists($parentID)) {
+                \IPS_RequestAction($parentID, $ident, $Value);
+                return true;
+            }
+
+            if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+                SetValue($VariableID, $Value);
+                return true;
+            }
+
+            $this->SendDebug('OperateItem', 'Variable #' . $VariableID . ' besitzt keine ausführbare Aktion.', 0);
+        } catch (Throwable $e) {
+            $this->SendDebug('OperateItem', 'Variable #' . $VariableID . ': ' . $e->getMessage(), 0);
+        }
+
+        return false;
     }
 
     private function CountElements(array $Project): array
