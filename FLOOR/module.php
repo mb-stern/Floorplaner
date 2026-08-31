@@ -23,6 +23,10 @@ declare(strict_types=1);
 
 class Floorplaner extends IPSModuleStrict
 {
+    // Portierungsbasis:
+    // Easy Floorplan by Nicolas Sandller, MIT License
+    // https://github.com/nicosandller/easy-floorplan
+    private const EASY_FLOORPLAN_BASELINE = '1.5.5';
     private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;
 
@@ -595,6 +599,15 @@ class Floorplaner extends IPSModuleStrict
             font-size: 11px;
         }
 
+        .variable-select-field {
+            cursor: pointer !important;
+            caret-color: transparent;
+        }
+
+        .variable-select-field:hover {
+            outline: 1px solid #74b9ff;
+        }
+
         @media (max-width: 800px) {
             .main {
                 grid-template-columns: 1fr;
@@ -1163,6 +1176,17 @@ class Floorplaner extends IPSModuleStrict
         render();
     }
 
+    function variableFieldText(obj, field) {
+        const id = Number(obj?.[field] || 0);
+        if (!id) return 'Klicken zum Auswählen …';
+
+        const pathKey = field === 'variableID'
+            ? '_variablePath'
+            : '_' + field.replace(/ID$/, '') + 'Path';
+        const path = obj?.[pathKey] || '';
+        return '#' + id + (path ? ' – ' + escapeHtml(path) : '');
+    }
+
     function renderProperties() {
         const floor = currentFloor();
 
@@ -1227,7 +1251,22 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="field"><label>Länge</label><input data-field="length" type="number" min="20" value="${obj.length || 80}"></div>
                 <div class="field"><label>Position auf Wand (0–1)</label><input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}"></div>
-                <div class="field"><label>IP-Symcon VariableID</label><input data-field="variableID" type="number" min="0" value="${obj.variableID || 0}"></div>
+                <div class="field">
+                    <label>IP-Symcon Variable – Flügel / Kontakt 1</label>
+                    <input class="variable-select-field"
+                           data-variable-field="variableID"
+                           value="${variableFieldText(obj, 'variableID')}"
+                           readonly
+                           title="Klicken, um den IP-Symcon Objektbaum zu öffnen">
+                </div>
+                <div class="field">
+                    <label>IP-Symcon Variable – Flügel / Kontakt 2</label>
+                    <input class="variable-select-field"
+                           data-variable-field="secondaryVariableID"
+                           value="${variableFieldText(obj, 'secondaryVariableID')}"
+                           readonly
+                           title="Optional: zweiter Flügel / zweiter Kontakt">
+                </div>
             `;
         } else if (selected.type === 'item') {
             propTitle.textContent = 'Gerät';
@@ -1252,8 +1291,11 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="field">
                     <label>IP-Symcon Variable</label>
-                    <input value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}" disabled>
-                    <button id="chooseVariableBtn" type="button">Aus Objektbaum auswählen …</button>
+                    <input class="variable-select-field"
+                           data-variable-field="variableID"
+                           value="${variableFieldText(obj, 'variableID')}"
+                           readonly
+                           title="Klicken, um den IP-Symcon Objektbaum zu öffnen">
                 </div>
                 <div class="field"><label>Eigenes Symbol (optional)</label><input data-field="icon" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
                 <div class="row2">
@@ -1294,14 +1336,17 @@ class Floorplaner extends IPSModuleStrict
             });
         });
 
-        const chooseVariableBtn = document.getElementById('chooseVariableBtn');
-        if (chooseVariableBtn && selected?.type === 'item') {
-            chooseVariableBtn.addEventListener('click', () => {
-                variablePickerTarget = {floorId: state.activeFloor, itemId: selected.id};
-                statusEl.textContent = 'Objektbaum wird geladen …';
-                requestAction('getObjectTree', '');
+        properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
+            field.addEventListener('click', () => {
+                if (!selected) return;
+                openVariableTree({
+                    floorId: state.activeFloor,
+                    entityType: selected.type,
+                    entityId: selected.id,
+                    field: field.dataset.variableField || 'variableID'
+                });
             });
-        }
+        });
 
         properties.querySelectorAll('[data-project]').forEach(input => {
             input.addEventListener('change', () => {
@@ -1431,7 +1476,8 @@ class Floorplaner extends IPSModuleStrict
                 wallId: near.wall.id,
                 position: near.position,
                 length: tool === 'door' ? 80 : 120,
-                variableID: 0
+                variableID: 0,
+                secondaryVariableID: 0
             };
             floor.openings.push(o);
             selected = {type: 'opening', id: o.id};
@@ -1641,8 +1687,9 @@ class Floorplaner extends IPSModuleStrict
 
         if (variablePickerTarget) {
             const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
-            const item = floor?.items.find(i => i.id === variablePickerTarget.itemId);
-            currentVariableID = Number(item?.variableID || 0);
+            const collection = variablePickerTarget.entityType === 'opening' ? floor?.openings : floor?.items;
+            const entity = collection?.find(i => i.id === variablePickerTarget.entityId);
+            currentVariableID = Number(entity?.[variablePickerTarget.field || 'variableID'] || 0);
         }
 
         const html = objectTree
@@ -1686,16 +1733,37 @@ class Floorplaner extends IPSModuleStrict
         return null;
     }
 
+    function openVariableTree(target) {
+        variablePickerTarget = target;
+        statusEl.textContent = 'Objektbaum wird geladen …';
+        requestAction('getObjectTree', '');
+    }
+
     function assignVariable(variableID) {
         if (!variablePickerTarget) return;
-        const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
-        const item = floor?.items.find(i => i.id === variablePickerTarget.itemId);
-        if (!item) return;
 
-        item.variableID = Number(variableID) || 0;
-        const node = item.variableID ? findTreeNode(objectTree, item.variableID) : null;
-        item._variablePath = node?.path || '';
-        item._valueText = node?.valueText || '';
+        const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
+        if (!floor) return;
+
+        const collection = variablePickerTarget.entityType === 'opening'
+            ? floor.openings
+            : floor.items;
+        const entity = collection?.find(i => i.id === variablePickerTarget.entityId);
+        if (!entity) return;
+
+        const field = variablePickerTarget.field || 'variableID';
+        entity[field] = Number(variableID) || 0;
+
+        const node = entity[field] ? findTreeNode(objectTree, entity[field]) : null;
+        const pathKey = field === 'variableID'
+            ? '_variablePath'
+            : '_' + field.replace(/ID$/, '') + 'Path';
+        const valueKey = field === 'variableID'
+            ? '_valueText'
+            : '_' + field.replace(/ID$/, '') + 'ValueText';
+
+        entity[pathKey] = node?.path || '';
+        entity[valueKey] = node?.valueText || '';
 
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
@@ -1982,16 +2050,18 @@ HTML;
                 }
             }
 
-            foreach ($floor['items'] as $itemIndex => $item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-                foreach (array_keys($item) as $itemKey) {
-                    if (str_starts_with((string) $itemKey, '_')) {
-                        unset($item[$itemKey]);
+            foreach (['items', 'openings'] as $entityCollection) {
+                foreach ($floor[$entityCollection] as $entityIndex => $entity) {
+                    if (!is_array($entity)) {
+                        continue;
                     }
+                    foreach (array_keys($entity) as $entityKey) {
+                        if (str_starts_with((string) $entityKey, '_')) {
+                            unset($entity[$entityKey]);
+                        }
+                    }
+                    $floor[$entityCollection][$entityIndex] = $entity;
                 }
-                $floor['items'][$itemIndex] = $item;
             }
 
             $data['floors'][$index] = $floor;
@@ -2055,28 +2125,63 @@ HTML;
         }
 
         foreach ($Project['floors'] as $floorIndex => $floor) {
-            if (!isset($floor['items']) || !is_array($floor['items'])) {
-                continue;
+            // Geräte
+            if (isset($floor['items']) && is_array($floor['items'])) {
+                foreach ($floor['items'] as $itemIndex => $item) {
+                    $this->AddRuntimeVariableMetadata(
+                        $Project['floors'][$floorIndex]['items'][$itemIndex],
+                        'variableID',
+                        '_variablePath',
+                        '_valueText'
+                    );
+                }
             }
 
-            foreach ($floor['items'] as $itemIndex => $item) {
-                $variableID = (int) ($item['variableID'] ?? 0);
-                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
-                    continue;
-                }
-
-                try {
-                    $variable = IPS_GetVariable($variableID);
-                    $Project['floors'][$floorIndex]['items'][$itemIndex]['_variableType'] = (int) $variable['VariableType'];
-                    $Project['floors'][$floorIndex]['items'][$itemIndex]['_variablePath'] = $this->GetObjectPath($variableID);
-                    $Project['floors'][$floorIndex]['items'][$itemIndex]['_valueText'] = (string) GetValueFormatted($variableID);
-                } catch (Throwable $e) {
-                    $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
+            // Türen / Fenster – Easy Floorplan unterstützt zwei Sensoren
+            // für zwei Flügel. Deshalb werden beide Symcon-Variablen geführt.
+            if (isset($floor['openings']) && is_array($floor['openings'])) {
+                foreach ($floor['openings'] as $openingIndex => $opening) {
+                    $this->AddRuntimeVariableMetadata(
+                        $Project['floors'][$floorIndex]['openings'][$openingIndex],
+                        'variableID',
+                        '_variablePath',
+                        '_valueText'
+                    );
+                    $this->AddRuntimeVariableMetadata(
+                        $Project['floors'][$floorIndex]['openings'][$openingIndex],
+                        'secondaryVariableID',
+                        '_secondaryVariablePath',
+                        '_secondaryVariableValueText'
+                    );
                 }
             }
         }
 
         return $Project;
+    }
+
+    private function AddRuntimeVariableMetadata(
+        array &$Entity,
+        string $Field,
+        string $PathField,
+        string $ValueField
+    ): void {
+        $variableID = (int) ($Entity[$Field] ?? 0);
+        if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+            return;
+        }
+
+        try {
+            $variable = IPS_GetVariable($variableID);
+            $Entity[$PathField] = $this->GetObjectPath($variableID);
+            $Entity[$ValueField] = $this->GetSafeValueText($variableID);
+
+            if ($Field === 'variableID') {
+                $Entity['_variableType'] = (int) ($variable['VariableType'] ?? -1);
+            }
+        } catch (Throwable $e) {
+            $this->SendDebug('RuntimeVariableMetadata', $e->getMessage(), 0);
+        }
     }
 
     private function BuildObjectTree(): array
@@ -2130,7 +2235,7 @@ HTML;
 
                     $node['variableType'] = $variableType;
                     $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
-                    $node['valueText'] = (string) GetValueFormatted($objectID);
+                    $node['valueText'] = $this->GetSafeValueText($objectID);
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -2162,6 +2267,37 @@ HTML;
         );
 
         return $result;
+    }
+
+    private function GetSafeValueText(int $VariableID): string
+    {
+        if ($VariableID <= 0 || !IPS_VariableExists($VariableID)) {
+            return '';
+        }
+
+        try {
+            // Bewusst KEINE Profile verwenden.
+            // Der Floorplaner liest nur den Rohwert der Variable.
+            $value = GetValue($VariableID);
+
+            if (is_bool($value)) {
+                return $value ? 'True' : 'False';
+            }
+
+            if (is_float($value)) {
+                $formatted = rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.');
+                return $formatted === '-0' ? '0' : $formatted;
+            }
+
+            if (is_int($value) || is_string($value)) {
+                return (string) $value;
+            }
+
+            return '';
+        } catch (Throwable $e) {
+            $this->SendDebug('SafeValueText', $e->getMessage(), 0);
+            return '';
+        }
     }
 
     private function GetObjectPath(int $ObjectID): string
@@ -2211,7 +2347,7 @@ HTML;
                             'type'      => 'runtimeValue',
                             'floorId'   => $FloorID,
                             'itemId'    => $ItemID,
-                            'valueText' => (string) GetValueFormatted($variableID)
+                            'valueText' => $this->GetSafeValueText($variableID)
                         ],
                         JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                     );
