@@ -517,6 +517,26 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 0.4;
         }
 
+        .check {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            width: auto;
+            font-size: 12px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+
+        .check input[type="checkbox"] {
+            width: 13px !important;
+            height: 13px !important;
+            min-width: 13px !important;
+            max-width: 13px !important;
+            margin: 0;
+            padding: 0;
+            flex: 0 0 13px;
+        }
+
         .device-label {
             pointer-events: none;
         }
@@ -837,6 +857,11 @@ class Floorplaner extends IPSModuleStrict
 
         .icon-input-clickable {
             cursor: pointer;
+            user-select: none;
+        }
+
+        .icon-input-clickable:hover {
+            outline: 1px solid #74b9ff;
         }
 
 
@@ -1721,25 +1746,29 @@ class Floorplaner extends IPSModuleStrict
         '🚿','🛁','🚽','🛋️','🛏️','🪑','🧯','🔔','⏻','⚙️'
     ];
 
-    const deviceIconPicker = document.getElementById('deviceIconPicker');
+    function getDeviceIconPicker() {
+        return document.getElementById('deviceIconPicker');
+    }
 
     function closeDeviceIconPicker() {
-        if (deviceIconPicker) deviceIconPicker.style.display = 'none';
+        const picker = getDeviceIconPicker();
+        if (picker) picker.style.display = 'none';
     }
 
     function openDeviceIconPicker(input) {
-        if (!deviceIconPicker || !input) return;
+        const picker = getDeviceIconPicker();
+        if (!picker || !input) return;
 
-        deviceIconPicker.innerHTML = deviceIconChoices
+        picker.innerHTML = deviceIconChoices
             .map(icon => `<button type="button" data-device-icon="${escapeHtml(icon)}" title="${escapeHtml(icon)}">${escapeHtml(icon)}</button>`)
             .join('');
 
         const rect = input.getBoundingClientRect();
-        deviceIconPicker.style.left = `${Math.min(rect.left, Math.max(8, window.innerWidth - 330))}px`;
-        deviceIconPicker.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 310))}px`;
-        deviceIconPicker.style.display = 'grid';
+        picker.style.left = `${Math.min(rect.left, Math.max(8, window.innerWidth - 330))}px`;
+        picker.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 310))}px`;
+        picker.style.display = 'grid';
 
-        deviceIconPicker.querySelectorAll('[data-device-icon]').forEach(button => {
+        picker.querySelectorAll('[data-device-icon]').forEach(button => {
             button.addEventListener('click', () => {
                 input.value = button.dataset.deviceIcon || '';
                 input.dispatchEvent(new Event('input', {bubbles: true}));
@@ -1877,8 +1906,8 @@ class Floorplaner extends IPSModuleStrict
                     ${obj._profileName ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>` : ''}
                 </div>
                 <div class="row2">
-                    <div class="field"><label><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
-                    <div class="field"><label><input data-field="showState" type="checkbox"${obj.showState === true || (obj.showState == null && ['temperature','humidity'].includes(kind)) ? ' checked' : ''}> Wert anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="showState" type="checkbox"${obj.showState === true || (obj.showState == null && ['temperature','humidity'].includes(kind)) ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="row2">
                     <div class="field"><label>Schriftgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
@@ -1891,7 +1920,7 @@ class Floorplaner extends IPSModuleStrict
                         </select>
                     </div>
                 </div>
-                <div class="field"><label>Eigenes Symbol (optional)</label><input class="icon-input-clickable" data-icon-picker="device" readonly data-field="icon" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
+                <div class="field"><label>Eigenes Symbol (optional)</label><input class="icon-input-clickable" data-icon-picker="device" readonly data-field="icon" title="Klicken, um Symbol auszuwählen" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
                 <div class="row2">
                     <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
