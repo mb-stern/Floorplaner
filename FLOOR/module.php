@@ -448,6 +448,7 @@ class Floorplaner extends IPSModuleStrict
             width: 100%;
             height: 100%;
             min-height: 420px;
+            position: relative;
         }
 
         /* HTML-SDK: Bedienelemente bewusst UNTEN.
@@ -653,28 +654,31 @@ class Floorplaner extends IPSModuleStrict
 
         #viewbar {
             display: none;
-            gap: 6px;
-            align-items: center;
-            justify-content: center;
-            min-height: 50px;
-            padding: 8px 12px;
-            background: var(--fp-panel);
-            border-top: 1px solid var(--fp-border);
-            position: relative;
+            position: absolute;
+            left: 50%;
+            bottom: 10px;
+            transform: translateX(-50%);
             z-index: 50;
             pointer-events: auto;
         }
 
         #viewbar button {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
             min-height: 36px;
+            padding: 0;
             border: 1px solid var(--fp-border);
             border-radius: 6px;
             background: var(--fp-panel-2);
             color: var(--fp-text);
-            padding: 6px 18px;
+            font-size: 20px;
+            line-height: 34px;
+            text-align: center;
             cursor: pointer;
             pointer-events: auto;
             touch-action: manipulation;
+            box-shadow: 0 2px 8px rgba(0,0,0,.35);
         }
 
         #app.view-mode .toolbar { display: none; }
@@ -891,7 +895,7 @@ class Floorplaner extends IPSModuleStrict
     </div>
 
     <div id="viewbar">
-        <button id="editBtn" type="button">✎ Floorplan bearbeiten</button>
+        <button id="editBtn" type="button" title="Floorplan bearbeiten" aria-label="Floorplan bearbeiten">✎</button>
     </div>
 </div>
 
@@ -2621,27 +2625,26 @@ HTML;
                 }
 
                 $newValue = !GetValueBoolean($variableID);
-                $actionID = (int) (($variable['VariableCustomAction'] ?? 0) ?: ($variable['VariableAction'] ?? 0));
 
                 try {
-                    // Mit hinterlegter Aktion sauber über RequestAction schalten.
-                    // Reine Boolean-Variablen ohne Aktion werden direkt gesetzt.
-                    if ($actionID > 0) {
-                        \RequestAction($variableID, $newValue);
-                    } else {
-                        SetValueBoolean($variableID, $newValue);
-                    }
+                    /*
+                     * Bewusst wieder exakt wie in der zuvor funktionierenden
+                     * Bedienversion: RequestAction direkt auf die Variable.
+                     * Kein Ausweichen auf SetValueBoolean(), weil damit bei
+                     * Aktions-/Instanzvariablen nur der Variablenwert geändert
+                     * werden kann, ohne das eigentliche Gerät zu schalten.
+                     */
+                    \RequestAction($variableID, $newValue);
                 } catch (Throwable $e) {
                     $this->SendDebug(
                         'OperateItem',
-                        'Variable ' . $variableID . ' konnte nicht geschaltet werden: ' . $e->getMessage(),
+                        'RequestAction für Variable ' . $variableID . ' fehlgeschlagen: ' . $e->getMessage(),
                         0
                     );
                     return;
                 }
 
-                // Sofortige Rückmeldung; externe Änderungen kommen zusätzlich
-                // automatisch über VM_UPDATE/MessageSink.
+                // Anzeige sofort nach der Aktion aktualisieren.
                 $this->PushRuntimeValueUpdates($variableID);
                 return;
             }
