@@ -827,6 +827,7 @@ class Floorplaner extends IPSModuleStrict
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
             <button data-tool="device">Gerät</button>
+            <button data-tool="furniture">Möbel</button>
             <button data-tool="text">Text</button>
         </div>
 
@@ -838,7 +839,6 @@ class Floorplaner extends IPSModuleStrict
 
         <div class="group">
             <button id="addFloorBtn">+ Etage</button>
-            <button id="addFurnitureBtn" type="button" title="Möbel einfügen">🛋 Möbel</button>
             <select id="floorSelect"></select>
             <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
         </div>
@@ -1104,6 +1104,16 @@ class Floorplaner extends IPSModuleStrict
         for (const item of floor.items) {
             const r = Number(item.size || 18) + 35;
             points.push([item.x - r, item.y - r], [item.x + r, item.y + r]);
+        }
+
+        for (const f of floor.furniture || []) {
+            const x = Number(f.x) || 0;
+            const y = Number(f.y) || 0;
+            const w = Math.max(20, Number(f.width) || 100) / 2;
+            const h = Math.max(20, Number(f.height) || 60) / 2;
+            // Drehung bewusst konservativ über Radius berücksichtigen.
+            const r = Math.sqrt(w * w + h * h);
+            points.push([x - r, y - r], [x + r, y + r]);
         }
 
         for (const t of floor.texts) {
@@ -1597,6 +1607,7 @@ class Floorplaner extends IPSModuleStrict
         if (type === 'wall') return floor.walls.find(v => v.id === id);
         if (type === 'opening') return floor.openings.find(v => v.id === id);
         if (type === 'item') return floor.items.find(v => v.id === id);
+        if (type === 'furniture') return (floor.furniture || []).find(v => v.id === id);
         if (type === 'text') return floor.texts.find(v => v.id === id);
         return null;
     }
@@ -1612,6 +1623,37 @@ class Floorplaner extends IPSModuleStrict
             floor.openings = floor.openings.filter(v => v.id !== selected.id);
         } else if (selected.type === 'item') {
             floor.items = floor.items.filter(v => v.id !== selected.id);
+        } else if (selected.type === 'furniture') {
+            floor.furniture = (floor.furniture || []).filter(v => v.id !== selected.id);
+        } else if (selected.type === 'furniture') {
+            propTitle.textContent = 'Möbel';
+            const ftype = obj.type || 'sofa';
+            properties.innerHTML = `
+                <div class="field">
+                    <label>Möbeltyp</label>
+                    <select data-field="type">
+                        <option value="sofa"${ftype === 'sofa' ? ' selected' : ''}>Sofa</option>
+                        <option value="bed"${ftype === 'bed' ? ' selected' : ''}>Bett</option>
+                        <option value="table"${ftype === 'table' ? ' selected' : ''}>Tisch</option>
+                        <option value="chair"${ftype === 'chair' ? ' selected' : ''}>Stuhl</option>
+                        <option value="cabinet"${ftype === 'cabinet' ? ' selected' : ''}>Schrank</option>
+                        <option value="kitchen"${ftype === 'kitchen' ? ' selected' : ''}>Küchenblock</option>
+                        <option value="toilet"${ftype === 'toilet' ? ' selected' : ''}>WC</option>
+                        <option value="shower"${ftype === 'shower' ? ' selected' : ''}>Dusche</option>
+                        <option value="tub"${ftype === 'tub' ? ' selected' : ''}>Badewanne</option>
+                    </select>
+                </div>
+                <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || furnitureTemplates[ftype]?.name || 'Möbel')}"></div>
+                <div class="row2">
+                    <div class="field"><label>X</label><input data-field="x" type="number" value="${Number(obj.x) || 0}"></div>
+                    <div class="field"><label>Y</label><input data-field="y" type="number" value="${Number(obj.y) || 0}"></div>
+                </div>
+                <div class="row2">
+                    <div class="field"><label>Breite</label><input data-field="width" type="number" min="20" step="5" value="${Number(obj.width) || 100}"></div>
+                    <div class="field"><label>Tiefe</label><input data-field="height" type="number" min="20" step="5" value="${Number(obj.height) || 60}"></div>
+                </div>
+                <div class="field"><label>Drehung</label><input data-field="rotation" type="number" min="-360" max="360" step="5" value="${Number(obj.rotation) || 0}"></div>
+            `;
         } else if (selected.type === 'text') {
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
         }
@@ -1644,7 +1686,7 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="field">
                     <label>Elemente</label>
-                    <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte" disabled>
+                    <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte, ${(floor.furniture || []).length} Möbel" disabled>
                 </div>
             `;
             bindPropertyInputs();
@@ -1796,7 +1838,19 @@ class Floorplaner extends IPSModuleStrict
 
                 let value = input.type === 'checkbox' ? input.checked : input.value;
                 if (input.type === 'number') value = Number(value);
-                obj[input.dataset.field] = value;
+                const fieldName = input.dataset.field;
+                const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
+                obj[fieldName] = value;
+
+                if (selected.type === 'furniture' && fieldName === 'type') {
+                    const oldTpl = furnitureTemplates[oldFurnitureType];
+                    const newTpl = furnitureTemplates[value];
+                    if (newTpl) {
+                        if (!obj.name || (oldTpl && obj.name === oldTpl.name)) obj.name = newTpl.name;
+                        if (!obj.width || (oldTpl && Number(obj.width) === Number(oldTpl.width))) obj.width = newTpl.width;
+                        if (!obj.height || (oldTpl && Number(obj.height) === Number(oldTpl.height))) obj.height = newTpl.height;
+                    }
+                }
 
                 pushHistory();
                 markDirty();
@@ -1868,24 +1922,6 @@ class Floorplaner extends IPSModuleStrict
 
     window.addEventListener('resize', scheduleResponsiveFit);
 
-    document.getElementById('addFurnitureBtn')?.addEventListener('click', () => {
-        const labels = [
-            ['sofa','Sofa'], ['bed','Bett'], ['table','Tisch'], ['chair','Stuhl'],
-            ['cabinet','Schrank'], ['kitchen','Küchenblock'], ['toilet','WC'],
-            ['shower','Dusche'], ['tub','Badewanne']
-        ];
-
-        const choice = prompt(
-            'Möbeltyp:\n' +
-            labels.map(([,label], i) => `${i+1} = ${label}`).join('\n'),
-            '1'
-        );
-
-        const index = Number(choice) - 1;
-        if (Number.isInteger(index) && labels[index]) {
-            addFurniture(labels[index][0]);
-        }
-    });
 
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
@@ -2088,6 +2124,28 @@ class Floorplaner extends IPSModuleStrict
             };
             floor.items.push(item);
             selected = {type: 'item', id: item.id};
+            pushHistory();
+            markDirty();
+            setTool('select');
+            render();
+            return;
+        }
+
+        if (tool === 'furniture') {
+            const tpl = furnitureTemplates.sofa;
+            const furniture = {
+                id: uid('furniture'),
+                type: 'sofa',
+                name: tpl.name,
+                x: p.x,
+                y: p.y,
+                width: tpl.width,
+                height: tpl.height,
+                rotation: 0
+            };
+            floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
+            floor.furniture.push(furniture);
+            selected = {type: 'furniture', id: furniture.id};
             pushHistory();
             markDirty();
             setTool('select');
