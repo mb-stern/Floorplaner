@@ -120,25 +120,12 @@ class Floorplaner extends IPSModuleStrict
                 'caption'  => 'Projekt',
                 'expanded' => true,
                 'items'    => [
-
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'GridSize',
-                        'caption' => 'Raster',
-                        'minimum' => 5,
-                        'maximum' => 200
-                    ],
                     [
                         'type'    => 'NumberSpinner',
                         'name'    => 'SnapSize',
                         'caption' => 'Snap-Schritt',
                         'minimum' => 0,
                         'maximum' => 200
-                    ],
-                    [
-                        'type'    => 'SelectColor',
-                        'name'    => 'BackgroundColor',
-                        'caption' => 'Hintergrund'
                     ],
                     [
                         'type'    => 'CheckBox',
@@ -240,14 +227,26 @@ class Floorplaner extends IPSModuleStrict
     <style>
         :root {
             color-scheme: dark;
-            --fp-bg: #242424;
-            --fp-panel: #303030;
-            --fp-panel-2: #383838;
+            --fp-bg: transparent;
+            --fp-panel: rgba(38,38,38,.96);
+            --fp-panel-2: rgba(54,54,54,.96);
             --fp-border: rgba(255,255,255,.16);
             --fp-text: #f2f2f2;
             --fp-muted: #b8b8b8;
+            --fp-grid: rgba(255,255,255,.14);
             --fp-accent: #4da3ff;
             --fp-danger: #e35d6a;
+        }
+
+        html[data-theme="light"] {
+            color-scheme: light;
+            --fp-bg: transparent;
+            --fp-panel: rgba(250,250,250,.96);
+            --fp-panel-2: rgba(238,238,238,.98);
+            --fp-border: rgba(0,0,0,.18);
+            --fp-text: #202020;
+            --fp-muted: #606060;
+            --fp-grid: rgba(0,0,0,.14);
         }
 
         * { box-sizing: border-box; }
@@ -257,7 +256,7 @@ class Floorplaner extends IPSModuleStrict
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: var(--fp-bg);
+            background: transparent !important;
             color: var(--fp-text);
             font-family: Arial, Helvetica, sans-serif;
         }
@@ -309,7 +308,7 @@ class Floorplaner extends IPSModuleStrict
 
         .toolbar button.active {
             outline: 2px solid var(--fp-accent);
-            background: #244c72;
+            background: color-mix(in srgb, var(--fp-accent) 30%, var(--fp-panel-2));
         }
 
         .toolbar button.danger {
@@ -335,7 +334,7 @@ class Floorplaner extends IPSModuleStrict
             min-width: 0;
             min-height: 0;
             overflow: hidden;
-            background: #191919;
+            background: transparent;
         }
 
         #viewport {
@@ -377,7 +376,7 @@ class Floorplaner extends IPSModuleStrict
             padding: 5px 7px;
             border: 1px solid var(--fp-border);
             border-radius: 5px;
-            background: #222;
+            background: var(--fp-panel-2);
             color: var(--fp-text);
         }
 
@@ -654,7 +653,7 @@ class Floorplaner extends IPSModuleStrict
             min-height: 34px;
             padding: 6px 9px;
             color: var(--fp-text);
-            background: #222;
+            background: var(--fp-panel-2);
             border: 1px solid var(--fp-border);
             border-radius: 6px;
         }
@@ -674,7 +673,7 @@ class Floorplaner extends IPSModuleStrict
             cursor: pointer;
         }
 
-        .variable-row:hover { background: rgba(255,255,255,.08); }
+        .variable-row:hover { background: color-mix(in srgb, var(--fp-text) 8%, transparent); }
         .variable-id { color: #9fc7ff; font-family: monospace; }
         .variable-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .variable-type { color: var(--fp-muted); font-size: 11px; }
@@ -690,7 +689,7 @@ class Floorplaner extends IPSModuleStrict
             padding: 3px 8px 3px calc(8px + (var(--depth, 0) * 18px));
             border-radius: 5px;
         }
-        .tree-row:hover { background: rgba(255,255,255,.07); }
+        .tree-row:hover { background: color-mix(in srgb, var(--fp-text) 7%, transparent); }
         .tree-toggle { width: 22px; text-align: center; color: var(--fp-muted); cursor: pointer; }
         .tree-icon { text-align: center; }
         .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -868,56 +867,15 @@ class Floorplaner extends IPSModuleStrict
         .device-glyph { color: currentColor; pointer-events: none; }
         .device-glyph * { vector-effect: non-scaling-stroke; }
 
-        :root {
-            --fp-bg: var(--card-background-color, var(--primary-background-color, #1f1f1f));
-            --fp-panel: var(--secondary-background-color, rgba(42,42,42,.96));
-            --fp-text: var(--primary-text-color, #f2f2f2);
-            --fp-muted: var(--secondary-text-color, #b8b8b8);
-            --fp-border: var(--divider-color, rgba(255,255,255,.18));
-            --fp-grid: color-mix(in srgb, var(--fp-text) 14%, transparent);
+
+
+        .view-mode .grid-editor-controls {
+            display: none !important;
         }
 
-        html, body, #app, .app, .editor, .canvas-wrap, .viewport, #viewport {
-            background: var(--fp-bg) !important;
-            color: var(--fp-text);
-        }
 
-        svg#floorSvg {
-            background: var(--fp-bg);
-        }
-
-        .grid-editor-controls {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            margin-left: 4px;
-        }
-
-        .grid-size-input {
-            width: 48px;
-            min-width: 48px;
-            max-width: 58px;
-            height: 24px;
-            padding: 1px 4px;
-            font-size: 11px;
-        }
-
-        .grid-line {
-            stroke: var(--fp-grid);
-            stroke-width: 1;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        body.light,
-        body[data-theme="light"],
-        html[data-theme="light"] {
-            --fp-bg: var(--card-background-color, var(--primary-background-color, #ffffff));
-            --fp-panel: var(--secondary-background-color, rgba(255,255,255,.96));
-            --fp-text: var(--primary-text-color, #202020);
-            --fp-muted: var(--secondary-text-color, #666666);
-            --fp-border: var(--divider-color, rgba(0,0,0,.18));
-            --fp-grid: color-mix(in srgb, var(--fp-text) 12%, transparent);
+        html, body, #app, .main, .canvas-wrap, #viewport {
+            background: transparent !important;
         }
 
 </style>
@@ -1044,8 +1002,8 @@ class Floorplaner extends IPSModuleStrict
     let wallStart = null;
     let preview = null;
     let drag = null;
-    let editorShowGrid = true;
-    let editorGridSize = 20;
+    let editorShowGrid = state.showGrid !== false;
+    let editorGridSize = Math.max(2, Number(state.grid) || 20);
 
     let zoom = 1;
     let panX = 0;
@@ -1126,7 +1084,7 @@ class Floorplaner extends IPSModuleStrict
         state = normalizeProject(JSON.parse(history[historyIndex]));
         selected = null;
         wallStart = null;
-        syncHostTheme();
+        detectTheme();
     renderAll();
         markDirty();
         updateUndoButtons();
@@ -1171,14 +1129,20 @@ class Floorplaner extends IPSModuleStrict
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
         statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
+
+        const gridControls = document.querySelector('.grid-editor-controls');
+        if (gridControls) {
+            gridControls.style.display = isView ? 'none' : 'inline-flex';
+        }
     }
 
     function setMode(mode) {
+        state.mode = mode === 'view' ? 'view' : 'edit';
+
         const gridControls = document.querySelector('.grid-editor-controls');
         if (gridControls) {
-            gridControls.style.display = mode === 'edit' ? 'inline-flex' : 'none';
+            gridControls.style.display = state.mode === 'edit' ? 'inline-flex' : 'none';
         }
-        state.mode = mode === 'view' ? 'view' : 'edit';
         selected = null;
         wallStart = null;
         preview = null;
@@ -1500,22 +1464,43 @@ class Floorplaner extends IPSModuleStrict
         return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
-    function syncHostTheme() {
-        const hostStyle = getComputedStyle(document.documentElement);
-        const bodyStyle = getComputedStyle(document.body);
+    // Theme-Erkennung wie in den älteren Symcon-HTML-SDK-Modulen:
+    // Symcon injiziert u.a. --content-color bzw. die Textfarbe auf <body>.
+    // Helle Schrift bedeutet dunkles Design, dunkle Schrift helles Design.
+    function detectTheme() {
+        let probe = getComputedStyle(document.documentElement)
+            .getPropertyValue('--content-color')
+            .trim();
 
-        const bg =
-            hostStyle.getPropertyValue('--card-background-color').trim() ||
-            hostStyle.getPropertyValue('--primary-background-color').trim() ||
-            bodyStyle.backgroundColor;
+        if (!probe) {
+            probe = getComputedStyle(document.body).color;
+        }
 
-        const fg =
-            hostStyle.getPropertyValue('--primary-text-color').trim() ||
-            bodyStyle.color;
+        let dark = null;
+        const rgb = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
 
-        if (bg) document.documentElement.style.setProperty('--fp-bg', bg);
-        if (fg) document.documentElement.style.setProperty('--fp-text', fg);
+        if (rgb) {
+            const lum =
+                (0.299 * Number(rgb[1]) +
+                 0.587 * Number(rgb[2]) +
+                 0.114 * Number(rgb[3])) / 255;
+            // Helle Symcon-Textfarbe => dunkles Theme.
+            dark = lum > 0.5;
+        } else if (probe && probe[0] === '#' && probe.length >= 7) {
+            const r = parseInt(probe.substr(1, 2), 16);
+            const g = parseInt(probe.substr(3, 2), 16);
+            const b = parseInt(probe.substr(5, 2), 16);
+            dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
+        }
+
+        if (dark === null) {
+            dark = !!(window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches);
+        }
+
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     }
+
 
     function renderEditorGrid(parts) {
         if (state.mode !== 'edit' || !editorShowGrid) return;
@@ -1543,15 +1528,6 @@ class Floorplaner extends IPSModuleStrict
         const parts = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
-
-        // Der Hintergrund deckt immer nur den aktuell sichtbaren Bereich ab.
-        // Es existiert bewusst keine feste Projektbreite oder Projekthöhe.
-        parts.push(
-            `<rect x="${bounds.minX}" y="${bounds.minY}" ` +
-            `width="${bounds.maxX - bounds.minX}" height="${bounds.maxY - bounds.minY}" ` +
-            `fill="${escapeHtml(state.background)}"/>`
-        );
-        renderGrid(parts, bounds);
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
@@ -1948,15 +1924,9 @@ class Floorplaner extends IPSModuleStrict
                     <label>Etagenname</label>
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
-                <div class="row2">
-                    <div class="field">
-                        <label>Raster</label>
-                        <input value="${state.grid}" disabled>
-                    </div>
-                    <div class="field">
-                        <label>Snap</label>
-                        <input value="${state.snap}" disabled>
-                    </div>
+                <div class="field">
+                    <label>Snap</label>
+                    <input value="${state.snap}" disabled>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -2263,7 +2233,9 @@ class Floorplaner extends IPSModuleStrict
         showGridVisu.checked = editorShowGrid;
         showGridVisu.addEventListener('change', () => {
             editorShowGrid = showGridVisu.checked;
+            state.showGrid = editorShowGrid;
             render();
+            markDirty();
         });
     }
 
@@ -2271,7 +2243,9 @@ class Floorplaner extends IPSModuleStrict
         gridSizeVisu.value = editorGridSize;
         gridSizeVisu.addEventListener('input', () => {
             editorGridSize = Math.max(2, Number(gridSizeVisu.value) || 20);
+            state.grid = editorGridSize;
             render();
+            markDirty();
         });
     }
 
@@ -3010,14 +2984,38 @@ class Floorplaner extends IPSModuleStrict
 
     pushHistory();
     updateModeUI();
+    detectTheme();
     renderAll();
     requestAnimationFrame(fit);
-    const themeObserver = new MutationObserver(() => {
-        syncHostTheme();
-        render();
-    });
-    themeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['class','style','data-theme']});
-    themeObserver.observe(document.body, {attributes: true, attributeFilter: ['class','style','data-theme']});
+    detectTheme();
+    window.addEventListener('load', detectTheme);
+
+    const mediaTheme = window.matchMedia
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : null;
+
+    if (mediaTheme) {
+        if (typeof mediaTheme.addEventListener === 'function') {
+            mediaTheme.addEventListener('change', () => {
+                detectTheme();
+                render();
+            });
+        } else if (typeof mediaTheme.addListener === 'function') {
+            mediaTheme.addListener(() => {
+                detectTheme();
+                render();
+            });
+        }
+    }
+
+    // Symcon kann die injizierte --content-color während eines Themewechsels ändern.
+    setInterval(() => {
+        const before = document.documentElement.getAttribute('data-theme');
+        detectTheme();
+        if (before !== document.documentElement.getAttribute('data-theme')) {
+            render();
+        }
+    }, 1000);
 
 })();
 </script>
