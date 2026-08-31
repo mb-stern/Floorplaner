@@ -640,7 +640,9 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .control-modal {
-            width: min(420px, 92vw);
+            width: max-content;
+            min-width: 0;
+            max-width: 92vw;
             max-height: min(620px, 86vh);
             display: grid;
             grid-template-rows: auto 1fr auto;
@@ -658,15 +660,20 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .control-body {
-            padding: 14px;
-            overflow: auto;
+            padding: 10px 12px;
+            overflow: visible;
+            width: max-content;
+            max-width: calc(92vw - 24px);
         }
 
         .control-associations {
             display: flex;
             flex-direction: column;
+            align-items: flex-start;
             gap: 4px;
             margin: 0;
+            width: max-content;
+            max-width: 100%;
         }
 
         .control-associations button,
@@ -679,6 +686,16 @@ class Floorplaner extends IPSModuleStrict
             color: var(--fp-text);
             padding: 6px 10px;
             cursor: pointer;
+        }
+
+        .control-associations button {
+            width: auto;
+            min-width: 0;
+            max-width: 100%;
+            min-height: 28px;
+            padding: 4px 12px;
+            white-space: nowrap;
+            align-self: flex-start;
         }
 
         .control-associations button.current {
