@@ -507,7 +507,7 @@ class Floorplaner extends IPSModuleStrict
             width: 36px;
             height: 36px;
             min-width: 36px;
-            min-height: 36px;
+            min-height: 30px;
             padding: 0;
             border: 1px solid var(--fp-border);
             border-radius: 6px;
@@ -663,10 +663,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .control-associations {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
-            margin-bottom: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin: 0;
         }
 
         .control-associations button,
@@ -1314,6 +1314,23 @@ class Floorplaner extends IPSModuleStrict
 
         if (Number(variableType) === 0) {
             amount = truthyVariableValue(rawValue) ? 1 : 0;
+
+            // Bei Fenster-/Türkontakten ist TRUE nicht immer automatisch "offen".
+            // Falls das Bool-Profil sprechende Assoziationen besitzt, verwenden wir
+            // deren Bezeichnung (z.B. Offen/Geschlossen) für die Darstellung.
+            const associations = Array.isArray(profile?.associations) ? profile.associations : [];
+            const currentAssociation = associations.find(a =>
+                Boolean(Number(a.value)) === Boolean(truthyVariableValue(rawValue))
+            );
+
+            if (currentAssociation?.name) {
+                const name = String(currentAssociation.name).toLowerCase();
+                if (/(geschlossen|closed|zu\b)/.test(name)) {
+                    amount = 0;
+                } else if (/(geöffnet|offen|opened|open\b)/.test(name)) {
+                    amount = 1;
+                }
+            }
         } else if (Number(variableType) === 1 || Number(variableType) === 2) {
             const raw = Number(rawValue);
             const min = Number(profile?.min);
@@ -2144,20 +2161,6 @@ class Floorplaner extends IPSModuleStrict
             html += '</div>';
         }
 
-        const min = Number(profile.min);
-        const max = Number(profile.max);
-        const step = Math.max(Number(profile.step) || 1, 0.000001);
-        if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
-            const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
-            const suffix = profile.suffix || '';
-            html += `
-                <div class="control-range">
-                    <div class="control-range-value" id="controlRangeValue">${escapeHtml(String(current) + suffix)}</div>
-                    <input id="controlRange" type="range" min="${min}" max="${max}" step="${step}" value="${current}">
-                    <button id="controlRangeApply" type="button">Wert übernehmen</button>
-                </div>`;
-        }
-
         if (!html) {
             html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil keine bedienbaren Werte hinterlegt.</div>';
         }
@@ -2171,21 +2174,6 @@ class Floorplaner extends IPSModuleStrict
                 controlModal.setAttribute('aria-hidden', 'true');
             });
         });
-
-        const range = document.getElementById('controlRange');
-        const rangeValue = document.getElementById('controlRangeValue');
-        const rangeApply = document.getElementById('controlRangeApply');
-        if (range) {
-            const suffix = profile.suffix || '';
-            range.addEventListener('input', () => {
-                if (rangeValue) rangeValue.textContent = range.value + suffix;
-            });
-            rangeApply?.addEventListener('click', () => {
-                sendItemValue(item, Number(range.value));
-                controlModal.classList.remove('open');
-                controlModal.setAttribute('aria-hidden', 'true');
-            });
-        }
 
         controlModal.classList.add('open');
         controlModal.setAttribute('aria-hidden', 'false');
