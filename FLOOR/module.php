@@ -57,31 +57,9 @@ class Floorplaner extends IPSModuleStrict
         }
 
         $this->SetSummary('Floorplan Editor');
-        $this->RegisterRuntimeVariableMessages();
 
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->ReloadHtml();
-        }
-    }
-
-    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
-    {
-        if ($Message !== VM_UPDATE) {
-            return;
-        }
-
-        $project = $this->AddRuntimeValues($this->GetProject());
-
-        $message = json_encode(
-            [
-                'type'    => 'project',
-                'project' => $project
-            ],
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-
-        if ($message !== false) {
-            $this->UpdateVisualizationValue($message);
         }
     }
 
@@ -2232,7 +2210,21 @@ class Floorplaner extends IPSModuleStrict
                 return;
             }
             if (data?.type === 'project' && data.project) {
+                // Runtime-Updates dürfen die im Live-Modus gewählte Etage
+                // nicht auf die im gespeicherten Projekt hinterlegte Etage zurücksetzen.
+                const currentFloorID = state?.activeFloor || '';
+                const currentMode = state?.mode || 'view';
+
                 state = normalizeProject(data.project);
+
+                if (currentFloorID && state.floors.some(f => f.id === currentFloorID)) {
+                    state.activeFloor = currentFloorID;
+                }
+
+                // Auch ein reines Variablen-Update darf den aktuellen Live/Edit-Modus
+                // des geöffneten Clients nicht verändern.
+                state.mode = currentMode;
+
                 selected = null;
                 wallStart = null;
                 history = [];
@@ -2249,14 +2241,7 @@ class Floorplaner extends IPSModuleStrict
                 variableModal.setAttribute('aria-hidden', 'false');
                 variableSearch.focus();
                 statusEl.textContent = 'Objektbaum – Variable auswählen';
-            } else if (data?.type === 'runtimeValue') {
-                const floor = state.floors.find(f => f.id === data.floorId);
-                const item = floor?.items.find(i => i.id === data.itemId);
-                if (item) {
-                    item._valueText = data.valueText || '';
-                    if ('rawValue' in data) item._rawValue = data.rawValue;
-                    render();
-                }
+            }
             }
         } catch (e) {
             console.error('handleMessage', e);
@@ -2571,39 +2556,6 @@ HTML;
         ];
     }
 
-    private function RegisterRuntimeVariableMessages(): void
-    {
-        $project = $this->GetProject();
-        $ids = [];
-
-        foreach (($project['floors'] ?? []) as $floor) {
-            foreach (($floor['items'] ?? []) as $item) {
-                $id = (int) ($item['variableID'] ?? 0);
-                if ($id > 0 && IPS_VariableExists($id)) {
-                    $ids[$id] = true;
-                }
-            }
-
-            foreach (($floor['openings'] ?? []) as $opening) {
-                foreach ([
-                    'variableID',
-                    'secondaryVariableID',
-                    'shutterVariableID',
-                    'shutterSecondaryVariableID'
-                ] as $field) {
-                    $id = (int) ($opening[$field] ?? 0);
-                    if ($id > 0 && IPS_VariableExists($id)) {
-                        $ids[$id] = true;
-                    }
-                }
-            }
-        }
-
-        foreach (array_keys($ids) as $id) {
-            $this->RegisterMessage((int) $id, VM_UPDATE);
-        }
-    }
-
     private function AddRuntimeValues(array $Project): array
     {
         if (!isset($Project['floors']) || !is_array($Project['floors'])) {
@@ -2902,23 +2854,9 @@ HTML;
                     return;
                 }
 
-                usleep(50000);
-                $meta = $this->GetVariableRuntimeMeta($variableID);
-
-                $message = json_encode(
-                    [
-                        'type'      => 'runtimeValue',
-                        'floorId'   => $FloorID,
-                        'itemId'    => $ItemID,
-                        'valueText' => $meta['_valueText'] ?? '',
-                        'rawValue'  => $meta['_rawValue'] ?? null
-                    ],
-                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-                );
-
-                if ($message !== false) {
-                    $this->UpdateVisualizationValue($message);
-                }
+                // Absichtlich KEIN UpdateVisualizationValue() nach Bedienung.
+                // Die HTML-SDK-Kachel bleibt unverändert und wird nur bei einem
+                // Modul-/Konfigurationsupdate über ReloadHtml() frisch geladen.
                 return;
             }
         }
