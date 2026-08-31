@@ -11,14 +11,10 @@ declare(strict_types=1);
  * https://github.com/nicosandller/easy-floorplan
  * License: MIT
  *
- * Hinweis:
- * Diese erste Version übernimmt bewusst noch nicht den kompletten
- * Home-Assistant-Build von Easy Floorplan. Sie verwendet aber bereits
- * ein kompatibel angelehntes JSON-Datenmodell (walls, openings, items,
- * texts, floors) und stellt einen eigenen HTML-SDK-Editor bereit.
- *
- * Dadurch können wir Easy Floorplan schrittweise portieren, ohne
- * Home-Assistant-Abhängigkeiten in IP-Symcon einzuschleppen.
+ * Easy Floorplan v1.5.5 wird als lokale Vendor-Datei im Modul mitgeführt
+ * und bei ApplyChanges automatisch in den IP-Symcon-Webbereich publiziert.
+ * Der vorhandene HTML-SDK-Editor bleibt während der schrittweisen
+ * Home-Assistant-zu-IP-Symcon-Adapter-Portierung erhalten.
  */
 
 class Floorplaner extends IPSModuleStrict
@@ -27,6 +23,12 @@ class Floorplaner extends IPSModuleStrict
     // Easy Floorplan by Nicolas Sandller, MIT License
     // https://github.com/nicosandller/easy-floorplan
     private const EASY_FLOORPLAN_BASELINE = '1.5.5';
+    private const EASY_FLOORPLAN_VENDOR_DIR = 'vendor/easy-floorplan';
+    private const EASY_FLOORPLAN_JS_FILE = 'easy-floorplan-card.js';
+    private const EASY_FLOORPLAN_LICENSE_FILE = 'LICENSE';
+    private const EASY_FLOORPLAN_WEB_DIR = 'user/Floorplaner/vendor/easy-floorplan';
+    private const EASY_FLOORPLAN_WEB_JS = '/user/Floorplaner/vendor/easy-floorplan/easy-floorplan-card.js';
+    private const EASY_FLOORPLAN_WEB_LICENSE = '/user/Floorplaner/vendor/easy-floorplan/LICENSE';
     private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;
 
@@ -60,13 +62,77 @@ class Floorplaner extends IPSModuleStrict
             );
         }
 
+        $this->PublishEasyFloorplanAssets();
+
         $this->SetSummary('Floorplan Editor');
+    }
+
+    private function PublishEasyFloorplanAssets(): void
+    {
+        $sourceDir = __DIR__ . DIRECTORY_SEPARATOR . self::EASY_FLOORPLAN_VENDOR_DIR;
+        $targetDir = rtrim(IPS_GetKernelDir(), DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR . 'webfront'
+            . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::EASY_FLOORPLAN_WEB_DIR);
+
+        if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            $this->SendDebug('Easy Floorplan', 'Zielverzeichnis konnte nicht erstellt werden: ' . $targetDir, 0);
+            return;
+        }
+
+        $assets = [
+            self::EASY_FLOORPLAN_JS_FILE,
+            self::EASY_FLOORPLAN_LICENSE_FILE
+        ];
+
+        foreach ($assets as $fileName) {
+            $source = $sourceDir . DIRECTORY_SEPARATOR . $fileName;
+            $target = $targetDir . DIRECTORY_SEPARATOR . $fileName;
+
+            if (!is_file($source)) {
+                $this->SendDebug('Easy Floorplan', 'Quelldatei fehlt: ' . $source, 0);
+                continue;
+            }
+
+            $needsCopy = !is_file($target);
+            if (!$needsCopy) {
+                $sourceHash = @hash_file('sha256', $source);
+                $targetHash = @hash_file('sha256', $target);
+                $needsCopy = $sourceHash === false || $targetHash === false || $sourceHash !== $targetHash;
+            }
+
+            if ($needsCopy) {
+                if (!@copy($source, $target)) {
+                    $this->SendDebug('Easy Floorplan', 'Datei konnte nicht veröffentlicht werden: ' . $fileName, 0);
+                    continue;
+                }
+                $this->SendDebug('Easy Floorplan', 'Veröffentlicht: ' . $fileName, 0);
+            }
+        }
+    }
+
+    private function GetEasyFloorplanAssetStatus(): array
+    {
+        $sourceDir = __DIR__ . DIRECTORY_SEPARATOR . self::EASY_FLOORPLAN_VENDOR_DIR;
+        $targetDir = rtrim(IPS_GetKernelDir(), DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR . 'webfront'
+            . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::EASY_FLOORPLAN_WEB_DIR);
+
+        $jsSource = $sourceDir . DIRECTORY_SEPARATOR . self::EASY_FLOORPLAN_JS_FILE;
+        $licenseSource = $sourceDir . DIRECTORY_SEPARATOR . self::EASY_FLOORPLAN_LICENSE_FILE;
+        $jsTarget = $targetDir . DIRECTORY_SEPARATOR . self::EASY_FLOORPLAN_JS_FILE;
+
+        return [
+            'jsSource'      => is_file($jsSource),
+            'licenseSource' => is_file($licenseSource),
+            'jsPublished'   => is_file($jsTarget)
+        ];
     }
 
     public function GetConfigurationForm(): string
     {
         $project = $this->GetProject();
         $counts = $this->CountElements($project);
+        $assetStatus = $this->GetEasyFloorplanAssetStatus();
 
         $elements = [
             [
@@ -75,7 +141,22 @@ class Floorplaner extends IPSModuleStrict
             ],
             [
                 'type'    => 'Label',
-                'caption' => 'Basis: Easy Floorplan (MIT). Die Zeichenfläche hat keine feste Projektgröße und passt sich dynamisch an die verfügbare HTML-SDK-Fläche an.'
+                'caption' => 'Basis: Easy Floorplan v' . self::EASY_FLOORPLAN_BASELINE . ' (MIT). Die Zeichenfläche hat keine feste Projektgröße und passt sich dynamisch an die verfügbare HTML-SDK-Fläche an.'
+            ],
+            [
+                'type'    => 'Label',
+                'caption' => 'Modulquelle JS: FLOOR/' . self::EASY_FLOORPLAN_VENDOR_DIR . '/' . self::EASY_FLOORPLAN_JS_FILE
+                    . ($assetStatus['jsSource'] ? ' – vorhanden' : ' – FEHLT')
+            ],
+            [
+                'type'    => 'Label',
+                'caption' => 'Modulquelle Lizenz: FLOOR/' . self::EASY_FLOORPLAN_VENDOR_DIR . '/' . self::EASY_FLOORPLAN_LICENSE_FILE
+                    . ($assetStatus['licenseSource'] ? ' – vorhanden' : ' – FEHLT')
+            ],
+            [
+                'type'    => 'Label',
+                'caption' => 'HTML-SDK Runtime: ' . self::EASY_FLOORPLAN_WEB_JS
+                    . ($assetStatus['jsPublished'] ? ' – veröffentlicht' : ' – noch nicht veröffentlicht')
             ],
             [
                 'type'     => 'ExpansionPanel',
@@ -198,6 +279,7 @@ class Floorplaner extends IPSModuleStrict
 <html>
 <head>
     <meta charset="utf-8">
+    <script type="module" src="__EASY_FLOORPLAN_JS__"></script>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <style>
         :root {
@@ -672,6 +754,7 @@ class Floorplaner extends IPSModuleStrict
         </div>
 
         <div class="spacer"></div>
+        <div id="easyFloorplanRuntimeState" class="status">Easy Floorplan wird geprüft …</div>
         <div id="status" class="status">Bereit</div>
     </div>
 
@@ -703,6 +786,7 @@ class Floorplaner extends IPSModuleStrict
     const propTitle = document.getElementById('propTitle');
     const floorSelect = document.getElementById('floorSelect');
     const statusEl = document.getElementById('status');
+    const easyFloorplanRuntimeState = document.getElementById('easyFloorplanRuntimeState');
     const app = document.getElementById('app');
     const variableModal = document.getElementById('variableModal');
     const variableList = document.getElementById('variableList');
@@ -1830,17 +1914,44 @@ class Floorplaner extends IPSModuleStrict
     });
     resizeObserver.observe(svg);
 
+    function checkEasyFloorplanRuntime(attempt = 0) {
+        const cardReady = !!customElements.get('easy-floorplan-card');
+        const editorReady = !!customElements.get('easy-floorplan-card-editor');
+
+        if (cardReady || editorReady) {
+            easyFloorplanRuntimeState.textContent = 'Easy Floorplan v__EASY_FLOORPLAN_VERSION__ lokal geladen';
+            return;
+        }
+
+        if (attempt < 30) {
+            setTimeout(() => checkEasyFloorplanRuntime(attempt + 1), 200);
+            return;
+        }
+
+        easyFloorplanRuntimeState.textContent = 'Easy Floorplan lokal nicht gefunden';
+    }
+
     pushHistory();
     updateModeUI();
     renderAll();
     requestAnimationFrame(fit);
+    checkEasyFloorplanRuntime();
 })();
 </script>
 </body>
 </html>
 HTML;
 
-        return str_replace('__INITIAL_PROJECT__', $initial, $html);
+        return str_replace(
+            ['__INITIAL_PROJECT__', '__EASY_FLOORPLAN_JS__', '__EASY_FLOORPLAN_VERSION__'],
+            [$initial, self::EASY_FLOORPLAN_WEB_JS, self::EASY_FLOORPLAN_BASELINE],
+            $html
+        );
+    }
+
+    public function GetEasyFloorplanWebPath(): string
+    {
+        return self::EASY_FLOORPLAN_WEB_JS;
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
