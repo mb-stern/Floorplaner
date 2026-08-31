@@ -867,6 +867,59 @@ class Floorplaner extends IPSModuleStrict
 
         .device-glyph { color: currentColor; pointer-events: none; }
         .device-glyph * { vector-effect: non-scaling-stroke; }
+
+        :root {
+            --fp-bg: var(--card-background-color, var(--primary-background-color, #1f1f1f));
+            --fp-panel: var(--secondary-background-color, rgba(42,42,42,.96));
+            --fp-text: var(--primary-text-color, #f2f2f2);
+            --fp-muted: var(--secondary-text-color, #b8b8b8);
+            --fp-border: var(--divider-color, rgba(255,255,255,.18));
+            --fp-grid: color-mix(in srgb, var(--fp-text) 14%, transparent);
+        }
+
+        html, body, #app, .app, .editor, .canvas-wrap, .viewport, #viewport {
+            background: var(--fp-bg) !important;
+            color: var(--fp-text);
+        }
+
+        svg#floorSvg {
+            background: var(--fp-bg);
+        }
+
+        .grid-editor-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: 4px;
+        }
+
+        .grid-size-input {
+            width: 48px;
+            min-width: 48px;
+            max-width: 58px;
+            height: 24px;
+            padding: 1px 4px;
+            font-size: 11px;
+        }
+
+        .grid-line {
+            stroke: var(--fp-grid);
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        body.light,
+        body[data-theme="light"],
+        html[data-theme="light"] {
+            --fp-bg: var(--card-background-color, var(--primary-background-color, #ffffff));
+            --fp-panel: var(--secondary-background-color, rgba(255,255,255,.96));
+            --fp-text: var(--primary-text-color, #202020);
+            --fp-muted: var(--secondary-text-color, #666666);
+            --fp-border: var(--divider-color, rgba(0,0,0,.18));
+            --fp-grid: color-mix(in srgb, var(--fp-text) 12%, transparent);
+        }
+
 </style>
 </head>
 <body>
@@ -900,6 +953,10 @@ class Floorplaner extends IPSModuleStrict
             <button data-tool="window">Fenster</button>
             <button data-tool="device">Gerät</button>
             <button data-tool="furniture">Möbel</button>
+            <div class="grid-editor-controls" title="Raster">
+                <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
+                <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
+            </div>
             <button data-tool="text">Text</button>
         </div>
 
@@ -987,6 +1044,8 @@ class Floorplaner extends IPSModuleStrict
     let wallStart = null;
     let preview = null;
     let drag = null;
+    let editorShowGrid = true;
+    let editorGridSize = 20;
 
     let zoom = 1;
     let panX = 0;
@@ -1067,7 +1126,8 @@ class Floorplaner extends IPSModuleStrict
         state = normalizeProject(JSON.parse(history[historyIndex]));
         selected = null;
         wallStart = null;
-        renderAll();
+        syncHostTheme();
+    renderAll();
         markDirty();
         updateUndoButtons();
     }
@@ -1114,6 +1174,10 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function setMode(mode) {
+        const gridControls = document.querySelector('.grid-editor-controls');
+        if (gridControls) {
+            gridControls.style.display = mode === 'edit' ? 'inline-flex' : 'none';
+        }
         state.mode = mode === 'view' ? 'view' : 'edit';
         selected = null;
         wallStart = null;
@@ -1436,9 +1500,48 @@ class Floorplaner extends IPSModuleStrict
         return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
+    function syncHostTheme() {
+        const hostStyle = getComputedStyle(document.documentElement);
+        const bodyStyle = getComputedStyle(document.body);
+
+        const bg =
+            hostStyle.getPropertyValue('--card-background-color').trim() ||
+            hostStyle.getPropertyValue('--primary-background-color').trim() ||
+            bodyStyle.backgroundColor;
+
+        const fg =
+            hostStyle.getPropertyValue('--primary-text-color').trim() ||
+            bodyStyle.color;
+
+        if (bg) document.documentElement.style.setProperty('--fp-bg', bg);
+        if (fg) document.documentElement.style.setProperty('--fp-text', fg);
+    }
+
+    function renderEditorGrid(parts) {
+        if (state.mode !== 'edit' || !editorShowGrid) return;
+
+        const rect = svg.getBoundingClientRect();
+        const left = (-panX) / zoom;
+        const top = (-panY) / zoom;
+        const right = left + rect.width / zoom;
+        const bottom = top + rect.height / zoom;
+        const step = Math.max(2, Number(editorGridSize) || 20);
+
+        const startX = Math.floor(left / step) * step;
+        const startY = Math.floor(top / step) * step;
+
+        for (let x = startX; x <= right; x += step) {
+            parts.push(`<line class="grid-line" x1="${x}" y1="${top}" x2="${x}" y2="${bottom}"/>`);
+        }
+        for (let y = startY; y <= bottom; y += step) {
+            parts.push(`<line class="grid-line" x1="${left}" y1="${y}" x2="${right}" y2="${y}"/>`);
+        }
+    }
+
     function render() {
         const floor = currentFloor();
         const parts = [];
+        renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
 
         // Der Hintergrund deckt immer nur den aktuell sichtbaren Bereich ab.
@@ -2152,6 +2255,25 @@ class Floorplaner extends IPSModuleStrict
             closeDeviceIconPicker();
         }
     });
+
+    const showGridVisu = document.getElementById('showGridVisu');
+    const gridSizeVisu = document.getElementById('gridSizeVisu');
+
+    if (showGridVisu) {
+        showGridVisu.checked = editorShowGrid;
+        showGridVisu.addEventListener('change', () => {
+            editorShowGrid = showGridVisu.checked;
+            render();
+        });
+    }
+
+    if (gridSizeVisu) {
+        gridSizeVisu.value = editorGridSize;
+        gridSizeVisu.addEventListener('input', () => {
+            editorGridSize = Math.max(2, Number(gridSizeVisu.value) || 20);
+            render();
+        });
+    }
 
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
@@ -2890,6 +3012,13 @@ class Floorplaner extends IPSModuleStrict
     updateModeUI();
     renderAll();
     requestAnimationFrame(fit);
+    const themeObserver = new MutationObserver(() => {
+        syncHostTheme();
+        render();
+    });
+    themeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['class','style','data-theme']});
+    themeObserver.observe(document.body, {attributes: true, attributeFilter: ['class','style','data-theme']});
+
 })();
 </script>
 
