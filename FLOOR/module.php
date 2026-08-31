@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * Foorplaner
+ * Floorplaner
  * Prefix in module.json: FLOOR
  *
  * Basis / Zielprojekt:
@@ -69,7 +69,7 @@ class Floorplaner extends IPSModuleStrict
         $elements = [
             [
                 'type'    => 'Label',
-                'caption' => 'Foorplaner – Floorplan Editor für IP-Symcon'
+                'caption' => 'Floorplaner – Floorplan Editor für IP-Symcon'
             ],
             [
                 'type'    => 'Label',
@@ -109,7 +109,7 @@ class Floorplaner extends IPSModuleStrict
                         'maximum' => 200
                     ],
                     [
-                        'type'    => 'Color',
+                        'type'    => 'SelectColor',
                         'name'    => 'BackgroundColor',
                         'caption' => 'Hintergrund'
                     ],
