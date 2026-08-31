@@ -21,7 +21,7 @@ declare(strict_types=1);
  * Home-Assistant-Abhängigkeiten in IP-Symcon einzuschleppen.
  */
 
-class Foorplaner extends IPSModuleStrict
+class Floorplaner extends IPSModuleStrict
 {
     private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;
