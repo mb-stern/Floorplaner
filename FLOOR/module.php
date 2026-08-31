@@ -899,11 +899,38 @@ class Floorplaner extends IPSModuleStrict
         }
 
         html[data-theme="light"] .device circle {
+            fill: #f2f2f2;
             stroke: rgba(0,0,0,.62);
+        }
+
+        html[data-theme="light"] .device.active-light circle {
+            fill: #fff2a8;
+            stroke: #8a7200;
         }
 
         html[data-theme="light"] .device-glyph {
             color: #111111;
+        }
+
+        /* Möbel im hellen Theme:
+           helle Flächen + dunkle Konturen, damit Details nicht in dunklen
+           Eigenfüllungen verschwinden. */
+        html[data-theme="light"] .furniture {
+            color: #252525;
+        }
+
+        html[data-theme="light"] .furniture [fill="currentColor"] {
+            fill: #eeeeee !important;
+            stroke: #252525 !important;
+        }
+
+        html[data-theme="light"] .furniture [fill="none"] {
+            stroke: #252525 !important;
+        }
+
+        html[data-theme="light"] .furniture.selected [fill="currentColor"],
+        html[data-theme="light"] .furniture.selected [fill="none"] {
+            stroke: #1769aa !important;
         }
 
         html[data-theme="light"] .opening {
