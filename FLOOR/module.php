@@ -387,6 +387,17 @@ class Floorplaner extends IPSModuleStrict
             cursor: pointer;
         }
 
+        /* Größere Trefferfläche nur für die Öffnung selbst.
+           Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
+        .opening-hit {
+            stroke: transparent;
+            stroke-width: 22;
+            fill: none;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+            cursor: move;
+        }
+
         .opening-gap {
             stroke: #303030;
             stroke-width: 16;
@@ -1785,6 +1796,7 @@ class Floorplaner extends IPSModuleStrict
             const stateClass = isOpen ? ' opening-state-open' : '';
 
             parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}">`);
+            parts.push(`<line class="opening-hit" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
             parts.push(`<line class="opening-gap" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
 
             if (o.type === 'door') {
@@ -2888,6 +2900,30 @@ class Floorplaner extends IPSModuleStrict
                 obj.y1 = snapValue(drag.original.y1 + dy);
                 obj.x2 = snapValue(drag.original.x2 + dx);
                 obj.y2 = snapValue(drag.original.y2 + dy);
+            } else if (drag.type === 'opening') {
+                const wall = floor.walls.find(w => w.id === drag.original.wallId);
+                if (!wall) return;
+
+                const vx = Number(wall.x2) - Number(wall.x1);
+                const vy = Number(wall.y2) - Number(wall.y1);
+                const length2 = vx * vx + vy * vy;
+                if (length2 <= 0) return;
+
+                // Maus auf die zugehörige Wand projizieren. Es bewegt sich nur
+                // Tür/Fenster in der Wand; die Wand selbst bleibt unverändert.
+                let position =
+                    ((p.x - Number(wall.x1)) * vx + (p.y - Number(wall.y1)) * vy) /
+                    length2;
+
+                const wallLength = Math.sqrt(length2);
+                const halfOpening = Math.min(
+                    Math.max(10, Number(obj.length || 80) / 2),
+                    wallLength / 2
+                );
+                const edge = wallLength > 0 ? halfOpening / wallLength : 0;
+
+                position = Math.max(edge, Math.min(1 - edge, position));
+                obj.position = Math.round(position * 10000) / 10000;
             } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture') {
                 obj.x = snapValue(drag.original.x + dx);
                 obj.y = snapValue(drag.original.y + dy);
@@ -2958,13 +2994,19 @@ class Floorplaner extends IPSModuleStrict
                 const centerPos = Math.max(0, Math.min(1, Number(drag.original.position ?? .5)));
                 const cx = Number(wall.x1) + vx * centerPos;
                 const cy = Number(wall.y1) + vy * centerPos;
+                const raw = svgPointRaw(evt);
 
-                // Projektion der Maus auf die Wand. Die Öffnung bleibt zentriert
-                // und wird symmetrisch breiter/schmaler.
-                const projectedHalf = Math.abs((p.x - cx) * ux + (p.y - cy) * uy);
+                // Wie beim Fenster: Griff entlang der Wand ziehen. Für die
+                // Länge bewusst OHNE Raster-Snap rechnen, damit auch Türen
+                // bei kleinen Mausbewegungen sofort reagieren.
+                const projectedHalf = Math.abs((raw.x - cx) * ux + (raw.y - cy) * uy);
                 const maxHalf = Math.min(centerPos * wallLength, (1 - centerPos) * wallLength);
                 const maxLength = Math.max(20, maxHalf * 2);
-                obj.length = Math.max(20, Math.min(maxLength, Math.round(projectedHalf * 2)));
+
+                obj.length = Math.max(
+                    20,
+                    Math.min(maxLength, Math.round(projectedHalf * 2))
+                );
             }
 
             render();
