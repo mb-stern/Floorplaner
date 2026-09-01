@@ -2901,7 +2901,8 @@ class Floorplaner extends IPSModuleStrict
                 obj.x2 = snapValue(drag.original.x2 + dx);
                 obj.y2 = snapValue(drag.original.y2 + dy);
             } else if (drag.type === 'opening') {
-                const wall = floor.walls.find(w => w.id === drag.original.wallId);
+                const activeFloor = currentFloor();
+                const wall = activeFloor.walls.find(w => w.id === drag.original.wallId);
                 if (!wall) return;
 
                 const vx = Number(wall.x2) - Number(wall.x1);
