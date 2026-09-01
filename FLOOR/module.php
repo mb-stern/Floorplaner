@@ -10,15 +10,6 @@ declare(strict_types=1);
  * Easy Floorplan by Nicolas Sandller
  * https://github.com/nicosandller/easy-floorplan
  * License: MIT
- *
- * Hinweis:
- * Diese erste Version übernimmt bewusst noch nicht den kompletten
- * Home-Assistant-Build von Easy Floorplan. Sie verwendet aber bereits
- * ein kompatibel angelehntes JSON-Datenmodell (walls, openings, items,
- * texts, floors) und stellt einen eigenen HTML-SDK-Editor bereit.
- *
- * Dadurch können wir Easy Floorplan schrittweise portieren, ohne
- * Home-Assistant-Abhängigkeiten in IP-Symcon einzuschleppen.
  */
 
 class Floorplaner extends IPSModuleStrict
