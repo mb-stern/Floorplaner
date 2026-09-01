@@ -1508,38 +1508,44 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
-        const width = Math.max(1, bounds.maxX - bounds.minX);
-        const height = Math.max(1, bounds.maxY - bounds.minY);
+        const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+        const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
 
-        // Immer die tatsächlich sichtbare Kachel als Ziel verwenden.
-        // Unten bleibt etwas Platz für Etagenwahl/Editorbutton, damit der
-        // Grundriss niemals von der Leiste abgeschnitten oder halb verdeckt wird.
-        const sideMargin = 24;
-        const topMargin = 24;
-        const bottomMargin = state.mode === 'view' ? 72 : 54;
+        /*
+         * Einpassen immer proportional:
+         * - links/rechts UND oben/unten vollständig sichtbar
+         * - EIN gemeinsamer Zoomfaktor für X und Y
+         * - dadurch keinerlei Verzerrung/Streckung
+         *
+         * Im Bedienmodus liegt unten nur die kleine Etagen-/Editorleiste über
+         * dem SVG. Dafür wird separat Platz reserviert.
+         */
+        const padding = 24;
+        const liveBottomOverlay = state.mode === 'view' ? 56 : 0;
 
-        const usableWidth = Math.max(1, box.width - sideMargin * 2);
-        const usableHeight = Math.max(1, box.height - topMargin - bottomMargin);
+        const left = padding;
+        const right = box.width - padding;
+        const top = padding;
+        const bottom = box.height - padding - liveBottomOverlay;
 
-        zoom = Math.max(
-            0.05,
-            Math.min(
-                20,
-                Math.min(
-                    usableWidth / width,
-                    usableHeight / height
-                )
-            )
-        );
+        const availableWidth = Math.max(1, right - left);
+        const availableHeight = Math.max(1, bottom - top);
 
-        const centerX = (bounds.minX + bounds.maxX) / 2;
-        const centerY = (bounds.minY + bounds.maxY) / 2;
+        const scaleX = availableWidth / contentWidth;
+        const scaleY = availableHeight / contentHeight;
 
-        const targetX = box.width / 2;
-        const targetY = topMargin + usableHeight / 2;
+        // WICHTIG: nur EIN Zoomfaktor -> Seitenverhältnis bleibt exakt erhalten.
+        zoom = Math.max(0.05, Math.min(20, Math.min(scaleX, scaleY)));
 
-        panX = targetX - centerX * zoom;
-        panY = targetY - centerY * zoom;
+        const contentCenterX = (bounds.minX + bounds.maxX) / 2;
+        const contentCenterY = (bounds.minY + bounds.maxY) / 2;
+
+        // In der tatsächlich verfügbaren Fläche horizontal UND vertikal zentrieren.
+        const targetCenterX = (left + right) / 2;
+        const targetCenterY = (top + bottom) / 2;
+
+        panX = targetCenterX - contentCenterX * zoom;
+        panY = targetCenterY - contentCenterY * zoom;
 
         setTransform();
         render();
