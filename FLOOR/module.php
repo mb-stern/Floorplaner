@@ -1123,7 +1123,6 @@ class Floorplaner extends IPSModuleStrict
 
         <div class="group">
             <button id="fitBtn">Einpassen</button>
-            <button id="saveBtn">Speichern</button>
             <button id="finishBtn">Fertig / Bedienen</button>
         </div>
 
@@ -2498,7 +2497,6 @@ class Floorplaner extends IPSModuleStrict
     document.getElementById('undoBtn').addEventListener('click', () => restoreHistory(historyIndex - 1));
     document.getElementById('redoBtn').addEventListener('click', () => restoreHistory(historyIndex + 1));
     document.getElementById('fitBtn').addEventListener('click', fit);
-    document.getElementById('saveBtn').addEventListener('click', saveProject);
     function scheduleResponsiveFit() {
         if (resizeFitTimer) {
             clearTimeout(resizeFitTimer);
