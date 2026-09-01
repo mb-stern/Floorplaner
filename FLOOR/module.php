@@ -983,6 +983,63 @@ class Floorplaner extends IPSModuleStrict
             border-color: var(--fp-border);
         }
 
+        /* Helles Symcon-Theme:
+           Dark bleibt unverändert. Im hellen Theme die Grundrisszeichnung
+           bewusst weicher als reines Schwarz darstellen. */
+        html[data-theme="light"] .wall {
+            stroke: #4a4a4a;
+        }
+
+        html[data-theme="light"] .opening-gap {
+            stroke: #f5f5f5;
+        }
+
+        html[data-theme="light"] .opening-line {
+            stroke: #5f5f5f;
+        }
+
+        html[data-theme="light"] .opening-shutter {
+            stroke: #707070;
+        }
+
+        html[data-theme="light"] .opening-shutter-slat {
+            stroke: #8a8a8a;
+        }
+
+        html[data-theme="light"] .furniture {
+            color: #555555;
+        }
+
+        html[data-theme="light"] .furniture [fill="currentColor"] {
+            fill: rgba(90,90,90,.08) !important;
+            stroke: #555555 !important;
+        }
+
+        html[data-theme="light"] .furniture [fill="none"] {
+            stroke: #555555 !important;
+        }
+
+        html[data-theme="light"] .device circle {
+            fill: rgba(255,255,255,.72);
+            stroke: #777777;
+        }
+
+        html[data-theme="light"] .device-glyph {
+            color: #555555;
+        }
+
+        html[data-theme="light"] .runtime-value {
+            fill: #4a4a4a !important;
+        }
+
+        html[data-theme="light"] .label,
+        html[data-theme="light"] text,
+        html[data-theme="light"] tspan,
+        html[data-theme="light"] .furniture-label {
+            fill: #5a5a5a;
+            color: #5a5a5a;
+        }
+
         html[data-theme="light"] .status,
         html[data-theme="light"] .hint,
         html[data-theme="light"] small {
