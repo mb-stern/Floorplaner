@@ -1088,14 +1088,18 @@ class Floorplaner extends IPSModuleStrict
                 Tür/Fenster: auf eine Wand klicken.<br>
                 Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: MDI-Symbol in den Eigenschaften auswählen.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
                 Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
-                Mittlere Maustaste: Grundriss verschieben.<br>
-                Entf: ausgewähltes Element löschen.<br>Einpassen: kompletten Grundriss automatisch in die Kachel einpassen.
+                Verschieben: Werkzeug wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
+                Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
+                − / +: manuell heraus- oder hineinzoomen.<br>
+                Start: jederzeit auf die ursprüngliche 1:1-Startansicht der aktuellen Etage zurück.<br>
+                Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
             </div>
         </aside>
     </div>
     <div class="toolbar">
         <div class="group">
             <button data-tool="select" class="active">Auswahl</button>
+            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
             <button data-tool="wall">Wand</button>
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
@@ -1122,6 +1126,9 @@ class Floorplaner extends IPSModuleStrict
         </div>
 
         <div class="group">
+            <button id="zoomOutBtn" type="button" title="Herauszoomen">−</button>
+            <button id="zoomInBtn" type="button" title="Hineinzoomen">+</button>
+            <button id="homeViewBtn" type="button" title="Zur Startansicht dieser Etage">Start</button>
             <button id="fitBtn">Einpassen</button>
             <button id="finishBtn">Fertig / Bedienen</button>
         </div>
@@ -1198,6 +1205,14 @@ class Floorplaner extends IPSModuleStrict
     let zoom = 1;
     let panX = 0;
     let panY = 0;
+
+    // Jede Etage besitzt ihre eigene Ansicht. Dadurch verändert Einpassen,
+    // Zoomen oder Verschieben im OG nicht mehr die Darstellung des UG.
+    const floorViews = new Map();
+
+    // Feste Startansicht je Etage. Sie wird beim ersten Anzeigen der Etage
+    // einmal erzeugt und danach nicht mehr durch Einpassen/Zoomen/Verschieben verändert.
+    const floorHomeViews = new Map();
 
     let history = [];
     let historyIndex = -1;
@@ -1434,6 +1449,100 @@ class Floorplaner extends IPSModuleStrict
         scene.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
     }
 
+    function rememberCurrentFloorView(autoFit = false) {
+        if (!state?.activeFloor) return;
+        floorViews.set(state.activeFloor, {
+            zoom,
+            panX,
+            panY,
+            autoFit: autoFit === true
+        });
+    }
+
+    function makeDefaultFloorView() {
+        const box = svg.getBoundingClientRect();
+
+        // Die "Startgröße" ist bewusst 1:1. Der Ursprung liegt dabei in der
+        // Mitte der verfügbaren Zeichenfläche, damit nach starkem Zoom/Pan
+        // immer wieder eine verlässliche Ausgangsansicht erreichbar ist.
+        const bottomOverlay = state.mode === 'view' ? 56 : 0;
+        const centerX = box.width > 0 ? box.width / 2 : 0;
+        const centerY = box.height > 0 ? Math.max(0, (box.height - bottomOverlay) / 2) : 0;
+
+        return {
+            zoom: 1,
+            panX: centerX,
+            panY: centerY
+        };
+    }
+
+    function ensureCurrentFloorHomeView() {
+        if (!state?.activeFloor || floorHomeViews.has(state.activeFloor)) return;
+        floorHomeViews.set(state.activeFloor, makeDefaultFloorView());
+    }
+
+    function resetCurrentFloorView() {
+        ensureCurrentFloorHomeView();
+        const home = floorHomeViews.get(state.activeFloor);
+        if (!home) return;
+
+        zoom = home.zoom;
+        panX = home.panX;
+        panY = home.panY;
+
+        rememberCurrentFloorView(false);
+        setTransform();
+        render();
+    }
+
+    function restoreCurrentFloorViewOrFit() {
+        ensureCurrentFloorHomeView();
+        const saved = floorViews.get(state.activeFloor);
+        if (!saved) {
+            resetCurrentFloorView();
+            return;
+        }
+
+        zoom = Math.max(0.05, Math.min(20, Number(saved.zoom) || 1));
+        panX = Number(saved.panX) || 0;
+        panY = Number(saved.panY) || 0;
+        setTransform();
+        render();
+    }
+
+    function switchFloorView(nextFloorID) {
+        if (!state.floors.some(f => f.id === nextFloorID)) return;
+
+        rememberCurrentFloorView(false);
+        state.activeFloor = nextFloorID;
+        selected = null;
+        wallStart = null;
+        preview = null;
+        render();
+        requestAnimationFrame(restoreCurrentFloorViewOrFit);
+    }
+
+    function zoomManual(factor) {
+        const box = svg.getBoundingClientRect();
+        if (!box.width || !box.height) return;
+
+        const bottomOverlay = state.mode === 'view' ? 56 : 0;
+        const centerX = box.width / 2;
+        const centerY = Math.max(0, (box.height - bottomOverlay) / 2);
+
+        const worldX = (centerX - panX) / Math.max(0.0001, zoom);
+        const worldY = (centerY - panY) / Math.max(0.0001, zoom);
+
+        const nextZoom = Math.max(0.05, Math.min(20, zoom * factor));
+        panX = centerX - worldX * nextZoom;
+        panY = centerY - worldY * nextZoom;
+        zoom = nextZoom;
+
+        rememberCurrentFloorView(false);
+        setTransform();
+        render();
+    }
+
     function visibleWorldBounds(extra = 80) {
         const box = svg.getBoundingClientRect();
         const z = Math.max(0.0001, zoom);
@@ -1503,6 +1612,7 @@ class Floorplaner extends IPSModuleStrict
             zoom = 1;
             panX = box.width / 2;
             panY = box.height / 2;
+            rememberCurrentFloorView(true);
             setTransform();
             render();
             return;
@@ -1547,6 +1657,7 @@ class Floorplaner extends IPSModuleStrict
         panX = targetCenterX - contentCenterX * zoom;
         panY = targetCenterY - contentCenterY * zoom;
 
+        rememberCurrentFloorView(true);
         setTransform();
         render();
     }
@@ -2503,6 +2614,10 @@ class Floorplaner extends IPSModuleStrict
     document.getElementById('undoBtn').addEventListener('click', () => restoreHistory(historyIndex - 1));
     document.getElementById('redoBtn').addEventListener('click', () => restoreHistory(historyIndex + 1));
     document.getElementById('fitBtn').addEventListener('click', fit);
+    document.getElementById('zoomOutBtn').addEventListener('click', () => zoomManual(1 / 1.2));
+    document.getElementById('zoomInBtn').addEventListener('click', () => zoomManual(1.2));
+    document.getElementById('homeViewBtn').addEventListener('click', resetCurrentFloorView);
+
     function scheduleResponsiveFit() {
         if (resizeFitTimer) {
             clearTimeout(resizeFitTimer);
@@ -2519,7 +2634,13 @@ class Floorplaner extends IPSModuleStrict
             lastTileHeight = rect.height;
 
             if (widthChanged || heightChanged) {
-                fit();
+                const saved = floorViews.get(state.activeFloor);
+                if (!saved || saved.autoFit !== false) {
+                    fit();
+                } else {
+                    setTransform();
+                    render();
+                }
             }
         }, 80);
     }
@@ -2574,14 +2695,7 @@ class Floorplaner extends IPSModuleStrict
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
 
     liveFloorSelect?.addEventListener('change', () => {
-        const nextFloorID = liveFloorSelect.value;
-        if (!state.floors.some(f => f.id === nextFloorID)) return;
-
-        state.activeFloor = nextFloorID;
-        selected = null;
-        wallStart = null;
-        render();
-        requestAnimationFrame(fit);
+        switchFloorView(liveFloorSelect.value);
     });
 
     document.getElementById('deleteFloorBtn')?.addEventListener('click', () => {
@@ -2596,6 +2710,8 @@ class Floorplaner extends IPSModuleStrict
         if (index < 0) return;
 
         state.floors.splice(index, 1);
+        floorViews.delete(floor.id);
+        floorHomeViews.delete(floor.id);
 
         // Der Editor benötigt immer mindestens eine Etage.
         // Wird die letzte gelöscht, entsteht eine wirklich leere neue Etage.
@@ -2622,7 +2738,7 @@ class Floorplaner extends IPSModuleStrict
         pushHistory();
         markDirty();
         renderAll();
-        requestAnimationFrame(fit);
+        requestAnimationFrame(restoreCurrentFloorViewOrFit);
     });
 
     document.getElementById('addFloorBtn').addEventListener('click', () => {
@@ -2639,21 +2755,18 @@ class Floorplaner extends IPSModuleStrict
             areas: [],
             trackers: []
         };
+        rememberCurrentFloorView(false);
         state.floors.push(floor);
         state.activeFloor = floor.id;
         selected = null;
         pushHistory();
         markDirty();
         render();
-        requestAnimationFrame(fit);
+        requestAnimationFrame(restoreCurrentFloorViewOrFit);
     });
 
     floorSelect.addEventListener('change', () => {
-        state.activeFloor = floorSelect.value;
-        selected = null;
-        wallStart = null;
-        render();
-        requestAnimationFrame(fit);
+        switchFloorView(floorSelect.value);
     });
 
     svg.addEventListener('pointerdown', evt => {
@@ -2670,6 +2783,13 @@ class Floorplaner extends IPSModuleStrict
         const target = evt.target.closest('[data-type]');
         const p = svgPoint(evt);
         const floor = currentFloor();
+
+        if (state.mode !== 'view' && tool === 'pan') {
+            drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
+            svg.setPointerCapture(evt.pointerId);
+            evt.preventDefault();
+            return;
+        }
 
         if (state.mode !== 'view' && rotateHandle) {
             const rotateType = rotateHandle.dataset.rotateType;
@@ -2887,6 +3007,7 @@ class Floorplaner extends IPSModuleStrict
         if (drag.mode === 'pan') {
             panX = drag.panX + (evt.clientX - drag.x);
             panY = drag.panY + (evt.clientY - drag.y);
+            rememberCurrentFloorView(false);
             setTransform();
             render();
             return;
@@ -3032,8 +3153,8 @@ class Floorplaner extends IPSModuleStrict
     });
 
     // Absichtlich kein Mausrad-Zoom: Die Visualisierungskachel soll das
-    // normale Scrollen der Oberfläche nicht abfangen. Zoom erfolgt nur
-    // über Einpassen bzw. die Editor-Ansicht selbst.
+    // normale Scrollen der Oberfläche nicht abfangen. Manuelles Zoomen
+    // erfolgt über die −/+ Schaltflächen; Einpassen bleibt zusätzlich erhalten.
 
     window.addEventListener('keydown', evt => {
         if (evt.target instanceof HTMLInputElement || evt.target instanceof HTMLSelectElement) {
