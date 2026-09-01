@@ -185,13 +185,11 @@ class Floorplaner extends IPSModuleStrict
         $project = $this->GetProject();
 
         /*
-         * Properties aus dem Konfigurationsformular sind führend für
-         * Canvas-Größe, Raster und Hintergrund.
+         * Raster- und Anzeigeeinstellungen gehören zum gespeicherten Floorplan.
+         * Sie dürfen beim Laden der HTML-SDK-Kachel nicht mehr durch die alten
+         * Modul-Properties überschrieben werden, sonst springen Rastergröße und
+         * Raster-An/Aus nach jedem Reload wieder auf die Standardwerte zurück.
          */
-        $project['grid'] = max(5, $this->ReadPropertyInteger('GridSize'));
-        $project['snap'] = max(0, $this->ReadPropertyInteger('SnapSize'));
-        $project['background'] = $this->ReadPropertyString('BackgroundColor');
-        $project['showGrid'] = $this->ReadPropertyBoolean('ShowGrid');
         $project = $this->AddRuntimeValues($project);
 
         $initial = json_encode(
