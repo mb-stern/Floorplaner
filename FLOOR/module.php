@@ -1133,43 +1133,69 @@ class Floorplaner extends IPSModuleStrict
     let saveTimer = null;
     let dirty = false;
     let propertiesSelectOpen = false;
+    let propertiesControlActive = false;
 
     function uid(prefix) {
         return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
     }
 
-    // Native Select-Popups können vom Browser geöffnet bleiben, während im
-    // Hintergrund Theme-, Resize- oder Runtime-Updates eintreffen. Damit ein
-    // render() die Liste nicht aus dem DOM reißt, markieren wir die komplette
-    // Bedienphase eines Select-Felds explizit.
+    // Bedienelemente in der Eigenschaftenleiste dürfen während der Eingabe
+    // nicht durch ein Hintergrund-render() ersetzt werden. Sonst verschwinden
+    // bei Zahlen-/Textfeldern Cursor und Markierung und native Select-Listen
+    // klappen zu.
     properties.addEventListener('pointerdown', evt => {
-        const select = evt.target.closest('select');
-        if (select && properties.contains(select)) {
-            propertiesSelectOpen = true;
+        const control = evt.target.closest('input, select, textarea');
+        if (control && properties.contains(control)) {
+            propertiesControlActive = true;
+            if (control instanceof HTMLSelectElement) {
+                propertiesSelectOpen = true;
+            }
         }
     }, true);
 
     properties.addEventListener('focusin', evt => {
-        if (evt.target instanceof HTMLSelectElement) {
-            propertiesSelectOpen = true;
+        if (
+            evt.target instanceof HTMLInputElement ||
+            evt.target instanceof HTMLSelectElement ||
+            evt.target instanceof HTMLTextAreaElement
+        ) {
+            propertiesControlActive = true;
+            if (evt.target instanceof HTMLSelectElement) {
+                propertiesSelectOpen = true;
+            }
         }
     });
 
     properties.addEventListener('change', evt => {
         if (evt.target instanceof HTMLSelectElement) {
-            // Die jeweilige change-Logik darf danach wieder normal rendern.
             propertiesSelectOpen = false;
         }
     }, true);
 
     properties.addEventListener('focusout', evt => {
-        if (evt.target instanceof HTMLSelectElement) {
-            // Kleiner Aufschub: der change-Handler desselben Selects soll zuerst
-            // fertig werden, bevor Hintergrund-render() wieder zugelassen wird.
+        if (
+            evt.target instanceof HTMLInputElement ||
+            evt.target instanceof HTMLSelectElement ||
+            evt.target instanceof HTMLTextAreaElement
+        ) {
+            // Erst nach dem jeweiligen change-Handler freigeben. Anschließend
+            // die Eigenschaften einmal sauber aus dem aktuellen Objektzustand
+            // aufbauen.
             setTimeout(() => {
-                if (!(document.activeElement instanceof HTMLSelectElement) ||
-                    !properties.contains(document.activeElement)) {
+                const active = document.activeElement;
+                const stillInside =
+                    active &&
+                    properties.contains(active) &&
+                    (
+                        active instanceof HTMLInputElement ||
+                        active instanceof HTMLSelectElement ||
+                        active instanceof HTMLTextAreaElement
+                    );
+
+                if (!stillInside) {
+                    propertiesControlActive = false;
                     propertiesSelectOpen = false;
+                    renderProperties();
                 }
             }, 0);
         }
@@ -2092,10 +2118,16 @@ class Floorplaner extends IPSModuleStrict
         // Situationen zuverlässig aus. Daher merken wir zusätzlich, ob gerade
         // irgendein Select in der Eigenschaftenleiste aktiv benutzt wird.
         const activeElement = document.activeElement;
-        if (
-            propertiesSelectOpen ||
-            (activeElement instanceof HTMLSelectElement && properties.contains(activeElement))
-        ) {
+        const activePropertyControl =
+            activeElement &&
+            properties.contains(activeElement) &&
+            (
+                activeElement instanceof HTMLInputElement ||
+                activeElement instanceof HTMLSelectElement ||
+                activeElement instanceof HTMLTextAreaElement
+            );
+
+        if (propertiesControlActive || propertiesSelectOpen || activePropertyControl) {
             return;
         }
         const floor = currentFloor();
