@@ -488,6 +488,14 @@ class Floorplaner extends IPSModuleStrict
             pointer-events: all;
         }
 
+        .resize-hit {
+            fill: transparent;
+            stroke: transparent;
+            stroke-width: 0;
+            pointer-events: all;
+            cursor: nwse-resize;
+        }
+
         .device .resize-handle {
             fill: #ffffff;
             stroke: #74b9ff;
@@ -1867,6 +1875,8 @@ class Floorplaner extends IPSModuleStrict
                 // Griff am rechten Ende der Öffnung: damit Tür/Fenster direkt
                 // entlang der zugehörigen Wand breiter oder schmaler gezogen werden kann.
                 parts.push(
+                    `<circle class="resize-hit" data-resize-type="opening" data-id="${o.id}" ` +
+                    `cx="${geom.x2}" cy="${geom.y2}" r="10"/>` +
                     `<circle class="resize-handle" data-resize-type="opening" data-id="${o.id}" ` +
                     `cx="${geom.x2}" cy="${geom.y2}" r="2.8"/>`
                 );
@@ -1897,6 +1907,8 @@ class Floorplaner extends IPSModuleStrict
                 const rotateY = -fh / 2 - 16;
 
                 parts.push(
+                    `<circle class="resize-hit" data-resize-type="furniture" data-id="${f.id}" ` +
+                    `cx="${fw / 2}" cy="${fh / 2}" r="9"/>` +
                     `<circle class="resize-handle" data-resize-type="furniture" data-id="${f.id}" ` +
                     `cx="${fw / 2}" cy="${fh / 2}" r="2.8"/>`
                 );
@@ -1940,7 +1952,8 @@ class Floorplaner extends IPSModuleStrict
                 `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` +
                 (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
                 (selected?.type === 'item' && selected.id === item.id
-                    ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
+                    ? `<circle class="resize-hit" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="9"/>` +
+                      `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
                     : '') +
                 `</g>`
             );
@@ -1957,7 +1970,9 @@ class Floorplaner extends IPSModuleStrict
                 `<text class="plan-text" x="${t.x}" y="${t.y}" font-size="${textSize}"` +
                 `${sel ? ' style="fill:#74b9ff"' : ''}>${escapeHtml(textValue)}</text>` +
                 (sel
-                    ? `<circle class="resize-handle" data-resize-type="text" data-id="${t.id}" ` +
+                    ? `<circle class="resize-hit" data-resize-type="text" data-id="${t.id}" ` +
+                      `cx="${Number(t.x) + estimatedWidth}" cy="${Number(t.y)}" r="9"/>` +
+                      `<circle class="resize-handle" data-resize-type="text" data-id="${t.id}" ` +
                       `cx="${Number(t.x) + estimatedWidth}" cy="${Number(t.y)}" r="2.8"/>`
                     : '') +
                 `</g>`
@@ -2665,6 +2680,9 @@ class Floorplaner extends IPSModuleStrict
         const floor = currentFloor();
 
         if (state.mode !== 'view' && rotateHandle) {
+            evt.preventDefault();
+            evt.stopPropagation();
+
             const rotateType = rotateHandle.dataset.rotateType;
             const id = rotateHandle.dataset.id;
             const obj = findEntity(rotateType, id);
@@ -2692,6 +2710,11 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (state.mode !== 'view' && resizeHandle) {
+            // Resize hat immer Vorrang. So kann ein Griff nicht versehentlich
+            // den Move-Handler der darunterliegenden Wand auslösen.
+            evt.preventDefault();
+            evt.stopPropagation();
+
             const resizeType = resizeHandle.dataset.resizeType;
             const id = resizeHandle.dataset.id;
             const obj = findEntity(resizeType, id);
@@ -2706,11 +2729,11 @@ class Floorplaner extends IPSModuleStrict
                     original: structuredClone(obj)
                 };
                 svg.setPointerCapture(evt.pointerId);
-                evt.preventDefault();
-                evt.stopPropagation();
                 render();
                 return;
             }
+
+            return;
         }
 
         if (state.mode === 'view') {
@@ -2906,6 +2929,9 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (drag.mode === 'rotate' && drag.original) {
+            evt.preventDefault();
+            evt.stopPropagation();
+
             const obj = findEntity(drag.type, drag.id);
             if (!obj || drag.type !== 'furniture') return;
 
@@ -2923,6 +2949,9 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (drag.mode === 'resize' && drag.original) {
+            evt.preventDefault();
+            evt.stopPropagation();
+
             const obj = findEntity(drag.type, drag.id);
             if (!obj) return;
 
@@ -2991,6 +3020,21 @@ class Floorplaner extends IPSModuleStrict
 
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
         drag = null;
+    });
+
+    svg.addEventListener('pointercancel', evt => {
+        if (!drag) return;
+
+        try {
+            if (svg.hasPointerCapture && svg.hasPointerCapture(evt.pointerId)) {
+                svg.releasePointerCapture(evt.pointerId);
+            }
+        } catch (_) {
+            // Manche Browser melden beim Abbruch bereits keinen Capture mehr.
+        }
+
+        drag = null;
+        render();
     });
 
     // Absichtlich kein Mausrad-Zoom: Die Visualisierungskachel soll das
