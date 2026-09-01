@@ -1449,6 +1449,19 @@ class Floorplaner extends IPSModuleStrict
         scene.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
     }
 
+    function viewSafeArea() {
+        const box = svg.getBoundingClientRect();
+        const headerTop = state.mode === 'view' ? 42 : 0;
+        const padding = 24;
+
+        return {
+            left: padding,
+            right: Math.max(padding, box.width - padding),
+            top: padding + headerTop,
+            bottom: Math.max(padding + headerTop, box.height - padding)
+        };
+    }
+
     function rememberCurrentFloorView(autoFit = false) {
         if (!state?.activeFloor) return;
         floorViews.set(state.activeFloor, {
@@ -1460,13 +1473,12 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function makeDefaultFloorView() {
-        const box = svg.getBoundingClientRect();
+        const safe = viewSafeArea();
 
-        // Die "Startgröße" ist bewusst 1:1. Der Ursprung liegt dabei in der
-        // Mitte der verfügbaren Zeichenfläche, damit nach starkem Zoom/Pan
-        // immer wieder eine verlässliche Ausgangsansicht erreichbar ist.
-        const centerX = box.width > 0 ? box.width / 2 : 0;
-        const centerY = box.height > 0 ? box.height / 2 : 0;
+        // Die "Startgröße" ist bewusst 1:1. Im Live-Modus beginnt die
+        // nutzbare Fläche unterhalb der HTML-SDK-Kopfzeile.
+        const centerX = (safe.left + safe.right) / 2;
+        const centerY = (safe.top + safe.bottom) / 2;
 
         return {
             zoom: 1,
@@ -1525,8 +1537,9 @@ class Floorplaner extends IPSModuleStrict
         const box = svg.getBoundingClientRect();
         if (!box.width || !box.height) return;
 
-        const centerX = box.width / 2;
-        const centerY = box.height / 2;
+        const safe = viewSafeArea();
+        const centerX = (safe.left + safe.right) / 2;
+        const centerY = (safe.top + safe.bottom) / 2;
 
         const worldX = (centerX - panX) / Math.max(0.0001, zoom);
         const worldY = (centerY - panY) / Math.max(0.0001, zoom);
@@ -1625,15 +1638,14 @@ class Floorplaner extends IPSModuleStrict
          * - EIN gemeinsamer Zoomfaktor für X und Y
          * - dadurch keinerlei Verzerrung/Streckung
          *
-         * Die Ansicht wird in der tatsächlichen Kachelfläche zentriert.
-         * Die kleine Bedienleiste unten beeinflusst die optische Mitte nicht.
+         * Im Live-Modus bleibt oben bewusst Platz für die HTML-SDK-Kopfzeile.
+         * Zentriert wird nur in der darunter tatsächlich nutzbaren Planfläche.
          */
-        const padding = 24;
-
-        const left = padding;
-        const right = box.width - padding;
-        const top = padding;
-        const bottom = box.height - padding;
+        const safe = viewSafeArea();
+        const left = safe.left;
+        const right = safe.right;
+        const top = safe.top;
+        const bottom = safe.bottom;
 
         const availableWidth = Math.max(1, right - left);
         const availableHeight = Math.max(1, bottom - top);
