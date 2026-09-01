@@ -1465,9 +1465,8 @@ class Floorplaner extends IPSModuleStrict
         // Die "Startgröße" ist bewusst 1:1. Der Ursprung liegt dabei in der
         // Mitte der verfügbaren Zeichenfläche, damit nach starkem Zoom/Pan
         // immer wieder eine verlässliche Ausgangsansicht erreichbar ist.
-        const bottomOverlay = state.mode === 'view' ? 56 : 0;
         const centerX = box.width > 0 ? box.width / 2 : 0;
-        const centerY = box.height > 0 ? Math.max(0, (box.height - bottomOverlay) / 2) : 0;
+        const centerY = box.height > 0 ? box.height / 2 : 0;
 
         return {
             zoom: 1,
@@ -1526,9 +1525,8 @@ class Floorplaner extends IPSModuleStrict
         const box = svg.getBoundingClientRect();
         if (!box.width || !box.height) return;
 
-        const bottomOverlay = state.mode === 'view' ? 56 : 0;
         const centerX = box.width / 2;
-        const centerY = Math.max(0, (box.height - bottomOverlay) / 2);
+        const centerY = box.height / 2;
 
         const worldX = (centerX - panX) / Math.max(0.0001, zoom);
         const worldY = (centerY - panY) / Math.max(0.0001, zoom);
@@ -1627,16 +1625,15 @@ class Floorplaner extends IPSModuleStrict
          * - EIN gemeinsamer Zoomfaktor für X und Y
          * - dadurch keinerlei Verzerrung/Streckung
          *
-         * Im Bedienmodus liegt unten nur die kleine Etagen-/Editorleiste über
-         * dem SVG. Dafür wird separat Platz reserviert.
+         * Die Ansicht wird in der tatsächlichen Kachelfläche zentriert.
+         * Die kleine Bedienleiste unten beeinflusst die optische Mitte nicht.
          */
         const padding = 24;
-        const liveBottomOverlay = state.mode === 'view' ? 56 : 0;
 
         const left = padding;
         const right = box.width - padding;
         const top = padding;
-        const bottom = box.height - padding - liveBottomOverlay;
+        const bottom = box.height - padding;
 
         const availableWidth = Math.max(1, right - left);
         const availableHeight = Math.max(1, bottom - top);
