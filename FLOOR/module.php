@@ -1123,7 +1123,6 @@ class Floorplaner extends IPSModuleStrict
 
         <div class="group">
             <button id="fitBtn">Einpassen</button>
-            <button id="saveBtn">Speichern</button>
             <button id="finishBtn">Fertig / Bedienen</button>
         </div>
 
