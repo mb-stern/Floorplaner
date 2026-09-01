@@ -720,6 +720,13 @@ class Floorplaner extends IPSModuleStrict
             cursor: pointer;
         }
 
+        .device-value-box {
+            fill: rgba(255,255,255,.08);
+            stroke: currentColor;
+            stroke-width: 0.8;
+            vector-effect: non-scaling-stroke;
+        }
+
         .runtime-value {
             fill: #d7e9ff !important;
         }
@@ -1744,8 +1751,68 @@ class Floorplaner extends IPSModuleStrict
         ['mdi:home','Haus'],['mdi:cog','Allgemein']
     ];
 
+    // Easy Floorplan verwendet Material Design Icons (MDI). Wir laden deshalb
+    // die originalen Pfaddaten aus dem offiziellen @mdi/js Paket. Sollte der
+    // Browser keinen externen Modulimport zulassen, bleiben die bisherigen
+    // lokalen Vektorformen als Fallback aktiv.
+    const originalMdiPaths = Object.create(null);
+
+    const mdiExportNames = {
+        'mdi:lightbulb': 'mdiLightbulb',
+        'mdi:toggle-switch': 'mdiToggleSwitch',
+        'mdi:power-socket-eu': 'mdiPowerSocketEu',
+        'mdi:thermometer': 'mdiThermometer',
+        'mdi:water-percent': 'mdiWaterPercent',
+        'mdi:motion-sensor': 'mdiMotionSensor',
+        'mdi:door': 'mdiDoor',
+        'mdi:window-closed': 'mdiWindowClosed',
+        'mdi:blinds': 'mdiBlinds',
+        'mdi:thermostat': 'mdiThermostat',
+        'mdi:fan': 'mdiFan',
+        'mdi:radiator': 'mdiRadiator',
+        'mdi:television': 'mdiTelevision',
+        'mdi:camera': 'mdiCamera',
+        'mdi:washing-machine': 'mdiWashingMachine',
+        'mdi:dishwasher': 'mdiDishwasher',
+        'mdi:water-boiler': 'mdiWaterBoiler',
+        'mdi:car-electric': 'mdiCarElectric',
+        'mdi:robot-vacuum': 'mdiRobotVacuum',
+        'mdi:lock': 'mdiLock',
+        'mdi:home': 'mdiHome',
+        'mdi:cog': 'mdiCog',
+        'mdi:circle': 'mdiCircle'
+    };
+
+    async function loadOriginalMdiIcons() {
+        try {
+            const mdi = await import('https://cdn.jsdelivr.net/npm/@mdi/js@7.4.47/+esm');
+            for (const [iconName, exportName] of Object.entries(mdiExportNames)) {
+                const path = mdi[exportName];
+                if (typeof path === 'string' && path) {
+                    originalMdiPaths[iconName] = path;
+                }
+            }
+            render();
+            renderDeviceIconPicker();
+        } catch (error) {
+            console.warn('Floorplaner: Original-MDI konnten nicht geladen werden; lokaler Fallback bleibt aktiv.', error);
+        }
+    }
+
+    loadOriginalMdiIcons();
+
     function renderMdiGlyph(iconName, radius) {
         const r = Math.max(8, Number(radius) || 18);
+
+        const originalPath = originalMdiPaths[iconName];
+        if (originalPath) {
+            // Original-MDI verwenden ein 24x24-Koordinatensystem.
+            const targetSize = r * 1.55;
+            const scale = targetSize / 24;
+            const offset = -12 * scale;
+            return `<g transform="translate(${offset} ${offset}) scale(${scale})"><path d="${originalPath}" fill="currentColor"/></g>`;
+        }
+
         const s = r * 1.05;
         const sw = Math.max(.9, r * .085);
         const common = `fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`;
@@ -2046,11 +2113,28 @@ class Floorplaner extends IPSModuleStrict
             const icon = item.icon || iconForKind(item.kind);
 
             const showName = item.showName === true;
-            const showState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
+            const legacyShowState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
+
+            // Bestehende Projekte bleiben kompatibel. Temperatur und Feuchte
+            // werden ohne explizite Einstellung automatisch als reiner Wert dargestellt.
+            let displayMode = item.displayMode;
+            if (!['icon','value','iconValue'].includes(displayMode)) {
+                displayMode = ['temperature','humidity'].includes(item.kind)
+                    ? 'value'
+                    : (legacyShowState ? 'iconValue' : 'icon');
+            }
+
+            const showIcon = displayMode === 'icon' || displayMode === 'iconValue';
+            const showValue = displayMode === 'value' || displayMode === 'iconValue';
+            const valueText = item._valueText !== undefined && item._valueText !== ''
+                ? String(item._valueText)
+                : '—';
+
             const labelParts = [];
             if (showName && item.name) labelParts.push(String(item.name));
-            if (showState && item._valueText !== undefined && item._valueText !== '') labelParts.push(String(item._valueText));
+            if (showValue && displayMode !== 'value') labelParts.push(valueText);
             const labelText = labelParts.join(' · ');
+
             const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
             const pos = ['left','right','below'].includes(item.labelPosition) ? item.labelPosition : 'below';
             const radius = Number(item.size) || 18;
@@ -2062,10 +2146,17 @@ class Floorplaner extends IPSModuleStrict
                 lx = radius + 7; ly = 4; anchor = 'start';
             }
 
+            const valueOnlyWidth = Math.max(radius * 2, valueText.length * labelSize * .62 + 16);
+            const valueOnlyHeight = Math.max(radius * 1.45, labelSize + 14);
+
             parts.push(
                 `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
-                `<circle r="${radius}"/>` +
-                `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` +
+                (displayMode === 'value'
+                    ? `<rect class="device-value-box" x="${-valueOnlyWidth/2}" y="${-valueOnlyHeight/2}" width="${valueOnlyWidth}" height="${valueOnlyHeight}" rx="6"/>` +
+                      `<text class="runtime-value" x="0" y="${labelSize * .34}" text-anchor="middle" font-size="${labelSize}">${escapeHtml(valueText)}</text>`
+                    : `<circle r="${radius}"/>` +
+                      (showIcon ? `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` : '')
+                ) +
                 (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
                 (selected?.type === 'item' && selected.id === item.id
                     ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
@@ -2315,6 +2406,10 @@ class Floorplaner extends IPSModuleStrict
         });
     }
 
+    function defaultDisplayModeForKind(kind) {
+        return ['temperature','humidity'].includes(kind) ? 'value' : 'icon';
+    }
+
     function renderProperties() {
         // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
         // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
@@ -2459,7 +2554,21 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="row2">
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
-                    <div class="field"><label class="check"><input data-field="showState" type="checkbox"${obj.showState === true || (obj.showState == null && ['temperature','humidity'].includes(kind)) ? ' checked' : ''}> Wert anzeigen</label></div>
+                    <div class="field">
+                        <label>Darstellung</label>
+                        <select data-field="displayMode">
+                            ${(() => {
+                                const effectiveMode = ['icon','value','iconValue'].includes(obj.displayMode)
+                                    ? obj.displayMode
+                                    : (['temperature','humidity'].includes(kind) ? 'value' : 'icon');
+                                return `
+                                    <option value="icon"${effectiveMode === 'icon' ? ' selected' : ''}>Symbol</option>
+                                    <option value="value"${effectiveMode === 'value' ? ' selected' : ''}>Wert</option>
+                                    <option value="iconValue"${effectiveMode === 'iconValue' ? ' selected' : ''}>Symbol + Wert</option>
+                                `;
+                            })()}
+                        </select>
+                    </div>
                 </div>
                 <div class="row2">
                     <div class="field"><label>Schriftgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
@@ -2472,7 +2581,7 @@ class Floorplaner extends IPSModuleStrict
                         </select>
                     </div>
                 </div>
-                <div class="field"><label>Eigenes Symbol (optional)</label><input class="icon-input-clickable" data-icon-picker="device" readonly data-field="icon" title="Klicken, um Symbol auszuwählen" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
+                <div class="field"><label>Symbol (für Symbol-Anzeige)</label><input class="icon-input-clickable" data-icon-picker="device" readonly data-field="icon" title="Klicken, um Original-MDI auszuwählen" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
                 <div class="row2">
                     <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
@@ -2950,6 +3059,7 @@ class Floorplaner extends IPSModuleStrict
                 kind: 'generic',
                 showName: false,
                 showState: false,
+                displayMode: 'icon',
                 labelSize: 12,
                 labelPosition: 'below'
             };
