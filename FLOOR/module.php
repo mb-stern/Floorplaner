@@ -1751,55 +1751,33 @@ class Floorplaner extends IPSModuleStrict
         ['mdi:home','Haus'],['mdi:cog','Allgemein']
     ];
 
-    // Easy Floorplan verwendet Material Design Icons (MDI). Wir laden deshalb
-    // die originalen Pfaddaten aus dem offiziellen @mdi/js Paket. Sollte der
-    // Browser keinen externen Modulimport zulassen, bleiben die bisherigen
-    // lokalen Vektorformen als Fallback aktiv.
-    const originalMdiPaths = Object.create(null);
-
-    const mdiExportNames = {
-        'mdi:lightbulb': 'mdiLightbulb',
-        'mdi:toggle-switch': 'mdiToggleSwitch',
-        'mdi:power-socket-eu': 'mdiPowerSocketEu',
-        'mdi:thermometer': 'mdiThermometer',
-        'mdi:water-percent': 'mdiWaterPercent',
-        'mdi:motion-sensor': 'mdiMotionSensor',
-        'mdi:door': 'mdiDoor',
-        'mdi:window-closed': 'mdiWindowClosed',
-        'mdi:blinds': 'mdiBlinds',
-        'mdi:thermostat': 'mdiThermostat',
-        'mdi:fan': 'mdiFan',
-        'mdi:radiator': 'mdiRadiator',
-        'mdi:television': 'mdiTelevision',
-        'mdi:camera': 'mdiCamera',
-        'mdi:washing-machine': 'mdiWashingMachine',
-        'mdi:dishwasher': 'mdiDishwasher',
-        'mdi:water-boiler': 'mdiWaterBoiler',
-        'mdi:car-electric': 'mdiCarElectric',
-        'mdi:robot-vacuum': 'mdiRobotVacuum',
-        'mdi:lock': 'mdiLock',
-        'mdi:home': 'mdiHome',
-        'mdi:cog': 'mdiCog',
-        'mdi:circle': 'mdiCircle'
+    // Original Material Design Icons v7.4.47, lokal eingebettet.
+    // Kein CDN, kein Webfont und kein externer Modulimport nötig.
+    const originalMdiPaths = {
+        'mdi:lightbulb': 'M12,2A7,7 0 0,0 5,9C5,11.38 6.19,13.47 8,14.74V17A1,1 0 0,0 9,18H15A1,1 0 0,0 16,17V14.74C17.81,13.47 19,11.38 19,9A7,7 0 0,0 12,2M9,21A1,1 0 0,0 10,22H14A1,1 0 0,0 15,21V20H9V21Z',
+        'mdi:toggle-switch': 'M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z',
+        'mdi:power-socket-eu': 'M7.5,10.5A1.5,1.5 0 0,1 9,12A1.5,1.5 0 0,1 7.5,13.5C6.66,13.5 6,12.83 6,12A1.5,1.5 0 0,1 7.5,10.5M16.5,10.5A1.5,1.5 0 0,1 18,12A1.5,1.5 0 0,1 16.5,13.5A1.5,1.5 0 0,1 15,12A1.5,1.5 0 0,1 16.5,10.5M4.22,2H19.78C21,2 22,3 22,4.22V19.78A2.22,2.22 0 0,1 19.78,22H4.22C3,22 2,21 2,19.78V4.22A2.22,2.22 0 0,1 4.22,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z',
+        'mdi:thermometer': 'M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 13 5V8H11V5A1 1 0 0 1 12 4Z',
+        'mdi:water-percent': 'M12,3.25C12,3.25 6,10 6,14C6,17.32 8.69,20 12,20A6,6 0 0,0 18,14C18,10 12,3.25 12,3.25M14.47,9.97L15.53,11.03L9.53,17.03L8.47,15.97M9.75,10A1.25,1.25 0 0,1 11,11.25A1.25,1.25 0 0,1 9.75,12.5A1.25,1.25 0 0,1 8.5,11.25A1.25,1.25 0 0,1 9.75,10M14.25,14.5A1.25,1.25 0 0,1 15.5,15.75A1.25,1.25 0 0,1 14.25,17A1.25,1.25 0 0,1 13,15.75A1.25,1.25 0 0,1 14.25,14.5Z',
+        'mdi:motion-sensor': 'M10,0.2C9,0.2 8.2,1 8.2,2C8.2,3 9,3.8 10,3.8C11,3.8 11.8,3 11.8,2C11.8,1 11,0.2 10,0.2M15.67,1A7.33,7.33 0 0,0 23,8.33V7A6,6 0 0,1 17,1H15.67M18.33,1C18.33,3.58 20.42,5.67 23,5.67V4.33C21.16,4.33 19.67,2.84 19.67,1H18.33M21,1A2,2 0 0,0 23,3V1H21M7.92,4.03C7.75,4.03 7.58,4.06 7.42,4.11L2,5.8V11H3.8V7.33L5.91,6.67L2,22H3.8L6.67,13.89L9,17V22H10.8V15.59L8.31,11.05L9.04,8.18L10.12,10H15V8.2H11.38L9.38,4.87C9.08,4.37 8.54,4.03 7.92,4.03Z',
+        'mdi:door': 'M8,3C6.89,3 6,3.89 6,5V21H18V5C18,3.89 17.11,3 16,3H8M8,5H16V19H8V5M13,11V13H15V11H13Z',
+        'mdi:window-closed': 'M6,11H10V9H14V11H18V4H6V11M18,13H6V20H18V13M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2Z',
+        'mdi:blinds': 'M3,2H21A1,1 0 0,1 22,3V5A1,1 0 0,1 21,6H20V13A1,1 0 0,1 19,14H13V16.17C14.17,16.58 15,17.69 15,19A3,3 0 0,1 12,22A3,3 0 0,1 9,19C9,17.69 9.83,16.58 11,16.17V14H5A1,1 0 0,1 4,13V6H3A1,1 0 0,1 2,5V3A1,1 0 0,1 3,2M12,18A1,1 0 0,0 11,19A1,1 0 0,0 12,20A1,1 0 0,0 13,19A1,1 0 0,0 12,18Z',
+        'mdi:thermostat': 'M16.95,16.95L14.83,14.83C15.55,14.1 16,13.1 16,12C16,11.26 15.79,10.57 15.43,10L17.6,7.81C18.5,9 19,10.43 19,12C19,13.93 18.22,15.68 16.95,16.95M12,5C13.57,5 15,5.5 16.19,6.4L14,8.56C13.43,8.21 12.74,8 12,8A4,4 0 0,0 8,12C8,13.1 8.45,14.1 9.17,14.83L7.05,16.95C5.78,15.68 5,13.93 5,12A7,7 0 0,1 12,5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12C22,6.47 17.5,2 12,2Z',
+        'mdi:fan': 'M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12.5,2C17,2 17.11,5.57 14.75,6.75C13.76,7.24 13.32,8.29 13.13,9.22C13.61,9.42 14.03,9.73 14.35,10.13C18.05,8.13 22.03,8.92 22.03,12.5C22.03,17 18.46,17.1 17.28,14.73C16.78,13.74 15.72,13.3 14.79,13.11C14.59,13.59 14.28,14 13.88,14.34C15.87,18.03 15.08,22 11.5,22C7,22 6.91,18.42 9.27,17.24C10.25,16.75 10.69,15.71 10.89,14.79C10.4,14.59 9.97,14.27 9.65,13.87C5.96,15.85 2,15.07 2,11.5C2,7 5.56,6.89 6.74,9.26C7.24,10.25 8.29,10.68 9.22,10.87C9.41,10.39 9.73,9.97 10.14,9.65C8.15,5.96 8.94,2 12.5,2Z',
+        'mdi:radiator': 'M7.95,3L6.53,5.19L7.95,7.4H7.94L5.95,10.5L4.22,9.6L5.64,7.39L4.22,5.19L6.22,2.09L7.95,3M13.95,2.89L12.53,5.1L13.95,7.3L13.94,7.31L11.95,10.4L10.22,9.5L11.64,7.3L10.22,5.1L12.22,2L13.95,2.89M20,2.89L18.56,5.1L20,7.3V7.31L18,10.4L16.25,9.5L17.67,7.3L16.25,5.1L18.25,2L20,2.89M2,22V14A2,2 0 0,1 4,12H20A2,2 0 0,1 22,14V22H20V20H4V22H2M6,14A1,1 0 0,0 5,15V17A1,1 0 0,0 6,18A1,1 0 0,0 7,17V15A1,1 0 0,0 6,14M10,14A1,1 0 0,0 9,15V17A1,1 0 0,0 10,18A1,1 0 0,0 11,17V15A1,1 0 0,0 10,14M14,14A1,1 0 0,0 13,15V17A1,1 0 0,0 14,18A1,1 0 0,0 15,17V15A1,1 0 0,0 14,14M18,14A1,1 0 0,0 17,15V17A1,1 0 0,0 18,18A1,1 0 0,0 19,17V15A1,1 0 0,0 18,14Z',
+        'mdi:television': 'M21,17H3V5H21M21,3H3A2,2 0 0,0 1,5V17A2,2 0 0,0 3,19H8V21H16V19H21A2,2 0 0,0 23,17V5A2,2 0 0,0 21,3Z',
+        'mdi:camera': 'M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z',
+        'mdi:washing-machine': 'M14.83,11.17C16.39,12.73 16.39,15.27 14.83,16.83C13.27,18.39 10.73,18.39 9.17,16.83L14.83,11.17M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M7,4A1,1 0 0,0 6,5A1,1 0 0,0 7,6A1,1 0 0,0 8,5A1,1 0 0,0 7,4M10,4A1,1 0 0,0 9,5A1,1 0 0,0 10,6A1,1 0 0,0 11,5A1,1 0 0,0 10,4M12,8A6,6 0 0,0 6,14A6,6 0 0,0 12,20A6,6 0 0,0 18,14A6,6 0 0,0 12,8Z',
+        'mdi:dishwasher': 'M18,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V4A2,2 0 0,0 18,2M10,4A1,1 0 0,1 11,5A1,1 0 0,1 10,6A1,1 0 0,1 9,5A1,1 0 0,1 10,4M7,4A1,1 0 0,1 8,5A1,1 0 0,1 7,6A1,1 0 0,1 6,5A1,1 0 0,1 7,4M18,20H6V8H18V20M14.67,15.33C14.69,16.03 14.41,16.71 13.91,17.21C12.86,18.26 11.15,18.27 10.09,17.21C9.59,16.71 9.31,16.03 9.33,15.33C9.4,14.62 9.63,13.94 10,13.33C10.37,12.5 10.81,11.73 11.33,11L12,10C13.79,12.59 14.67,14.36 14.67,15.33',
+        'mdi:water-boiler': 'M8 2C6.89 2 6 2.89 6 4V16C6 17.11 6.89 18 8 18H9V20H6V22H9C10.11 22 11 21.11 11 20V18H13V20C13 21.11 13.89 22 15 22H18V20H15V18H16C17.11 18 18 17.11 18 16V4C18 2.89 17.11 2 16 2H8M12 4.97A2 2 0 0 1 14 6.97A2 2 0 0 1 12 8.97A2 2 0 0 1 10 6.97A2 2 0 0 1 12 4.97M10 14.5H14V16H10V14.5Z',
+        'mdi:car-electric': 'M18.92 2C18.72 1.42 18.16 1 17.5 1H6.5C5.84 1 5.29 1.42 5.08 2L3 8V16C3 16.55 3.45 17 4 17H5C5.55 17 6 16.55 6 16V15H18V16C18 16.55 18.45 17 19 17H20C20.55 17 21 16.55 21 16V8L18.92 2M6.5 12C5.67 12 5 11.33 5 10.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12M17.5 12C16.67 12 16 11.33 16 10.5S16.67 9 17.5 9 19 9.67 19 10.5 18.33 12 17.5 12M5 7L6.5 2.5H17.5L19 7H5M7 20H11V18L17 21H13V23L7 20Z',
+        'mdi:robot-vacuum': 'M12,2C14.65,2 17.19,3.06 19.07,4.93L17.65,6.35C16.15,4.85 14.12,4 12,4C9.88,4 7.84,4.84 6.35,6.35L4.93,4.93C6.81,3.06 9.35,2 12,2M3.66,6.5L5.11,7.94C4.39,9.17 4,10.57 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12C20,10.57 19.61,9.17 18.88,7.94L20.34,6.5C21.42,8.12 22,10.04 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12C2,10.04 2.58,8.12 3.66,6.5M12,6A6,6 0 0,1 18,12C18,13.59 17.37,15.12 16.24,16.24L14.83,14.83C14.08,15.58 13.06,16 12,16C10.94,16 9.92,15.58 9.17,14.83L7.76,16.24C6.63,15.12 6,13.59 6,12A6,6 0 0,1 12,6M12,8A1,1 0 0,0 11,9A1,1 0 0,0 12,10A1,1 0 0,0 13,9A1,1 0 0,0 12,8Z',
+        'mdi:lock': 'M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z',
+        'mdi:home': 'M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z',
+        'mdi:cog': 'M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z',
+        'mdi:circle': 'M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z'
     };
-
-    async function loadOriginalMdiIcons() {
-        try {
-            const mdi = await import('https://cdn.jsdelivr.net/npm/@mdi/js@7.4.47/+esm');
-            for (const [iconName, exportName] of Object.entries(mdiExportNames)) {
-                const path = mdi[exportName];
-                if (typeof path === 'string' && path) {
-                    originalMdiPaths[iconName] = path;
-                }
-            }
-            render();
-            renderDeviceIconPicker();
-        } catch (error) {
-            console.warn('Floorplaner: Original-MDI konnten nicht geladen werden; lokaler Fallback bleibt aktiv.', error);
-        }
-    }
-
-    loadOriginalMdiIcons();
 
     function renderMdiGlyph(iconName, radius) {
         const r = Math.max(8, Number(radius) || 18);
@@ -2117,8 +2095,20 @@ class Floorplaner extends IPSModuleStrict
 
             // Bestehende Projekte bleiben kompatibel. Temperatur und Feuchte
             // werden ohne explizite Einstellung automatisch als reiner Wert dargestellt.
+            const inferredSensorKind = inferSensorKindFromVariableNode({
+                profile: item._profile,
+                profileName: item._profileName,
+                path: item._variablePath,
+                valueText: item._valueText
+            });
+            if (inferredSensorKind && !['temperature','humidity'].includes(item.kind)) {
+                item.kind = inferredSensorKind;
+            }
+
             let displayMode = item.displayMode;
-            if (!['icon','value','iconValue'].includes(displayMode)) {
+            if (inferredSensorKind && item.displayModeManual !== true) {
+                displayMode = 'value';
+            } else if (!['icon','value','iconValue'].includes(displayMode)) {
                 displayMode = ['temperature','humidity'].includes(item.kind)
                     ? 'value'
                     : (legacyShowState ? 'iconValue' : 'icon');
@@ -2661,6 +2651,15 @@ class Floorplaner extends IPSModuleStrict
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
                 obj[fieldName] = value;
 
+                if (selected.type === 'item' && fieldName === 'displayMode') {
+                    obj.displayModeManual = true;
+                }
+
+                if (selected.type === 'item' && fieldName === 'kind') {
+                    obj.displayMode = ['temperature','humidity'].includes(String(value)) ? 'value' : 'icon';
+                    obj.displayModeManual = false;
+                }
+
                 if (selected.type === 'furniture' && fieldName === 'type') {
                     const oldTpl = furnitureTemplates[oldFurnitureType];
                     const newTpl = furnitureTemplates[value];
@@ -3060,6 +3059,7 @@ class Floorplaner extends IPSModuleStrict
                 showName: false,
                 showState: false,
                 displayMode: 'icon',
+                displayModeManual: false,
                 labelSize: 12,
                 labelPosition: 'below'
             };
@@ -3426,6 +3426,36 @@ class Floorplaner extends IPSModuleStrict
         return null;
     }
 
+    function inferSensorKindFromVariableNode(node) {
+        if (!node) return '';
+
+        const profile = node.profile || {};
+        const suffix = String(profile.suffix || '').trim().toLowerCase();
+        const profileName = String(node.profileName || '').toLowerCase();
+        const path = String(node.path || '').toLowerCase();
+        const valueText = String(node.valueText || '').toLowerCase();
+        const haystack = `${profileName} ${path} ${valueText}`;
+
+        // Feuchte zuerst prüfen: Prozentprofile werden sehr häufig dafür benutzt.
+        // Der Name/Pfad verhindert, dass jeder beliebige Prozentwert als Feuchte gilt.
+        if (
+            /\b(feuchte|luftfeuchte|humidity|humid)\b/i.test(haystack) ||
+            (suffix.includes('%') && /\b(feuchte|humidity|humid)\b/i.test(haystack))
+        ) {
+            return 'humidity';
+        }
+
+        if (
+            suffix.includes('°c') ||
+            suffix.includes('°f') ||
+            /\b(temperatur|temperature|temp)\b/i.test(haystack)
+        ) {
+            return 'temperature';
+        }
+
+        return '';
+    }
+
     function assignVariable(variableID) {
         if (!variablePickerTarget) return;
 
@@ -3471,6 +3501,17 @@ class Floorplaner extends IPSModuleStrict
         entity[profileNameKey] = node?.profileName || '';
         entity[profileSummaryKey] = node?.profileSummary || '';
         entity[profileKey] = node?.profile || null;
+
+        // Bei der Hauptvariable eines Geräts Temperatur/Feuchte automatisch
+        // erkennen und ohne Icon direkt als Messwert anzeigen.
+        if (entityType === 'item' && field === 'variableID' && node) {
+            const inferredKind = inferSensorKindFromVariableNode(node);
+            if (inferredKind) {
+                entity.kind = inferredKind;
+                entity.displayMode = 'value';
+                entity.displayModeManual = false;
+            }
+        }
 
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
