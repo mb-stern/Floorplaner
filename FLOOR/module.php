@@ -2088,7 +2088,7 @@ class Floorplaner extends IPSModuleStrict
             const raw = item._rawValue;
             const boolActive = item._variableType === 0 && (raw === true || raw === 1 || raw === '1' || raw === 'true');
             const lightClass = item.kind === 'light' ? (boolActive ? ' active-light' : ' inactive-light') : '';
-            const icon = item.icon || iconForKind(item.kind);
+            const icon = iconForKind(item.kind);
 
             const showName = item.showName === true;
             const legacyShowState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
@@ -2571,7 +2571,6 @@ class Floorplaner extends IPSModuleStrict
                         </select>
                     </div>
                 </div>
-                <div class="field"><label>Symbol (für Symbol-Anzeige)</label><input class="icon-input-clickable" data-icon-picker="device" readonly data-field="icon" title="Klicken, um Original-MDI auszuwählen" value="${escapeHtml(obj.icon || '')}" placeholder="${escapeHtml(iconForKind(kind))}"></div>
                 <div class="row2">
                     <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
@@ -3052,7 +3051,6 @@ class Floorplaner extends IPSModuleStrict
                 y: p.y,
                 name: 'Gerät',
                 variableID: 0,
-                icon: '',
                 size: 18,
                 angle: 0,
                 kind: 'generic',
