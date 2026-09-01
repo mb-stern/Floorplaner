@@ -2475,15 +2475,18 @@ class Floorplaner extends IPSModuleStrict
         if (state.mode === 'view') {
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
-                if (item) {
-                    if (Number(item._variableType) === 0) {
-                        requestAction('operate', JSON.stringify({
-                            floorId: state.activeFloor,
-                            itemId: target.dataset.id
-                        }));
-                    } else if (Number(item._variableType) === 1) {
-                        openItemControl(item, evt.clientX, evt.clientY);
-                    }
+
+                if (item && Number(item._variableType) === 1) {
+                    // Integer-Variablen behalten den kompakten Bedien-Dialog.
+                    openItemControl(item, evt.clientX, evt.clientY);
+                } else {
+                    // Boolean-Geräte wieder über den bewährten direkten Action-Pfad
+                    // bedienen. Nicht von clientseitigen Runtime-Metadaten abhängig
+                    // machen: PHP prüft die echte Variable und deren Typ selbst.
+                    requestAction('operate', JSON.stringify({
+                        floorId: state.activeFloor,
+                        itemId: target.dataset.id
+                    }));
                 }
             }
             return;
