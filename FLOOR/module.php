@@ -207,8 +207,8 @@ class Floorplaner extends IPSModuleStrict
         :root {
             color-scheme: dark;
             --fp-bg: transparent;
-            --fp-panel: rgba(38,38,38,.96);
-            --fp-panel-2: rgba(54,54,54,.96);
+            --fp-panel: transparent;
+            --fp-panel-2: transparent;
             --fp-border: rgba(255,255,255,.16);
             --fp-text: #f2f2f2;
             --fp-muted: #b8b8b8;
@@ -1652,13 +1652,75 @@ class Floorplaner extends IPSModuleStrict
         return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
-    // Theme-Erkennung wie in den älteren Symcon-HTML-SDK-Modulen:
-    // Symcon injiziert u.a. --content-color bzw. die Textfarbe auf <body>.
-    // Helle Schrift bedeutet dunkles Design, dunkle Schrift helles Design.
+    // Theme-Erkennung wie in den älteren Symcon-HTML-SDK-Modulen.
+    // Zusätzlich übernehmen wir die von Symcon tatsächlich gelieferten
+    // Hintergrund-/Textfarben. Keine eigene dunkle Hintergrundfarbe mehr.
+    function readSymconCssVariable(names) {
+        const roots = [document.documentElement, document.body].filter(Boolean);
+
+        for (const root of roots) {
+            const style = getComputedStyle(root);
+            for (const name of names) {
+                const value = style.getPropertyValue(name).trim();
+                if (value) return value;
+            }
+        }
+
+        return '';
+    }
+
+    function syncSymconThemeColors() {
+        const root = document.documentElement;
+
+        const background = readSymconCssVariable([
+            '--content-background-color',
+            '--card-background-color',
+            '--primary-background-color',
+            '--background-color'
+        ]);
+
+        const secondaryBackground = readSymconCssVariable([
+            '--secondary-background-color',
+            '--content-background-color',
+            '--card-background-color',
+            '--primary-background-color',
+            '--background-color'
+        ]);
+
+        const textColor = readSymconCssVariable([
+            '--content-color',
+            '--primary-text-color'
+        ]);
+
+        const mutedColor = readSymconCssVariable([
+            '--secondary-text-color',
+            '--disabled-text-color'
+        ]);
+
+        const accentColor = readSymconCssVariable([
+            '--primary-color',
+            '--accent-color'
+        ]);
+
+        // Falls Symcon keine Hintergrundvariable in das HTML-SDK vererbt,
+        // bleibt alles transparent. Dadurch ist exakt der echte Kachelhintergrund
+        // von Symcon sichtbar statt einer von uns erfundenen Ersatzfarbe.
+        root.style.setProperty('--fp-panel', background || 'transparent');
+        root.style.setProperty('--fp-panel-2', secondaryBackground || background || 'transparent');
+
+        if (textColor) {
+            root.style.setProperty('--fp-text', textColor);
+        }
+        if (mutedColor) {
+            root.style.setProperty('--fp-muted', mutedColor);
+        }
+        if (accentColor) {
+            root.style.setProperty('--fp-accent', accentColor);
+        }
+    }
+
     function detectTheme() {
-        let probe = getComputedStyle(document.documentElement)
-            .getPropertyValue('--content-color')
-            .trim();
+        let probe = readSymconCssVariable(['--content-color', '--primary-text-color']);
 
         if (!probe) {
             probe = getComputedStyle(document.body).color;
@@ -1672,7 +1734,6 @@ class Floorplaner extends IPSModuleStrict
                 (0.299 * Number(rgb[1]) +
                  0.587 * Number(rgb[2]) +
                  0.114 * Number(rgb[3])) / 255;
-            // Helle Symcon-Textfarbe => dunkles Theme.
             dark = lum > 0.5;
         } else if (probe && probe[0] === '#' && probe.length >= 7) {
             const r = parseInt(probe.substr(1, 2), 16);
@@ -1687,6 +1748,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        syncSymconThemeColors();
     }
 
 
@@ -1804,6 +1866,15 @@ class Floorplaner extends IPSModuleStrict
                 }
             }
 
+            if (selected?.type === 'opening' && selected.id === o.id) {
+                // Griff am rechten Ende der Öffnung: damit Tür/Fenster direkt
+                // entlang der zugehörigen Wand breiter oder schmaler gezogen werden kann.
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="opening" data-id="${o.id}" ` +
+                    `cx="${geom.x2}" cy="${geom.y2}" r="2.8"/>`
+                );
+            }
+
             parts.push(`</g>`);
         }
 
@@ -1830,7 +1901,7 @@ class Floorplaner extends IPSModuleStrict
 
                 parts.push(
                     `<circle class="resize-handle" data-resize-type="furniture" data-id="${f.id}" ` +
-                    `cx="${fw / 2}" cy="${fh / 2}" r="1.4"/>`
+                    `cx="${fw / 2}" cy="${fh / 2}" r="2.8"/>`
                 );
                 parts.push(
                     `<line class="rotate-handle-line" x1="0" y1="${-fh / 2}" x2="0" y2="${rotateY}"/>` +
@@ -1872,7 +1943,7 @@ class Floorplaner extends IPSModuleStrict
                 `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` +
                 (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
                 (selected?.type === 'item' && selected.id === item.id
-                    ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="1.4"/>`
+                    ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
                     : '') +
                 `</g>`
             );
@@ -1880,9 +1951,19 @@ class Floorplaner extends IPSModuleStrict
 
         for (const t of floor.texts) {
             const sel = selected?.type === 'text' && selected.id === t.id;
+            const textSize = Math.max(6, Number(t.size) || 18);
+            const textValue = String(t.text || 'Text');
+            const estimatedWidth = Math.max(20, textValue.length * textSize * 0.65);
+
             parts.push(
-                `<text class="plan-text" data-type="text" data-id="${t.id}" x="${t.x}" y="${t.y}" font-size="${t.size || 18}"` +
-                `${sel ? ' style="fill:#74b9ff"' : ''}>${escapeHtml(t.text || 'Text')}</text>`
+                `<g data-type="text" data-id="${t.id}">` +
+                `<text class="plan-text" x="${t.x}" y="${t.y}" font-size="${textSize}"` +
+                `${sel ? ' style="fill:#74b9ff"' : ''}>${escapeHtml(textValue)}</text>` +
+                (sel
+                    ? `<circle class="resize-handle" data-resize-type="text" data-id="${t.id}" ` +
+                      `cx="${Number(t.x) + estimatedWidth}" cy="${Number(t.y)}" r="2.8"/>`
+                    : '') +
+                `</g>`
             );
         }
 
@@ -2866,6 +2947,36 @@ class Floorplaner extends IPSModuleStrict
                 const cy = Number(drag.original.y) || 0;
                 const radius = Math.hypot(p.x - cx, p.y - cy);
                 obj.size = Math.max(8, Math.min(80, Math.round(radius)));
+            } else if (drag.type === 'text') {
+                const originX = Number(drag.original.x) || 0;
+                const textValue = String(drag.original.text || 'Text');
+                const chars = Math.max(1, textValue.length);
+                const width = Math.max(10, p.x - originX);
+
+                // Breite zurück in eine passende Schriftgröße umrechnen.
+                obj.size = Math.max(6, Math.min(120, Math.round(width / (chars * 0.65))));
+            } else if (drag.type === 'opening') {
+                const floor = currentFloor();
+                const wall = floor.walls.find(w => w.id === drag.original.wallId);
+                if (!wall) return;
+
+                const vx = Number(wall.x2) - Number(wall.x1);
+                const vy = Number(wall.y2) - Number(wall.y1);
+                const wallLength = Math.hypot(vx, vy);
+                if (wallLength <= 0) return;
+
+                const ux = vx / wallLength;
+                const uy = vy / wallLength;
+                const centerPos = Math.max(0, Math.min(1, Number(drag.original.position ?? .5)));
+                const cx = Number(wall.x1) + vx * centerPos;
+                const cy = Number(wall.y1) + vy * centerPos;
+
+                // Projektion der Maus auf die Wand. Die Öffnung bleibt zentriert
+                // und wird symmetrisch breiter/schmaler.
+                const projectedHalf = Math.abs((p.x - cx) * ux + (p.y - cy) * uy);
+                const maxHalf = Math.min(centerPos * wallLength, (1 - centerPos) * wallLength);
+                const maxLength = Math.max(20, maxHalf * 2);
+                obj.length = Math.max(20, Math.min(maxLength, Math.round(projectedHalf * 2)));
             }
 
             render();
