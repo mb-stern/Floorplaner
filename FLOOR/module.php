@@ -205,10 +205,9 @@ class Floorplaner extends IPSModuleStrict
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <style>
         :root {
-            color-scheme: dark;
             --fp-bg: transparent;
-            --fp-panel: transparent;
-            --fp-panel-2: transparent;
+            --fp-panel: rgba(38,38,38,.96);
+            --fp-panel-2: rgba(54,54,54,.96);
             --fp-border: rgba(255,255,255,.16);
             --fp-text: #f2f2f2;
             --fp-muted: #b8b8b8;
@@ -218,7 +217,6 @@ class Floorplaner extends IPSModuleStrict
         }
 
         html[data-theme="light"] {
-            color-scheme: light;
             --fp-bg: transparent;
             --fp-panel: rgba(232,232,232,.98);
             --fp-panel-2: rgba(218,218,218,.98);
@@ -874,8 +872,23 @@ class Floorplaner extends IPSModuleStrict
         }
 
 
-        html, body, #app, .main, .canvas-wrap, #viewport {
+        html,
+        body,
+        #app,
+        .main,
+        .canvas-wrap,
+        #viewport,
+        #scene {
             background: transparent !important;
+            background-color: transparent !important;
+        }
+
+        /* Wie bei Energiefluss/Wärmepumpe:
+           Die eigentliche Visualisierung malt KEINEN eigenen Hintergrund.
+           Dadurch kommt die reale Kachelfarbe direkt von Symcon. */
+        #viewport,
+        #viewport * {
+            --card-background-color: transparent;
         }
 
 
@@ -1652,88 +1665,17 @@ class Floorplaner extends IPSModuleStrict
         return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
-    // Theme-Erkennung wie in den älteren Symcon-HTML-SDK-Modulen.
-    // Zusätzlich übernehmen wir die von Symcon tatsächlich gelieferten
-    // Hintergrund-/Textfarben. Keine eigene dunkle Hintergrundfarbe mehr.
-    function readSymconCssVariable(names) {
-        const roots = [document.documentElement, document.body].filter(Boolean);
-
-        for (const root of roots) {
-            const style = getComputedStyle(root);
-            for (const name of names) {
-                const value = style.getPropertyValue(name).trim();
-                if (value) return value;
-            }
-        }
-
-        return '';
-    }
-
-    function syncSymconThemeColors() {
-        const root = document.documentElement;
-
-        const background = readSymconCssVariable([
-            '--content-background-color',
-            '--card-background-color',
-            '--primary-background-color',
-            '--background-color'
-        ]);
-
-        const secondaryBackground = readSymconCssVariable([
-            '--secondary-background-color',
-            '--content-background-color',
-            '--card-background-color',
-            '--primary-background-color',
-            '--background-color'
-        ]);
-
-        const textColor = readSymconCssVariable([
-            '--content-color',
-            '--primary-text-color'
-        ]);
-
-        const mutedColor = readSymconCssVariable([
-            '--secondary-text-color',
-            '--disabled-text-color'
-        ]);
-
-        const accentColor = readSymconCssVariable([
-            '--primary-color',
-            '--accent-color'
-        ]);
-
-        // Falls Symcon keine Hintergrundvariable in das HTML-SDK vererbt,
-        // bleibt alles transparent. Dadurch ist exakt der echte Kachelhintergrund
-        // von Symcon sichtbar statt einer von uns erfundenen Ersatzfarbe.
-        root.style.setProperty('--fp-panel', background || 'transparent');
-        root.style.setProperty('--fp-panel-2', secondaryBackground || background || 'transparent');
-
-        if (textColor) {
-            root.style.setProperty('--fp-text', textColor);
-        }
-        if (mutedColor) {
-            root.style.setProperty('--fp-muted', mutedColor);
-        }
-        if (accentColor) {
-            root.style.setProperty('--fp-accent', accentColor);
-        }
-    }
-
+    // Exakt das bewährte Verfahren aus dem Energiefluss-Modul:
+    // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
+    // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
     function detectTheme() {
-        let probe = readSymconCssVariable(['--content-color', '--primary-text-color']);
-
-        if (!probe) {
-            probe = getComputedStyle(document.body).color;
-        }
+        let probe = getComputedStyle(document.documentElement).getPropertyValue('--content-color').trim();
+        if (!probe) probe = getComputedStyle(document.body).color;
 
         let dark = null;
-        const rgb = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-
-        if (rgb) {
-            const lum =
-                (0.299 * Number(rgb[1]) +
-                 0.587 * Number(rgb[2]) +
-                 0.114 * Number(rgb[3])) / 255;
+        const m = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+        if (m) {
+            const lum = (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255;
             dark = lum > 0.5;
         } else if (probe && probe[0] === '#' && probe.length >= 7) {
             const r = parseInt(probe.substr(1, 2), 16);
@@ -1743,12 +1685,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (dark === null) {
-            dark = !!(window.matchMedia &&
-                window.matchMedia('(prefers-color-scheme: dark)').matches);
+            dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
         }
 
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-        syncSymconThemeColors();
     }
 
 
