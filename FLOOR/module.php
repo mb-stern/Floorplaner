@@ -496,6 +496,26 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 0.4;
         }
 
+        .rotate-handle-line {
+            stroke: #74b9ff;
+            stroke-width: 0.6;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .rotate-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 0.6;
+            vector-effect: non-scaling-stroke;
+            cursor: grab;
+            pointer-events: all;
+        }
+
+        .rotate-handle:active {
+            cursor: grabbing;
+        }
+
         .check {
             display: inline-flex;
             align-items: center;
@@ -1112,10 +1132,48 @@ class Floorplaner extends IPSModuleStrict
     let historyIndex = -1;
     let saveTimer = null;
     let dirty = false;
+    let propertiesSelectOpen = false;
 
     function uid(prefix) {
         return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
     }
+
+    // Native Select-Popups können vom Browser geöffnet bleiben, während im
+    // Hintergrund Theme-, Resize- oder Runtime-Updates eintreffen. Damit ein
+    // render() die Liste nicht aus dem DOM reißt, markieren wir die komplette
+    // Bedienphase eines Select-Felds explizit.
+    properties.addEventListener('pointerdown', evt => {
+        const select = evt.target.closest('select');
+        if (select && properties.contains(select)) {
+            propertiesSelectOpen = true;
+        }
+    }, true);
+
+    properties.addEventListener('focusin', evt => {
+        if (evt.target instanceof HTMLSelectElement) {
+            propertiesSelectOpen = true;
+        }
+    });
+
+    properties.addEventListener('change', evt => {
+        if (evt.target instanceof HTMLSelectElement) {
+            // Die jeweilige change-Logik darf danach wieder normal rendern.
+            propertiesSelectOpen = false;
+        }
+    }, true);
+
+    properties.addEventListener('focusout', evt => {
+        if (evt.target instanceof HTMLSelectElement) {
+            // Kleiner Aufschub: der change-Handler desselben Selects soll zuerst
+            // fertig werden, bevor Hintergrund-render() wieder zugelassen wird.
+            setTimeout(() => {
+                if (!(document.activeElement instanceof HTMLSelectElement) ||
+                    !properties.contains(document.activeElement)) {
+                    propertiesSelectOpen = false;
+                }
+            }, 0);
+        }
+    });
 
     function normalizeProject(p) {
         const q = (p && typeof p === 'object') ? structuredClone(p) : {};
@@ -1257,13 +1315,18 @@ class Floorplaner extends IPSModuleStrict
         return s > 0 ? Math.round(v / s) * s : v;
     }
 
-    function svgPoint(evt) {
+    function svgPointRaw(evt) {
         const pt = svg.createSVGPoint();
         pt.x = evt.clientX;
         pt.y = evt.clientY;
         const matrix = scene.getScreenCTM();
         if (!matrix) return {x: 0, y: 0};
         const p = pt.matrixTransform(matrix.inverse());
+        return {x: p.x, y: p.y};
+    }
+
+    function svgPoint(evt) {
+        const p = svgPointRaw(evt);
         return {
             x: snapValue(p.x),
             y: snapValue(p.y)
@@ -1311,8 +1374,8 @@ class Floorplaner extends IPSModuleStrict
         for (const f of floor.furniture || []) {
             const x = Number(f.x) || 0;
             const y = Number(f.y) || 0;
-            const w = Math.max(20, Number(f.width) || 100) / 2;
-            const h = Math.max(20, Number(f.height) || 60) / 2;
+            const w = Math.max(8, Number(f.width) || 100) / 2;
+            const h = Math.max(8, Number(f.height) || 60) / 2;
             // Drehung bewusst konservativ über Radius berücksichtigen.
             const r = Math.sqrt(w * w + h * h);
             points.push([x - r, y - r], [x + r, y + r]);
@@ -1505,8 +1568,8 @@ class Floorplaner extends IPSModuleStrict
 
     function furnitureShape(f) {
         const tpl = furnitureTemplates[f.type] || furnitureTemplates.sofa;
-        const w = Math.max(20, Number(f.width) || tpl.size.w);
-        const h = Math.max(20, Number(f.height) || tpl.size.h);
+        const w = Math.max(8, Number(f.width) || tpl.size.w);
+        const h = Math.max(8, Number(f.height) || tpl.size.h);
         const view = tpl.viewBox || [0,0,100,100];
         const [vx,vy,vw,vh] = view;
         const fullX = x => -w/2 + ((x-vx)/vw)*w;
@@ -1735,11 +1798,18 @@ class Floorplaner extends IPSModuleStrict
             }
 
             if (selected?.type === 'furniture' && selected.id === f.id) {
-                const fw = Math.max(20, Number(f.width) || 100);
-                const fh = Math.max(20, Number(f.height) || 60);
+                const fw = Math.max(8, Number(f.width) || 100);
+                const fh = Math.max(8, Number(f.height) || 60);
+                const rotateY = -fh / 2 - 16;
+
                 parts.push(
                     `<circle class="resize-handle" data-resize-type="furniture" data-id="${f.id}" ` +
                     `cx="${fw / 2}" cy="${fh / 2}" r="1.4"/>`
+                );
+                parts.push(
+                    `<line class="rotate-handle-line" x1="0" y1="${-fh / 2}" x2="0" y2="${rotateY}"/>` +
+                    `<circle class="rotate-handle" data-rotate-type="furniture" data-id="${f.id}" ` +
+                    `cx="0" cy="${rotateY}" r="3.2"/>`
                 );
             }
 
@@ -2014,6 +2084,20 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function renderProperties() {
+        // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
+        // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
+        // (Möbeltyp, Gerätetyp, Symbol, Profil-nahe Auswahlfelder usw.).
+        //
+        // document.activeElement allein reicht nicht in allen Browsern/HTML-SDK-
+        // Situationen zuverlässig aus. Daher merken wir zusätzlich, ob gerade
+        // irgendein Select in der Eigenschaftenleiste aktiv benutzt wird.
+        const activeElement = document.activeElement;
+        if (
+            propertiesSelectOpen ||
+            (activeElement instanceof HTMLSelectElement && properties.contains(activeElement))
+        ) {
+            return;
+        }
         const floor = currentFloor();
 
         if (!selected) {
@@ -2190,11 +2274,11 @@ class Floorplaner extends IPSModuleStrict
                 <div class="row2">
                     <div class="field">
                         <label>Breite</label>
-                        <input data-field="width" type="number" min="20" step="5" value="${Number(obj.width) || 100}">
+                        <input data-field="width" type="number" min="8" step="1" value="${Number(obj.width) || 100}">
                     </div>
                     <div class="field">
                         <label>Tiefe</label>
-                        <input data-field="height" type="number" min="20" step="5" value="${Number(obj.height) || 60}">
+                        <input data-field="height" type="number" min="8" step="1" value="${Number(obj.height) || 60}">
                     </div>
                 </div>
                 <div class="field">
@@ -2235,9 +2319,30 @@ class Floorplaner extends IPSModuleStrict
                     const newTpl = furnitureTemplates[value];
                     if (newTpl) {
                         if (!obj.name || (oldTpl && obj.name === oldTpl.name)) obj.name = newTpl.name;
-                        if (!obj.width || (oldTpl && Number(obj.width) === Number(oldTpl.size?.w))) obj.width = newTpl.size.w;
-                        if (!obj.height || (oldTpl && Number(obj.height) === Number(oldTpl.size?.h))) obj.height = newTpl.size.h;
+
+                        const oldWidth = Number(obj.width);
+                        const oldHeight = Number(obj.height);
+                        const wasHalfDefault =
+                            oldTpl &&
+                            Math.abs(oldWidth - Number(oldTpl.size?.w) * 0.5) < 0.001 &&
+                            Math.abs(oldHeight - Number(oldTpl.size?.h) * 0.5) < 0.001;
+                        const wasFullDefault =
+                            oldTpl &&
+                            Math.abs(oldWidth - Number(oldTpl.size?.w)) < 0.001 &&
+                            Math.abs(oldHeight - Number(oldTpl.size?.h)) < 0.001;
+
+                        if (!obj.width || !obj.height || wasHalfDefault) {
+                            obj.width = Number(newTpl.size.w) * 0.5;
+                            obj.height = Number(newTpl.size.h) * 0.5;
+                        } else if (wasFullDefault) {
+                            obj.width = Number(newTpl.size.w);
+                            obj.height = Number(newTpl.size.h);
+                        }
                     }
+
+                    // Auswahl ist abgeschlossen: erst jetzt darf die Eigenschaftsansicht
+                    // neu aufgebaut werden.
+                    input.blur();
                 }
 
                 pushHistory();
@@ -2443,10 +2548,38 @@ class Floorplaner extends IPSModuleStrict
 
         if (evt.button !== 0) return;
 
+        const rotateHandle = evt.target.closest('[data-rotate-type]');
         const resizeHandle = evt.target.closest('[data-resize-type]');
         const target = evt.target.closest('[data-type]');
         const p = svgPoint(evt);
         const floor = currentFloor();
+
+        if (state.mode !== 'view' && rotateHandle) {
+            const rotateType = rotateHandle.dataset.rotateType;
+            const id = rotateHandle.dataset.id;
+            const obj = findEntity(rotateType, id);
+
+            if (obj && rotateType === 'furniture') {
+                const raw = svgPointRaw(evt);
+                const cx = Number(obj.x) || 0;
+                const cy = Number(obj.y) || 0;
+                const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
+
+                selected = {type: rotateType, id};
+                drag = {
+                    mode: 'rotate',
+                    type: rotateType,
+                    id,
+                    original: structuredClone(obj),
+                    angleOffset: (Number(obj.rotation) || 0) - pointerAngle
+                };
+                svg.setPointerCapture(evt.pointerId);
+                evt.preventDefault();
+                evt.stopPropagation();
+                render();
+                return;
+            }
+        }
 
         if (state.mode !== 'view' && resizeHandle) {
             const resizeType = resizeHandle.dataset.resizeType;
@@ -2591,8 +2724,8 @@ class Floorplaner extends IPSModuleStrict
                 name: tpl.name,
                 x: p.x,
                 y: p.y,
-                width: tpl.size.w,
-                height: tpl.size.h,
+                width: Number(tpl.size.w) * 0.5,
+                height: Number(tpl.size.h) * 0.5,
                 rotation: 0,
                 showName: false
             };
@@ -2662,6 +2795,23 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
+        if (drag.mode === 'rotate' && drag.original) {
+            const obj = findEntity(drag.type, drag.id);
+            if (!obj || drag.type !== 'furniture') return;
+
+            const raw = svgPointRaw(evt);
+            const cx = Number(drag.original.x) || 0;
+            const cy = Number(drag.original.y) || 0;
+            const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
+            let rotation = pointerAngle + Number(drag.angleOffset || 0);
+
+            // Auf -180..180 normalisieren, damit der gespeicherte Wert handlich bleibt.
+            rotation = ((rotation + 180) % 360 + 360) % 360 - 180;
+            obj.rotation = Math.round(rotation * 10) / 10;
+            render();
+            return;
+        }
+
         if (drag.mode === 'resize' && drag.original) {
             const obj = findEntity(drag.type, drag.id);
             if (!obj) return;
@@ -2677,8 +2827,8 @@ class Floorplaner extends IPSModuleStrict
                 const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
                 const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
 
-                obj.width = Math.max(20, Math.round(Math.abs(localX) * 2));
-                obj.height = Math.max(20, Math.round(Math.abs(localY) * 2));
+                obj.width = Math.max(8, Math.round(Math.abs(localX) * 2));
+                obj.height = Math.max(8, Math.round(Math.abs(localY) * 2));
             } else if (drag.type === 'item') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
@@ -2694,7 +2844,7 @@ class Floorplaner extends IPSModuleStrict
     svg.addEventListener('pointerup', evt => {
         if (!drag) return;
 
-        if (drag.mode === 'move' || drag.mode === 'resize') {
+        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate') {
             pushHistory();
             markDirty();
         }
