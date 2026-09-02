@@ -1468,13 +1468,15 @@ class Floorplaner extends IPSModuleStrict
     function viewSafeArea() {
         const box = svg.getBoundingClientRect();
         const headerTop = state.mode === 'view' ? 42 : 0;
+        // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
+        const footerBottom = state.mode === 'view' ? 64 : 0;
         const padding = 24;
 
         return {
             left: padding,
             right: Math.max(padding, box.width - padding),
             top: padding + headerTop,
-            bottom: Math.max(padding + headerTop, box.height - padding)
+            bottom: Math.max(padding + headerTop, box.height - padding - footerBottom)
         };
     }
 
@@ -1581,8 +1583,7 @@ class Floorplaner extends IPSModuleStrict
         };
     }
 
-    function contentBounds() {
-        const floor = currentFloor();
+    function contentBounds(floor = currentFloor()) {
         const points = [];
 
         for (const w of floor.walls) {
@@ -1649,14 +1650,21 @@ class Floorplaner extends IPSModuleStrict
         const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
 
         /*
-         * Einpassen immer proportional:
-         * - links/rechts UND oben/unten vollständig sichtbar
-         * - EIN gemeinsamer Zoomfaktor für X und Y
-         * - dadurch keinerlei Verzerrung/Streckung
-         *
-         * Im Live-Modus bleibt oben bewusst Platz für die HTML-SDK-Kopfzeile.
-         * Zentriert wird nur in der darunter tatsächlich nutzbaren Planfläche.
+         * Alle Etagen verwenden beim automatischen Einpassen denselben Maßstab.
+         * Maßgebend ist die größte benötigte Breite/Höhe aller Etagen.
+         * Dadurch wird eine kleinere Etage nicht plötzlich stärker vergrößert.
+         * Die aktuelle Etage wird nur innerhalb der freien Fläche zentriert.
          */
+        let commonContentWidth = contentWidth;
+        let commonContentHeight = contentHeight;
+
+        for (const floor of state.floors || []) {
+            const floorBounds = contentBounds(floor);
+            if (!floorBounds) continue;
+            commonContentWidth = Math.max(commonContentWidth, floorBounds.maxX - floorBounds.minX);
+            commonContentHeight = Math.max(commonContentHeight, floorBounds.maxY - floorBounds.minY);
+        }
+
         const safe = viewSafeArea();
         const left = safe.left;
         const right = safe.right;
@@ -1666,10 +1674,10 @@ class Floorplaner extends IPSModuleStrict
         const availableWidth = Math.max(1, right - left);
         const availableHeight = Math.max(1, bottom - top);
 
-        const scaleX = availableWidth / contentWidth;
-        const scaleY = availableHeight / contentHeight;
+        const scaleX = availableWidth / Math.max(1, commonContentWidth);
+        const scaleY = availableHeight / Math.max(1, commonContentHeight);
 
-        // WICHTIG: nur EIN Zoomfaktor -> Seitenverhältnis bleibt exakt erhalten.
+        // Ein gemeinsamer, proportionaler Zoomfaktor für ALLE Etagen.
         zoom = Math.max(0.05, Math.min(20, Math.min(scaleX, scaleY)));
 
         const contentCenterX = (bounds.minX + bounds.maxX) / 2;
