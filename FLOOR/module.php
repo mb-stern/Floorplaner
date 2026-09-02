@@ -1304,6 +1304,9 @@ class Floorplaner extends IPSModuleStrict
         q.background = q.background || '#303030';
         q.showGrid = q.showGrid !== false;
         q.mode = q.mode === 'view' ? 'view' : 'edit';
+        q.viewStates = (q.viewStates && typeof q.viewStates === 'object' && !Array.isArray(q.viewStates))
+            ? q.viewStates
+            : {};
         q.floors = Array.isArray(q.floors) && q.floors.length ? q.floors : [{
             id: 'floor_1',
             name: 'Erdgeschoss',
@@ -1334,6 +1337,10 @@ class Floorplaner extends IPSModuleStrict
         q.activeFloor ||= q.defaultFloor;
         if (!q.floors.some(f => f.id === q.activeFloor)) {
             q.activeFloor = q.floors[0].id;
+        }
+        const validFloorIDs = new Set(q.floors.map(f => f.id));
+        for (const floorID of Object.keys(q.viewStates)) {
+            if (!validFloorIDs.has(floorID)) delete q.viewStates[floorID];
         }
         return q;
     }
@@ -1377,6 +1384,11 @@ class Floorplaner extends IPSModuleStrict
         saveTimer = setTimeout(saveProject, 1200);
     }
 
+    function scheduleViewSave() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveProject, 350);
+    }
+
     function saveProject() {
         clearTimeout(saveTimer);
         saveTimer = null;
@@ -1412,6 +1424,8 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function setMode(mode) {
+        // Aktuelle Etagenansicht vor dem Moduswechsel sichern.
+        rememberCurrentFloorView(false, true);
         state.mode = mode === 'view' ? 'view' : 'edit';
 
         const gridControls = document.querySelector('.grid-editor-controls');
@@ -1425,7 +1439,7 @@ class Floorplaner extends IPSModuleStrict
         saveProject();
         updateModeUI();
         render();
-        requestAnimationFrame(fit);
+        requestAnimationFrame(restoreCurrentFloorViewOrFit);
     }
 
     function snapValue(v) {
@@ -1457,25 +1471,37 @@ class Floorplaner extends IPSModuleStrict
 
     function viewSafeArea() {
         const box = svg.getBoundingClientRect();
-        const headerTop = 0; // HTML-SDK-Kopf liegt außerhalb der SVG-Fläche.
-        const padding = 24;
+
+        // Seitlich bewusst mehr Luft lassen. 24 px waren bei breiten Grundrissen
+        // optisch zu knapp am Kachelrand. X und Y bleiben jeweils symmetrisch.
+        const paddingX = 56;
+        const paddingY = 32;
 
         return {
-            left: padding,
-            right: Math.max(padding, box.width - padding),
-            top: padding + headerTop,
-            bottom: Math.max(padding + headerTop, box.height - padding)
+            left: paddingX,
+            right: Math.max(paddingX, box.width - paddingX),
+            top: paddingY,
+            bottom: Math.max(paddingY, box.height - paddingY)
         };
     }
 
-    function rememberCurrentFloorView(autoFit = false) {
+    function rememberCurrentFloorView(autoFit = false, persist = true) {
         if (!state?.activeFloor) return;
-        floorViews.set(state.activeFloor, {
+        const view = {
             zoom,
             panX,
             panY,
             autoFit: autoFit === true
-        });
+        };
+        floorViews.set(state.activeFloor, view);
+
+        // Ansicht je Etage direkt im Projekt mitspeichern. Damit bleibt die
+        // Editorposition auch nach Wechsel in Live-Modus, Zurück zum Editor
+        // und nach einem erneuten Laden erhalten.
+        if (persist) {
+            state.viewStates ||= {};
+            state.viewStates[state.activeFloor] = {...view};
+        }
     }
 
     function makeDefaultFloorView() {
@@ -1507,18 +1533,20 @@ class Floorplaner extends IPSModuleStrict
         panX = home.panX;
         panY = home.panY;
 
-        rememberCurrentFloorView(false);
+        rememberCurrentFloorView(false, true);
+        scheduleViewSave();
         setTransform();
         render();
     }
 
     function restoreCurrentFloorViewOrFit() {
         ensureCurrentFloorHomeView();
-        const saved = floorViews.get(state.activeFloor);
+        const saved = floorViews.get(state.activeFloor) || state.viewStates?.[state.activeFloor];
         if (!saved) {
             resetCurrentFloorView();
             return;
         }
+        floorViews.set(state.activeFloor, {...saved});
 
         zoom = Math.max(0.05, Math.min(20, Number(saved.zoom) || 1));
         panX = Number(saved.panX) || 0;
@@ -1530,7 +1558,8 @@ class Floorplaner extends IPSModuleStrict
     function switchFloorView(nextFloorID) {
         if (!state.floors.some(f => f.id === nextFloorID)) return;
 
-        rememberCurrentFloorView(false);
+        rememberCurrentFloorView(false, true);
+        scheduleViewSave();
         state.activeFloor = nextFloorID;
         selected = null;
         wallStart = null;
@@ -1555,7 +1584,8 @@ class Floorplaner extends IPSModuleStrict
         panY = centerY - worldY * nextZoom;
         zoom = nextZoom;
 
-        rememberCurrentFloorView(false);
+        rememberCurrentFloorView(false, true);
+        scheduleViewSave();
         setTransform();
         render();
     }
@@ -1644,8 +1674,8 @@ class Floorplaner extends IPSModuleStrict
          * - EIN gemeinsamer Zoomfaktor für X und Y
          * - dadurch keinerlei Verzerrung/Streckung
          *
-         * Im Live-Modus bleibt oben bewusst Platz für die HTML-SDK-Kopfzeile.
-         * Zentriert wird nur in der darunter tatsächlich nutzbaren Planfläche.
+         * Seitlich bleibt bewusst mehr Rand, damit der Plan nicht an der
+         * Kachel klebt. Zentriert wird exakt in der nutzbaren SVG-Fläche.
          */
         const safe = viewSafeArea();
         const left = safe.left;
@@ -1673,7 +1703,8 @@ class Floorplaner extends IPSModuleStrict
         panX = viewportCenterX - contentCenterX * zoom;
         panY = viewportCenterY - contentCenterY * zoom;
 
-        rememberCurrentFloorView(true);
+        rememberCurrentFloorView(true, true);
+        scheduleViewSave();
         setTransform();
         render();
     }
@@ -2750,7 +2781,7 @@ class Floorplaner extends IPSModuleStrict
             lastTileHeight = rect.height;
 
             if (widthChanged || heightChanged) {
-                const saved = floorViews.get(state.activeFloor);
+                const saved = floorViews.get(state.activeFloor) || state.viewStates?.[state.activeFloor];
                 if (!saved || saved.autoFit !== false) {
                     fit();
                 } else {
@@ -2828,6 +2859,7 @@ class Floorplaner extends IPSModuleStrict
         state.floors.splice(index, 1);
         floorViews.delete(floor.id);
         floorHomeViews.delete(floor.id);
+        if (state.viewStates) delete state.viewStates[floor.id];
 
         // Der Editor benötigt immer mindestens eine Etage.
         // Wird die letzte gelöscht, entsteht eine wirklich leere neue Etage.
@@ -3125,7 +3157,7 @@ class Floorplaner extends IPSModuleStrict
         if (drag.mode === 'pan') {
             panX = drag.panX + (evt.clientX - drag.x);
             panY = drag.panY + (evt.clientY - drag.y);
-            rememberCurrentFloorView(false);
+            rememberCurrentFloorView(false, true);
             setTransform();
             render();
             return;
@@ -3264,6 +3296,9 @@ class Floorplaner extends IPSModuleStrict
         if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate') {
             pushHistory();
             markDirty();
+        } else if (drag.mode === 'pan') {
+            rememberCurrentFloorView(false, true);
+            scheduleViewSave();
         }
 
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
@@ -3696,7 +3731,7 @@ class Floorplaner extends IPSModuleStrict
                 pushHistory();
                 updateModeUI();
                 renderAll();
-                fit();
+                requestAnimationFrame(restoreCurrentFloorViewOrFit);
             } else if (data?.type === 'objectTree' && Array.isArray(data.objects)) {
                 objectTree = data.objects;
                 variableSearch.value = '';
@@ -3730,7 +3765,7 @@ class Floorplaner extends IPSModuleStrict
     updateModeUI();
     detectTheme();
     renderAll();
-    requestAnimationFrame(fit);
+    requestAnimationFrame(restoreCurrentFloorViewOrFit);
     detectTheme();
     window.addEventListener('load', detectTheme);
 
@@ -4025,6 +4060,15 @@ HTML;
             $data['activeFloor'] = $data['defaultFloor'];
         }
 
+        if (!isset($data['viewStates']) || !is_array($data['viewStates'])) {
+            $data['viewStates'] = [];
+        }
+        foreach (array_keys($data['viewStates']) as $floorID) {
+            if (!in_array((string) $floorID, $floorIDs, true)) {
+                unset($data['viewStates'][$floorID]);
+            }
+        }
+
         return $data;
     }
 
@@ -4040,6 +4084,7 @@ HTML;
             'mode'         => 'edit',
             'defaultFloor' => 'floor_1',
             'activeFloor'  => 'floor_1',
+            'viewStates'   => [],
             'floors'       => [
                 $this->CreateDefaultFloor()
             ]
