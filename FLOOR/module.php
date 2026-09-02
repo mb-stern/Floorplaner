@@ -1136,6 +1136,7 @@ class Floorplaner extends IPSModuleStrict
 
         <div class="group">
             <button id="addFloorBtn">+ Etage</button>
+            <button id="copyFloorBtn" type="button" title="Aktuelle Etage komplett kopieren">Etage kopieren</button>
             <select id="floorSelect"></select>
             <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
         </div>
@@ -2848,6 +2849,79 @@ class Floorplaner extends IPSModuleStrict
 
         selected = null;
         wallStart = null;
+        pushHistory();
+        markDirty();
+        renderAll();
+        requestAnimationFrame(restoreCurrentFloorViewOrFit);
+    });
+
+
+    document.getElementById('copyFloorBtn')?.addEventListener('click', () => {
+        const sourceFloor = currentFloor();
+        if (!sourceFloor) return;
+
+        const name = prompt('Name der kopierten Etage:', `${sourceFloor.name} Kopie`);
+        if (name === null) return;
+
+        rememberCurrentFloorView(false);
+
+        // Komplette Etage kopieren, aber alle internen IDs neu erzeugen.
+        // Öffnungen müssen anschließend auf die neu erzeugten Wand-IDs zeigen.
+        const floor = structuredClone(sourceFloor);
+        const oldFloorID = sourceFloor.id;
+        floor.id = uid('floor');
+        floor.name = name.trim() || `${sourceFloor.name} Kopie`;
+
+        const wallIdMap = new Map();
+        for (const wall of floor.walls || []) {
+            const oldID = wall.id;
+            wall.id = uid('wall');
+            wallIdMap.set(oldID, wall.id);
+        }
+
+        for (const opening of floor.openings || []) {
+            opening.id = uid('opening');
+            if (wallIdMap.has(opening.wallId)) {
+                opening.wallId = wallIdMap.get(opening.wallId);
+            }
+        }
+
+        for (const item of floor.items || []) {
+            item.id = uid('item');
+        }
+
+        for (const furniture of floor.furniture || []) {
+            furniture.id = uid('furniture');
+        }
+
+        for (const itemText of floor.texts || []) {
+            itemText.id = uid('text');
+        }
+
+        for (const area of floor.areas || []) {
+            area.id = uid('area');
+        }
+
+        for (const tracker of floor.trackers || []) {
+            tracker.id = uid('tracker');
+        }
+
+        state.floors.push(floor);
+        state.activeFloor = floor.id;
+
+        // Gleiche Ansicht wie beim Quellgeschoss übernehmen.
+        const sourceView = floorViews.get(oldFloorID);
+        if (sourceView) {
+            floorViews.set(floor.id, structuredClone(sourceView));
+        }
+        const sourceHomeView = floorHomeViews.get(oldFloorID);
+        if (sourceHomeView) {
+            floorHomeViews.set(floor.id, structuredClone(sourceHomeView));
+        }
+
+        selected = null;
+        wallStart = null;
+        preview = null;
         pushHistory();
         markDirty();
         renderAll();
