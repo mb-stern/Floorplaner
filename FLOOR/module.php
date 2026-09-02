@@ -977,6 +977,10 @@ class Floorplaner extends IPSModuleStrict
             background: rgba(224,224,224,.98);
         }
 
+        html[data-theme="light"] button.danger {
+            color: #111111;
+        }
+
         html[data-theme="light"] button:hover {
             background: rgba(205,205,205,.98);
         }
