@@ -758,6 +758,10 @@ class Floorplaner extends IPSModuleStrict
             max-width: calc(92vw - 24px);
         }
 
+        .control-slider { min-width: 240px; padding: 6px 2px; }
+        .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .control-slider input[type="range"] { width: 100%; }
+
         .control-associations {
             display: flex;
             flex-direction: column;
@@ -2105,49 +2109,39 @@ class Floorplaner extends IPSModuleStrict
                 item.kind = inferredSensorKind;
             }
 
-            let displayMode = item.displayMode;
-            if (inferredSensorKind && item.displayModeManual !== true) {
-                displayMode = 'value';
-            } else if (!['icon','value','iconValue'].includes(displayMode)) {
-                displayMode = ['temperature','humidity'].includes(item.kind)
-                    ? 'value'
-                    : (legacyShowState ? 'iconValue' : 'icon');
-            }
-
-            const showIcon = displayMode === 'icon' || displayMode === 'iconValue';
-            const showValue = displayMode === 'value' || displayMode === 'iconValue';
+            const showValue = item.showValue === true;
             const valueText = item._valueText !== undefined && item._valueText !== ''
                 ? String(item._valueText)
                 : '—';
-
-            const labelParts = [];
-            if (showName && item.name) labelParts.push(String(item.name));
-            if (showValue && displayMode !== 'value') labelParts.push(valueText);
-            const labelText = labelParts.join(' · ');
-
             const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
-            const pos = ['left','right','below'].includes(item.labelPosition) ? item.labelPosition : 'below';
+            const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
             const radius = Number(item.size) || 18;
 
-            let lx = 0, ly = radius + labelSize + 5, anchor = 'middle';
-            if (pos === 'left') {
-                lx = -(radius + 7); ly = 4; anchor = 'end';
-            } else if (pos === 'right') {
-                lx = radius + 7; ly = 4; anchor = 'start';
+            function deviceTextPlacement(position, size, extra = 0) {
+                const pos = ['above','left','right','below'].includes(position) ? position : 'below';
+                if (pos === 'above') return {x: 0, y: -(radius + 7 + extra), anchor: 'middle'};
+                if (pos === 'left') return {x: -(radius + 7 + extra), y: size * .34, anchor: 'end'};
+                if (pos === 'right') return {x: radius + 7 + extra, y: size * .34, anchor: 'start'};
+                return {x: 0, y: radius + size + 5 + extra, anchor: 'middle'};
             }
 
-            const valueOnlyWidth = Math.max(radius * 2, valueText.length * labelSize * .62 + 16);
-            const valueOnlyHeight = Math.max(radius * 1.45, labelSize + 14);
+            const namePlace = deviceTextPlacement(item.labelPosition, labelSize, 0);
+            let valueExtra = 0;
+            if (showName && (item.valuePosition || 'below') === (item.labelPosition || 'below')) {
+                valueExtra = Math.max(labelSize, valueSize) + 3;
+            }
+            const valuePlace = deviceTextPlacement(item.valuePosition, valueSize, valueExtra);
 
             parts.push(
                 `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
-                (displayMode === 'value'
-                    ? `<rect class="device-value-box" x="${-valueOnlyWidth/2}" y="${-valueOnlyHeight/2}" width="${valueOnlyWidth}" height="${valueOnlyHeight}" rx="6"/>` +
-                      `<text class="runtime-value" x="0" y="${labelSize * .34}" text-anchor="middle" font-size="${labelSize}">${escapeHtml(valueText)}</text>`
-                    : `<circle r="${radius}"/>` +
-                      (showIcon ? `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` : '')
-                ) +
-                (labelText ? `<text class="device-label" x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="${labelSize}">${escapeHtml(labelText)}</text>` : '') +
+                `<circle r="${radius}"/>` +
+                `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` +
+                (showName && item.name
+                    ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
+                    : '') +
+                (showValue
+                    ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
+                    : '') +
                 (selected?.type === 'item' && selected.id === item.id
                     ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
                     : '') +
@@ -2544,30 +2538,29 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="row2">
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
-                    <div class="field">
-                        <label>Darstellung</label>
-                        <select data-field="displayMode">
-                            ${(() => {
-                                const effectiveMode = ['icon','value','iconValue'].includes(obj.displayMode)
-                                    ? obj.displayMode
-                                    : (['temperature','humidity'].includes(kind) ? 'value' : 'icon');
-                                return `
-                                    <option value="icon"${effectiveMode === 'icon' ? ' selected' : ''}>Symbol</option>
-                                    <option value="value"${effectiveMode === 'value' ? ' selected' : ''}>Wert</option>
-                                    <option value="iconValue"${effectiveMode === 'iconValue' ? ' selected' : ''}>Symbol + Wert</option>
-                                `;
-                            })()}
-                        </select>
-                    </div>
+                    <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="row2">
-                    <div class="field"><label>Schriftgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
+                    <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
+                    <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
+                </div>
+                <div class="row2">
                     <div class="field">
-                        <label>Beschriftung</label>
+                        <label>Name Position</label>
                         <select data-field="labelPosition">
                             <option value="below"${(obj.labelPosition || 'below') === 'below' ? ' selected' : ''}>unten</option>
+                            <option value="above"${obj.labelPosition === 'above' ? ' selected' : ''}>oben</option>
                             <option value="left"${obj.labelPosition === 'left' ? ' selected' : ''}>links</option>
                             <option value="right"${obj.labelPosition === 'right' ? ' selected' : ''}>rechts</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Wert Position</label>
+                        <select data-field="valuePosition">
+                            <option value="below"${(obj.valuePosition || 'below') === 'below' ? ' selected' : ''}>unten</option>
+                            <option value="above"${obj.valuePosition === 'above' ? ' selected' : ''}>oben</option>
+                            <option value="left"${obj.valuePosition === 'left' ? ' selected' : ''}>links</option>
+                            <option value="right"${obj.valuePosition === 'right' ? ' selected' : ''}>rechts</option>
                         </select>
                     </div>
                 </div>
@@ -3055,11 +3048,14 @@ class Floorplaner extends IPSModuleStrict
                 angle: 0,
                 kind: 'generic',
                 showName: false,
+                showValue: false,
                 showState: false,
                 displayMode: 'icon',
                 displayModeManual: false,
                 labelSize: 12,
-                labelPosition: 'below'
+                valueSize: 12,
+                labelPosition: 'below',
+                valuePosition: 'below'
             };
             floor.items.push(item);
             selected = {type: 'item', id: item.id};
@@ -3563,8 +3559,27 @@ class Floorplaner extends IPSModuleStrict
             html += '</div>';
         }
 
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        const configuredStep = Number(profile.step);
+        const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
+
+        if (!associations.length && hasRange) {
+            const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
+            const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+            const prefix = String(profile.prefix || '');
+            const suffix = String(profile.suffix || '');
+            html = `
+                <div class="control-slider">
+                    <div class="control-slider-value" data-slider-value>${escapeHtml(prefix)}${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
+                    <input type="range" data-control-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)}</div>
+                </div>
+            `;
+        }
+
         if (!html) {
-            html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil keine bedienbaren Werte hinterlegt.</div>';
+            html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
         }
 
         controlBody.innerHTML = html;
@@ -3576,6 +3591,19 @@ class Floorplaner extends IPSModuleStrict
                 controlModal.setAttribute('aria-hidden', 'true');
             });
         });
+
+        const slider = controlBody.querySelector('[data-control-slider]');
+        const sliderValue = controlBody.querySelector('[data-slider-value]');
+        if (slider) {
+            const prefix = String(profile.prefix || '');
+            const suffix = String(profile.suffix || '');
+            slider.addEventListener('input', () => {
+                if (sliderValue) sliderValue.textContent = `${prefix}${slider.value}${suffix}`;
+            });
+            slider.addEventListener('change', () => {
+                sendItemValue(item, Number(slider.value));
+            });
+        }
 
         controlModal.classList.add('open');
         controlModal.setAttribute('aria-hidden', 'false');
