@@ -1467,7 +1467,17 @@ class Floorplaner extends IPSModuleStrict
 
     function viewSafeArea() {
         const box = svg.getBoundingClientRect();
-        const headerTop = state.mode === 'view' ? 42 : 0;
+
+        /*
+         * Im Bedienmodus liegt oben die Visualisierungs-Kopfzone von IP-Symcon.
+         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
+         * interaktive Grundriss dort nicht hineinragen.
+         *
+         * 105 px + 24 px Innenabstand ergeben eine klar getrennte Bedienfläche
+         * unterhalb der Kopfzone.
+         */
+        const headerTop = state.mode === 'view' ? 105 : 0;
+
         // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 64 : 0;
         const padding = 24;
@@ -1585,9 +1595,11 @@ class Floorplaner extends IPSModuleStrict
 
     function contentBounds(floor = currentFloor()) {
         const points = [];
+        const addBox = (minX, minY, maxX, maxY) => {
+            points.push([minX, minY], [maxX, maxY]);
+        };
 
-        // Für das automatische Einpassen zählt der eigentliche Grundriss.
-        // Geräte, Möbel und Beschriftungen dürfen den Zoom nicht verkleinern.
+        // Hauptreferenz bleibt der eigentliche Grundriss.
         for (const w of floor.walls || []) {
             points.push([Number(w.x1) || 0, Number(w.y1) || 0]);
             points.push([Number(w.x2) || 0, Number(w.y2) || 0]);
@@ -1603,13 +1615,87 @@ class Floorplaner extends IPSModuleStrict
             );
         }
 
-        // Nur bei einer Etage ohne Wände auf vorhandene Objekte zurückfallen.
-        if (!points.length) {
-            for (const item of floor.items || []) {
-                const r = Math.max(2, Number(item.size) || 18);
-                points.push([item.x - r, item.y - r], [item.x + r, item.y + r]);
+        /*
+         * Geräte werden zusätzlich mit ihrer EFFEKTIV sichtbaren Größe
+         * berücksichtigt. Befindet sich ein Gerät innerhalb des Grundrisses,
+         * verändert es die Bounds nicht. Steht es z.B. auf einer Terrasse
+         * außerhalb, erweitert es die Bounds nur genau so weit wie nötig.
+         */
+        for (const item of floor.items || []) {
+            const x = Number(item.x) || 0;
+            const y = Number(item.y) || 0;
+            const radius = Math.max(0, Number(item.size) || 18);
+            const showIcon = item.showIcon !== false;
+            const showName = item.showName === true;
+            const showValue = item.showValue === true;
+            const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
+            const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
+            const valueText = item._valueText !== undefined && item._valueText !== ''
+                ? String(item._valueText)
+                : '—';
+
+            if (showIcon) {
+                addBox(x - radius, y - radius, x + radius, y + radius);
             }
 
+            const addDeviceText = (textValue, position, size, extra = 0) => {
+                if (!textValue) return;
+
+                const width = Math.max(size, String(textValue).length * size * 0.62);
+                const height = size * 1.2;
+                const pos = ['above','left','right','below'].includes(position) ? position : 'below';
+
+                let minX, minY, maxX, maxY;
+
+                if (pos === 'above') {
+                    const baselineY = y - (radius + 7 + extra);
+                    minX = x - width / 2;
+                    maxX = x + width / 2;
+                    minY = baselineY - height;
+                    maxY = baselineY + size * 0.3;
+                } else if (pos === 'left') {
+                    const rightX = x - (radius + 7 + extra);
+                    minX = rightX - width;
+                    maxX = rightX;
+                    minY = y - height * 0.55;
+                    maxY = y + height * 0.45;
+                } else if (pos === 'right') {
+                    const leftX = x + radius + 7 + extra;
+                    minX = leftX;
+                    maxX = leftX + width;
+                    minY = y - height * 0.55;
+                    maxY = y + height * 0.45;
+                } else {
+                    const baselineY = y + radius + size + 5 + extra;
+                    minX = x - width / 2;
+                    maxX = x + width / 2;
+                    minY = baselineY - height;
+                    maxY = baselineY + size * 0.3;
+                }
+
+                addBox(minX, minY, maxX, maxY);
+            };
+
+            if (showName && item.name) {
+                addDeviceText(String(item.name), item.labelPosition || 'below', labelSize, 0);
+            }
+
+            if (showValue) {
+                let valueExtra = 0;
+                if (showName && (item.valuePosition || 'below') === (item.labelPosition || 'below')) {
+                    valueExtra = Math.max(labelSize, valueSize) + 3;
+                }
+                addDeviceText(valueText, item.valuePosition || 'below', valueSize, valueExtra);
+            }
+
+            // Unsichtbares Gerät nur minimal berücksichtigen.
+            if (!showIcon && !showName && !showValue) {
+                addBox(x - 2, y - 2, x + 2, y + 2);
+            }
+        }
+
+        // Nur bei einer Etage komplett ohne Wände noch Möbel/Texte als Fallback verwenden.
+        if (!(floor.walls || []).length) {
             for (const f of floor.furniture || []) {
                 const x = Number(f.x) || 0;
                 const y = Number(f.y) || 0;
@@ -1703,19 +1789,21 @@ class Floorplaner extends IPSModuleStrict
     function updateLiveFloorSelectWidth() {
         if (!liveFloorSelect) return;
 
-        const option = liveFloorSelect.options[liveFloorSelect.selectedIndex];
-        const label = option ? option.text : '';
-
         const style = getComputedStyle(liveFloorSelect);
         const canvas = updateLiveFloorSelectWidth._canvas || (updateLiveFloorSelectWidth._canvas = document.createElement('canvas'));
         const ctx = canvas.getContext('2d');
 
         if (ctx) {
             ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-            const textWidth = ctx.measureText(label).width;
-            // Text + Innenabstand + Platz für nativen Auswahlpfeil.
-            const width = Math.ceil(textWidth + 48);
-            liveFloorSelect.style.width = `${Math.max(88, width)}px`;
+
+            let longestWidth = 0;
+            for (const option of liveFloorSelect.options) {
+                longestWidth = Math.max(longestWidth, ctx.measureText(option.text || '').width);
+            }
+
+            // Immer gleich breit: längster Etagenname + Innenabstand + Auswahlpfeil.
+            const width = Math.ceil(longestWidth + 52);
+            liveFloorSelect.style.width = `${Math.max(96, width)}px`;
         }
     }
 
