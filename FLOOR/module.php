@@ -1186,6 +1186,7 @@ class Floorplaner extends IPSModuleStrict
 <script>
 (() => {
     const initial = __INITIAL_PROJECT__;
+    const lastViewFloorStorageKey = 'floorplaner:lastViewFloor:__INSTANCE_ID__';
     const svg = document.getElementById('viewport');
     const scene = document.getElementById('scene');
     const properties = document.getElementById('properties');
@@ -1350,6 +1351,27 @@ class Floorplaner extends IPSModuleStrict
 
     function currentFloor() {
         return state.floors.find(f => f.id === state.activeFloor) || state.floors[0];
+    }
+
+    function rememberLastViewFloor() {
+        if (state.mode !== 'view' || !state.activeFloor) return;
+        try {
+            localStorage.setItem(lastViewFloorStorageKey, state.activeFloor);
+        } catch (e) {
+            // localStorage kann je nach WebView/Browser deaktiviert sein.
+        }
+    }
+
+    function restoreLastViewFloor() {
+        if (state.mode !== 'view') return;
+        try {
+            const savedFloorID = localStorage.getItem(lastViewFloorStorageKey);
+            if (savedFloorID && state.floors.some(f => f.id === savedFloorID)) {
+                state.activeFloor = savedFloorID;
+            }
+        } catch (e) {
+            // Ohne localStorage bleibt die im Projekt gespeicherte Etage aktiv.
+        }
     }
 
     function pushHistory() {
@@ -1554,6 +1576,7 @@ class Floorplaner extends IPSModuleStrict
 
         rememberCurrentFloorView(false);
         state.activeFloor = nextFloorID;
+        rememberLastViewFloor();
         selected = null;
         wallStart = null;
         preview = null;
@@ -3949,6 +3972,7 @@ class Floorplaner extends IPSModuleStrict
     });
     resizeObserver.observe(svg);
 
+    restoreLastViewFloor();
     pushHistory();
     updateModeUI();
     detectTheme();
@@ -3993,7 +4017,11 @@ class Floorplaner extends IPSModuleStrict
 </html>
 HTML;
 
-        return str_replace('__INITIAL_PROJECT__', $initial, $html);
+        return str_replace(
+            ['__INITIAL_PROJECT__', '__INSTANCE_ID__'],
+            [$initial, (string) $this->InstanceID],
+            $html
+        );
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
