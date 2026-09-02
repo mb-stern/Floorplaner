@@ -2115,6 +2115,7 @@ class Floorplaner extends IPSModuleStrict
             }
 
             const showValue = item.showValue === true;
+            const showIcon = item.showIcon !== false;
             const valueText = item._valueText !== undefined && item._valueText !== ''
                 ? String(item._valueText)
                 : '—';
@@ -2139,8 +2140,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
-                `<circle r="${radius}"/>` +
-                `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>` +
+                (showIcon
+                    ? `<circle r="${radius}"/>` +
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`
+                    : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
                     : '') +
@@ -2545,6 +2548,7 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
+                <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
                 <div class="row2">
                     <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
                     <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
@@ -2655,6 +2659,10 @@ class Floorplaner extends IPSModuleStrict
                 if (selected.type === 'item' && fieldName === 'kind') {
                     obj.displayMode = ['temperature','humidity'].includes(String(value)) ? 'value' : 'icon';
                     obj.displayModeManual = false;
+                    if (['temperature','humidity'].includes(String(value))) {
+                        obj.showIcon = false;
+                        obj.showValue = true;
+                    }
                 }
 
                 if (selected.type === 'furniture' && fieldName === 'type') {
@@ -3127,6 +3135,7 @@ class Floorplaner extends IPSModuleStrict
                 kind: 'generic',
                 showName: false,
                 showValue: false,
+                showIcon: true,
                 showState: false,
                 displayMode: 'icon',
                 displayModeManual: false,
