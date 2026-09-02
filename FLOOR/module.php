@@ -3791,6 +3791,15 @@ HTML;
                 }
 
                 $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+
+                /*
+                 * Die Variablenzuordnung kann direkt im HTML-Editor geändert werden.
+                 * ApplyChanges() läuft dabei nicht erneut. Deshalb müssen neu
+                 * zugeordnete Variablen unmittelbar nach dem Speichern für VM_UPDATE
+                 * registriert werden, damit externe Änderungen sofort im Floorplan erscheinen.
+                 */
+                $this->RegisterRuntimeVariableMessages();
+
                 $this->ReloadForm();
                 break;
 
