@@ -1106,7 +1106,6 @@ class Floorplaner extends IPSModuleStrict
     <div class="toolbar">
         <div class="group">
             <button data-tool="select" class="active">Auswahl</button>
-            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
             <button data-tool="wall">Wand</button>
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
@@ -1458,7 +1457,7 @@ class Floorplaner extends IPSModuleStrict
 
     function viewSafeArea() {
         const box = svg.getBoundingClientRect();
-        const headerTop = state.mode === 'view' ? 42 : 0;
+        const headerTop = 0; // HTML-SDK-Kopf liegt außerhalb der SVG-Fläche.
         const padding = 24;
 
         return {
@@ -1667,11 +1666,12 @@ class Floorplaner extends IPSModuleStrict
         const contentCenterY = (bounds.minY + bounds.maxY) / 2;
 
         // In der tatsächlich verfügbaren Fläche horizontal UND vertikal zentrieren.
-        const targetCenterX = (left + right) / 2;
-        const targetCenterY = (top + bottom) / 2;
+        // Exakt in der verfügbaren SVG-Fläche zentrieren.
+        const viewportCenterX = left + availableWidth / 2;
+        const viewportCenterY = top + availableHeight / 2;
 
-        panX = targetCenterX - contentCenterX * zoom;
-        panY = targetCenterY - contentCenterY * zoom;
+        panX = viewportCenterX - contentCenterX * zoom;
+        panY = viewportCenterY - contentCenterY * zoom;
 
         rememberCurrentFloorView(true);
         setTransform();
@@ -2900,7 +2900,8 @@ class Floorplaner extends IPSModuleStrict
         const p = svgPoint(evt);
         const floor = currentFloor();
 
-        if (state.mode !== 'view' && tool === 'pan') {
+        // Freie Fläche ziehen = Ansicht verschieben; kein eigenes Werkzeug nötig.
+        if (state.mode !== 'view' && !target) {
             drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
             svg.setPointerCapture(evt.pointerId);
             evt.preventDefault();
