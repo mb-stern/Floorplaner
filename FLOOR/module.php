@@ -1526,7 +1526,7 @@ class Floorplaner extends IPSModuleStrict
         ensureCurrentFloorHomeView();
         const saved = floorViews.get(state.activeFloor);
         if (!saved) {
-            resetCurrentFloorView();
+            fit();
             return;
         }
 
@@ -1546,7 +1546,7 @@ class Floorplaner extends IPSModuleStrict
         wallStart = null;
         preview = null;
         render();
-        requestAnimationFrame(restoreCurrentFloorViewOrFit);
+        requestAnimationFrame(fit);
     }
 
     function zoomManual(factor) {
@@ -2860,7 +2860,7 @@ class Floorplaner extends IPSModuleStrict
         pushHistory();
         markDirty();
         renderAll();
-        requestAnimationFrame(restoreCurrentFloorViewOrFit);
+        requestAnimationFrame(fit);
     });
 
 
@@ -2876,7 +2876,6 @@ class Floorplaner extends IPSModuleStrict
         // Komplette Etage kopieren, aber alle internen IDs neu erzeugen.
         // Öffnungen müssen anschließend auf die neu erzeugten Wand-IDs zeigen.
         const floor = structuredClone(sourceFloor);
-        const oldFloorID = sourceFloor.id;
         floor.id = uid('floor');
         floor.name = name.trim() || `${sourceFloor.name} Kopie`;
 
@@ -2917,15 +2916,10 @@ class Floorplaner extends IPSModuleStrict
         state.floors.push(floor);
         state.activeFloor = floor.id;
 
-        // Gleiche Ansicht wie beim Quellgeschoss übernehmen.
-        const sourceView = floorViews.get(oldFloorID);
-        if (sourceView) {
-            floorViews.set(floor.id, structuredClone(sourceView));
-        }
-        const sourceHomeView = floorHomeViews.get(oldFloorID);
-        if (sourceHomeView) {
-            floorHomeViews.set(floor.id, structuredClone(sourceHomeView));
-        }
+        // Keine alte Zoom-/Pan-Ansicht übernehmen.
+        // Die kopierte Etage wird anhand ihres Inhalts neu und reproduzierbar eingepasst.
+        floorViews.delete(floor.id);
+        floorHomeViews.delete(floor.id);
 
         selected = null;
         wallStart = null;
@@ -2933,7 +2927,7 @@ class Floorplaner extends IPSModuleStrict
         pushHistory();
         markDirty();
         renderAll();
-        requestAnimationFrame(restoreCurrentFloorViewOrFit);
+        requestAnimationFrame(fit);
     });
 
     document.getElementById('addFloorBtn').addEventListener('click', () => {
@@ -2957,7 +2951,7 @@ class Floorplaner extends IPSModuleStrict
         pushHistory();
         markDirty();
         render();
-        requestAnimationFrame(restoreCurrentFloorViewOrFit);
+        requestAnimationFrame(fit);
     });
 
     floorSelect.addEventListener('change', () => {
@@ -3833,10 +3827,12 @@ class Floorplaner extends IPSModuleStrict
         }
     };
 
+    let resizeFitFrame = 0;
     const resizeObserver = new ResizeObserver(() => {
-        // Keine Projektgröße ändern – lediglich den dynamischen sichtbaren
-        // Bereich neu zeichnen.
-        render();
+        // Die Projektgröße bleibt unverändert. Nur die Ansicht wird an die
+        // tatsächlich verfügbare Tile-/Fenstergröße neu angepasst.
+        cancelAnimationFrame(resizeFitFrame);
+        resizeFitFrame = requestAnimationFrame(fit);
     });
     resizeObserver.observe(svg);
 
