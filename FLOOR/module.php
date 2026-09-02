@@ -1585,7 +1585,11 @@ class Floorplaner extends IPSModuleStrict
 
     function contentBounds(floor = currentFloor()) {
         const points = [];
+        const addBox = (minX, minY, maxX, maxY) => {
+            points.push([minX, minY], [maxX, maxY]);
+        };
 
+        // Der Grundriss selbst ist die wichtigste Referenz für das Einpassen.
         for (const w of floor.walls) {
             points.push([w.x1, w.y1], [w.x2, w.y2]);
         }
@@ -1600,25 +1604,109 @@ class Floorplaner extends IPSModuleStrict
             );
         }
 
-        for (const item of floor.items) {
-            const r = Number(item.size || 18) + 35;
-            points.push([item.x - r, item.y - r], [item.x + r, item.y + r]);
+        // Geräte nur mit ihrer tatsächlich sichtbaren Größe berücksichtigen.
+        // Der bisherige pauschale Zuschlag von +35 hat den berechneten
+        // Inhaltsbereich unnötig aufgebläht und dadurch zu stark herausgezoomt.
+        for (const item of floor.items || []) {
+            const x = Number(item.x) || 0;
+            const y = Number(item.y) || 0;
+            const radius = Math.max(0, Number(item.size) || 18);
+            const showIcon = item.showIcon !== false;
+            const showName = item.showName === true;
+            const showValue = item.showValue === true;
+            const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
+            const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
+            const valueText = item._valueText !== undefined && item._valueText !== ''
+                ? String(item._valueText)
+                : '—';
+
+            if (showIcon) {
+                addBox(x - radius, y - radius, x + radius, y + radius);
+            }
+
+            const addDeviceText = (textValue, position, size, extra = 0) => {
+                if (!textValue) return;
+
+                const width = Math.max(size, String(textValue).length * size * 0.62);
+                const height = size * 1.25;
+                const pos = ['above','left','right','below'].includes(position) ? position : 'below';
+
+                let tx = x;
+                let ty = y;
+                let minX, maxX, minY, maxY;
+
+                if (pos === 'above') {
+                    ty = y - (radius + 7 + extra);
+                    minX = tx - width / 2;
+                    maxX = tx + width / 2;
+                    minY = ty - height;
+                    maxY = ty + size * 0.35;
+                } else if (pos === 'left') {
+                    tx = x - (radius + 7 + extra);
+                    minX = tx - width;
+                    maxX = tx;
+                    minY = ty - height * 0.55;
+                    maxY = ty + height * 0.45;
+                } else if (pos === 'right') {
+                    tx = x + radius + 7 + extra;
+                    minX = tx;
+                    maxX = tx + width;
+                    minY = ty - height * 0.55;
+                    maxY = ty + height * 0.45;
+                } else {
+                    ty = y + radius + size + 5 + extra;
+                    minX = tx - width / 2;
+                    maxX = tx + width / 2;
+                    minY = ty - height;
+                    maxY = ty + size * 0.35;
+                }
+
+                addBox(minX, minY, maxX, maxY);
+            };
+
+            if (showName && item.name) {
+                addDeviceText(String(item.name), item.labelPosition || 'below', labelSize, 0);
+            }
+
+            if (showValue) {
+                let valueExtra = 0;
+                if (showName && (item.valuePosition || 'below') === (item.labelPosition || 'below')) {
+                    valueExtra = Math.max(labelSize, valueSize) + 3;
+                }
+                addDeviceText(valueText, item.valuePosition || 'below', valueSize, valueExtra);
+            }
+
+            // Falls Symbol, Name und Wert alle ausgeblendet sind, den Gerätepunkt
+            // selbst trotzdem minimal berücksichtigen.
+            if (!showIcon && !showName && !showValue) {
+                addBox(x - 2, y - 2, x + 2, y + 2);
+            }
         }
 
+        // Möbel mit der echten gedrehten Bounding-Box statt mit einem
+        // großzügigen Kreisradius berücksichtigen.
         for (const f of floor.furniture || []) {
             const x = Number(f.x) || 0;
             const y = Number(f.y) || 0;
-            const w = Math.max(8, Number(f.width) || 100) / 2;
-            const h = Math.max(8, Number(f.height) || 60) / 2;
-            // Drehung bewusst konservativ über Radius berücksichtigen.
-            const r = Math.sqrt(w * w + h * h);
-            points.push([x - r, y - r], [x + r, y + r]);
+            const halfW = Math.max(8, Number(f.width) || 100) / 2;
+            const halfH = Math.max(8, Number(f.height) || 60) / 2;
+            const angle = (Number(f.angle) || 0) * Math.PI / 180;
+            const cos = Math.abs(Math.cos(angle));
+            const sin = Math.abs(Math.sin(angle));
+            const extentX = halfW * cos + halfH * sin;
+            const extentY = halfW * sin + halfH * cos;
+
+            addBox(x - extentX, y - extentY, x + extentX, y + extentY);
         }
 
-        for (const t of floor.texts) {
-            const s = Number(t.size || 18);
-            const width = Math.max(40, String(t.text || 'Text').length * s * 0.65);
-            points.push([t.x, t.y - s * 1.4], [t.x + width, t.y + s * 0.4]);
+        // Freie Texte werden nur mit ihrer tatsächlichen geschätzten
+        // Schriftbreite/-höhe berücksichtigt.
+        for (const t of floor.texts || []) {
+            const x = Number(t.x) || 0;
+            const y = Number(t.y) || 0;
+            const size = Math.max(6, Number(t.size) || 18);
+            const width = Math.max(20, String(t.text || 'Text').length * size * 0.65);
+            addBox(x, y - size, x + width, y + size * 0.35);
         }
 
         if (!points.length) return null;
