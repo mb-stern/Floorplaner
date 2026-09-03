@@ -404,13 +404,13 @@ class Floorplaner extends IPSModuleStrict
         .shutter-control circle {
             fill: #404040;
             stroke: #dedede;
-            stroke-width: 1.5;
+            stroke-width: 1.8;
             vector-effect: non-scaling-stroke;
         }
 
         .shutter-control text {
             fill: #ffffff;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: bold;
             text-anchor: middle;
             dominant-baseline: central;
@@ -2307,20 +2307,26 @@ class Floorplaner extends IPSModuleStrict
                 );
             }
 
-            // Kleine Bedienfläche nur für einen am Fenster hinterlegten Rollladen/Jalousie.
-            if (state.mode === 'view' && Number(o.shutterVariableID) > 0) {
-                const controlOffset = 16;
+            parts.push(`</g>`);
+
+            // Rollladen-Bedienung als eigenes SVG-Element AUSSERHALB der Öffnungsgruppe.
+            // So kann sie nicht von Fenster-/Tür-Linien oder deren Trefferflächen verdeckt werden.
+            const shutterField =
+                Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
+                (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
+
+            if (shutterField) {
+                const controlOffset = 24;
                 const sx = geom.cx - geom.nx * controlOffset;
                 const sy = geom.cy - geom.ny * controlOffset;
                 parts.push(
-                    `<g class="shutter-control" data-shutter-control="${o.id}" transform="translate(${sx} ${sy})">` +
-                    `<circle r="10"/>` +
+                    `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
+                    `transform="translate(${sx} ${sy})">` +
+                    `<circle r="12"/>` +
                     `<text x="0" y="0">↕</text>` +
                     `</g>`
                 );
             }
-
-            parts.push(`</g>`);
         }
 
         for (const f of floor.furniture || []) {
@@ -3296,12 +3302,17 @@ class Floorplaner extends IPSModuleStrict
         switchFloorView(floorSelect.value);
     });
 
-    function openShutterControl(opening, clientX = null, clientY = null) {
+    function openShutterControl(opening, field = 'shutterVariableID', clientX = null, clientY = null) {
         if (!controlModal || !controlBody || !opening) return;
 
-        const profile = opening._shutterVariableProfile || {};
+        const secondary = field === 'shutterSecondaryVariableID';
+        const profile = secondary
+            ? (opening._shutterSecondaryVariableProfile || {})
+            : (opening._shutterVariableProfile || {});
         const associations = Array.isArray(profile.associations) ? profile.associations : [];
-        const raw = Number(opening._shutterVariableRawValue);
+        const raw = Number(secondary
+            ? opening._shutterSecondaryVariableRawValue
+            : opening._shutterVariableRawValue);
         controlTitle.textContent = 'Rollladen / Jalousie';
 
         let html = '';
@@ -3343,7 +3354,7 @@ class Floorplaner extends IPSModuleStrict
         const send = value => requestAction('operateOpeningValue', JSON.stringify({
             floorId: state.activeFloor,
             openingId: opening.id,
-            field: 'shutterVariableID',
+            field,
             value
         }));
 
@@ -3395,8 +3406,12 @@ class Floorplaner extends IPSModuleStrict
         evt.stopPropagation();
 
         const opening = (currentFloor().openings || []).find(o => o.id === control.dataset.shutterControl);
-        if (!opening || Number(opening.shutterVariableID) <= 0) return;
-        openShutterControl(opening, evt.clientX, evt.clientY);
+        if (!opening) return;
+
+        const field = control.dataset.shutterField || 'shutterVariableID';
+        if (Number(opening[field]) <= 0) return;
+
+        openShutterControl(opening, field, evt.clientX, evt.clientY);
     });
 
     svg.addEventListener('pointerdown', evt => {
