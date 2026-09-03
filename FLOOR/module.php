@@ -132,10 +132,6 @@ class Floorplaner extends IPSModuleStrict
 
         $actions = [
             [
-                'type'    => 'Label',
-                'caption' => 'Projektwerkzeuge'
-            ],
-            [
                 'type'     => 'Button',
                 'caption'  => 'Sichern',
                 'download' => 'floorplan-backup.json',
