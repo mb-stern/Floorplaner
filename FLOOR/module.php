@@ -2314,10 +2314,10 @@ class Floorplaner extends IPSModuleStrict
                     parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
                 } else {
                     // Fenster standardmäßig einflügelig darstellen.
-                    // Maximal ca. 30° Öffnung: dadurch bleibt der Flügel nahe
-                    // an der Wand und ragt deutlich weniger aus dem Grundriss.
+                    // Maximal ca. 20° Öffnung: der Flügel bleibt sehr nah
+                    // an der Wand und ragt kaum aus dem Grundriss.
                     const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
-                    const maxAngle = 30 * Math.PI / 180;
+                    const maxAngle = 20 * Math.PI / 180;
                     const angle = maxAngle * amount;
                     const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
                     const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
