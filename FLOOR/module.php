@@ -1191,6 +1191,8 @@ class Floorplaner extends IPSModuleStrict
             <button id="addFloorBtn">+ Etage</button>
             <button id="copyFloorBtn" type="button" title="Aktuelle Etage komplett kopieren">Etage kopieren</button>
             <select id="floorSelect"></select>
+            <button id="floorUpBtn" type="button" title="Etage in der Reihenfolge nach oben">▲</button>
+            <button id="floorDownBtn" type="button" title="Etage in der Reihenfolge nach unten">▼</button>
             <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
         </div>
 
@@ -1364,7 +1366,9 @@ class Floorplaner extends IPSModuleStrict
         delete q.width;
         delete q.height;
         q.grid = Number(q.grid) || 20;
-        q.snap = Number.isFinite(Number(q.snap)) ? Number(q.snap) : q.grid;
+        // Einrasten verwendet immer direkt die Rastergröße.
+        // Eine separate Snap-Einstellung gibt es nicht mehr.
+        delete q.snap;
         q.background = q.background || '#303030';
         q.showGrid = q.showGrid !== false;
         q.mode = q.mode === 'view' ? 'view' : 'edit';
@@ -1515,8 +1519,8 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function snapValue(v) {
-        const s = Number(state.snap) || 0;
-        return s > 0 ? Math.round(v / s) * s : v;
+        const s = Math.max(2, Number(state.grid) || 20);
+        return Math.round(v / s) * s;
     }
 
     function svgPointRaw(evt) {
@@ -1894,6 +1898,12 @@ class Floorplaner extends IPSModuleStrict
         ).join('');
 
         floorSelect.innerHTML = options;
+
+        const floorIndex = state.floors.findIndex(f => f.id === state.activeFloor);
+        const floorUpBtn = document.getElementById('floorUpBtn');
+        const floorDownBtn = document.getElementById('floorDownBtn');
+        if (floorUpBtn) floorUpBtn.disabled = floorIndex <= 0;
+        if (floorDownBtn) floorDownBtn.disabled = floorIndex < 0 || floorIndex >= state.floors.length - 1;
 
         if (liveFloorSelect) {
             liveFloorSelect.innerHTML = options;
@@ -2639,10 +2649,6 @@ class Floorplaner extends IPSModuleStrict
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
                 <div class="field">
-                    <label>Snap</label>
-                    <input value="${state.snap}" disabled>
-                </div>
-                <div class="field">
                     <label>Elemente</label>
                     <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte, ${(floor.furniture || []).length} Möbel" disabled>
                 </div>
@@ -3120,7 +3126,8 @@ class Floorplaner extends IPSModuleStrict
             tracker.id = uid('tracker');
         }
 
-        state.floors.push(floor);
+        const sourceIndex = state.floors.findIndex(f => f.id === sourceFloor.id);
+        state.floors.splice(sourceIndex >= 0 ? sourceIndex + 1 : state.floors.length, 0, floor);
         state.activeFloor = floor.id;
 
         // Keine alte Zoom-/Pan-Ansicht übernehmen.
@@ -3160,6 +3167,26 @@ class Floorplaner extends IPSModuleStrict
         render();
         requestAnimationFrame(fit);
     });
+
+    function moveActiveFloor(direction) {
+        const index = state.floors.findIndex(f => f.id === state.activeFloor);
+        if (index < 0) return;
+
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= state.floors.length) return;
+
+        pushHistory();
+        const [floor] = state.floors.splice(index, 1);
+        state.floors.splice(targetIndex, 0, floor);
+
+        // Die Array-Reihenfolge ist zugleich die Reihenfolge im Editor
+        // und im Etagenmenü der Bedienansicht.
+        markDirty();
+        renderAll();
+    }
+
+    document.getElementById('floorUpBtn')?.addEventListener('click', () => moveActiveFloor(-1));
+    document.getElementById('floorDownBtn')?.addEventListener('click', () => moveActiveFloor(1));
 
     floorSelect.addEventListener('change', () => {
         switchFloorView(floorSelect.value);
