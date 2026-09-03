@@ -2376,9 +2376,12 @@ class Floorplaner extends IPSModuleStrict
             const raw = item._rawValue;
             const isBooleanDevice = Number(item._variableType) === 0;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
-            const numericLevel = numericStatusLevel(item);
+            const statusRingEnabled = supportsStatusColor(item);
+            const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
             const numericClass = numericLevel !== null ? ' numeric-status' : '';
-            const boolClass = isBooleanDevice ? (boolActive ? ' boolean-active' : ' boolean-inactive') : '';
+            const boolClass = isBooleanDevice && statusRingEnabled
+                ? (boolActive ? ' boolean-active' : ' boolean-inactive')
+                : '';
             const lightClass = item.kind === 'light' ? (boolActive ? ' active-light' : ' inactive-light') : '';
             const statusColor = normalizeStatusColor(item.statusColor);
             const icon = iconForKind(item.kind);
