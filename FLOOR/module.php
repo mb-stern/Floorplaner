@@ -2480,6 +2480,25 @@ class Floorplaner extends IPSModuleStrict
         return /^#[0-9a-f]{6}$/i.test(color) ? color : '#ffe66d';
     }
 
+    function supportsStatusColor(item) {
+        const kind = String(item?.kind || 'generic');
+        if (['temperature', 'humidity', 'climate'].includes(kind)) {
+            return false;
+        }
+
+        const type = Number(item?._variableType);
+        if (type === 0) {
+            return ['generic', 'light', 'switch', 'socket', 'motion'].includes(kind);
+        }
+
+        if (type === 1 || type === 2) {
+            return numericStatusLevel(item) !== null &&
+                ['generic', 'light', 'switch', 'socket', 'motion'].includes(kind);
+        }
+
+        return false;
+    }
+
     function numericStatusLevel(item) {
         const type = Number(item?._variableType);
         if (type !== 1 && type !== 2) return null;
@@ -2841,8 +2860,7 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
-                ${(['generic','light','switch','socket','motion'].includes(kind) &&
-                    (Number(obj._variableType) === 0 || numericStatusLevel(obj) !== null)) ? `
+                ${supportsStatusColor(obj) ? `
                     <div class="field">
                         <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
                         <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
