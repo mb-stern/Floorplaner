@@ -136,26 +136,36 @@ class Floorplaner extends IPSModuleStrict
                 'caption' => 'Projektwerkzeuge'
             ],
             [
-                'type'    => 'Button',
-                'caption' => 'Floorplan JSON anzeigen',
-                'onClick' => 'echo FLOOR_GetFloorplanJSON($id);'
-            ],
-            [
                 'type'     => 'Button',
-                'caption'  => 'Floorplan JSON herunterladen',
-                'download' => 'floorplan.json',
+                'caption'  => 'Sichern',
+                'download' => 'floorplan-backup.json',
                 'onClick'  => 'echo "data:application/json;charset=utf-8," . rawurlencode(FLOOR_GetFloorplanJSON($id));'
             ],
             [
-                'type'    => 'Button',
-                'caption' => 'Editor-Daten auf Projekteinstellungen synchronisieren',
-                'onClick' => 'FLOOR_SyncProjectSettings($id); echo "Synchronisiert";'
-            ],
-            [
-                'type'    => 'Button',
-                'caption' => 'Floorplan zurücksetzen',
-                'confirm' => 'Soll der komplette Floorplan wirklich gelöscht werden?',
-                'onClick' => 'FLOOR_ResetFloorplan($id); echo "Floorplan wurde zurückgesetzt";'
+                'type'    => 'PopupButton',
+                'caption' => 'Wiederherstellen',
+                'popup'   => [
+                    'caption'      => 'Floorplan wiederherstellen',
+                    'closeCaption' => 'Abbrechen',
+                    'items'        => [
+                        [
+                            'type'       => 'SelectFile',
+                            'name'       => 'FloorplanBackup',
+                            'caption'    => 'Sicherungsdatei auswählen',
+                            'extensions' => '.json'
+                        ],
+                        [
+                            'type'    => 'Label',
+                            'caption' => 'Beim Wiederherstellen wird der aktuell gespeicherte Floorplan durch die ausgewählte Sicherung ersetzt.'
+                        ]
+                    ],
+                    'buttons'      => [
+                        [
+                            'caption' => 'Wiederherstellen',
+                            'onClick' => 'if (empty($FloorplanBackup)) { echo "Bitte zuerst eine Sicherungsdatei auswählen."; } else { FLOOR_RestoreFloorplanBackup($id, $FloorplanBackup); echo "MESSAGE:Floorplan wurde wiederhergestellt."; }'
+                        ]
+                    ]
+                ]
             ]
         ];
 
@@ -4926,6 +4936,17 @@ HTML;
             )
         );
         $this->ReloadForm();
+    }
+
+    public function RestoreFloorplanBackup(string $Base64Data): void
+    {
+        $json = base64_decode($Base64Data, true);
+        if ($json === false || trim($json) === '') {
+            throw new InvalidArgumentException('Die ausgewählte Sicherungsdatei ist ungültig.');
+        }
+
+        $this->SetFloorplanJSON($json);
+        $this->RegisterRuntimeVariableMessages();
     }
 
     public function ResetFloorplan(): void
