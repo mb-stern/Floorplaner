@@ -1329,6 +1329,22 @@ class Floorplaner extends IPSModuleStrict
     let propertiesSelectOpen = false;
     let propertiesControlActive = false;
 
+    function refreshPropertiesAfterStructuralChange() {
+        // Änderungen wie Gerätetyp oder Variablenzuordnung können ganze
+        // Eigenschaftsblöcke ein-/ausblenden (z.B. Statusfarbe).
+        // Nach Abschluss des aktuellen Events die Leiste deshalb gezielt
+        // neu aufbauen, statt auf einen Seiten-Reload zu warten.
+        setTimeout(() => {
+            const active = document.activeElement;
+            if (active && properties.contains(active) && typeof active.blur === 'function') {
+                active.blur();
+            }
+            propertiesControlActive = false;
+            propertiesSelectOpen = false;
+            renderProperties();
+        }, 0);
+    }
+
     function uid(prefix) {
         return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
     }
@@ -2984,6 +3000,7 @@ class Floorplaner extends IPSModuleStrict
                         obj.showIcon = false;
                         obj.showValue = true;
                     }
+                    refreshPropertiesAfterStructuralChange();
                 }
 
                 if (selected.type === 'furniture' && fieldName === 'type') {
@@ -4075,6 +4092,7 @@ class Floorplaner extends IPSModuleStrict
         pushHistory();
         markDirty();
         render();
+        refreshPropertiesAfterStructuralChange();
     }
 
     if (!variableModal || !variableList || !variableSearch) {
