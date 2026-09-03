@@ -1540,6 +1540,14 @@ class Floorplaner extends IPSModuleStrict
             floor.name ||= 'Etage';
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
+            for (const opening of floor.openings) {
+                if (typeof opening.shutterValueMappingEnabled !== 'boolean') {
+                    opening.shutterValueMappingEnabled = false;
+                }
+                if (!opening.shutterValueMap || typeof opening.shutterValueMap !== 'object' || Array.isArray(opening.shutterValueMap)) {
+                    opening.shutterValueMap = {};
+                }
+            }
             floor.items = Array.isArray(floor.items) ? floor.items : [];
             for (const item of floor.items) {
                 item.statusColor = normalizeStatusColor(item.statusColor);
@@ -2757,13 +2765,53 @@ class Floorplaner extends IPSModuleStrict
         );
     }
 
+    function mappedShutterAmount(o) {
+        if (!o || o.shutterValueMappingEnabled !== true) return null;
+        if (Number(o._shutterVariableType) !== 1) return null;
+
+        const map = o.shutterValueMap && typeof o.shutterValueMap === 'object'
+            ? o.shutterValueMap
+            : {};
+        const raw = Number(o._shutterVariableRawValue);
+        if (!Number.isFinite(raw)) return null;
+
+        const key = String(raw);
+        if (!Object.prototype.hasOwnProperty.call(map, key)) return null;
+
+        const mapped = map[key];
+
+        // "keep" bedeutet: Dieser Befehlswert beschreibt keine feste Position
+        // (z.B. Stop / Schritt auf / Schritt zu). Dann bleibt die zuletzt
+        // bekannte grafische Stellung während der Laufzeit erhalten.
+        if (mapped === 'keep') {
+            return Number.isFinite(Number(o._shutterVisualAmount))
+                ? Math.max(0, Math.min(1, Number(o._shutterVisualAmount)))
+                : 0;
+        }
+
+        const percent = Number(mapped);
+        if (!Number.isFinite(percent)) return null;
+
+        const amount = Math.max(0, Math.min(1, percent / 100));
+        o._shutterVisualAmount = amount;
+        return amount;
+    }
+
     function shutterState(o) {
-        return normalizedOpeningAmount(
-            o._shutterVariableRawValue,
-            o._shutterVariableType,
-            o._shutterVariableProfile,
-            o.shutterInvert === true
-        );
+        let amount = mappedShutterAmount(o);
+
+        if (amount === null) {
+            amount = normalizedOpeningAmount(
+                o._shutterVariableRawValue,
+                o._shutterVariableType,
+                o._shutterVariableProfile,
+                false
+            );
+            o._shutterVisualAmount = amount;
+        }
+
+        amount = Math.max(0, Math.min(1, amount));
+        return o.shutterInvert === true ? 1 - amount : amount;
     }
 
     function openingGeometry(w, o) {
@@ -2916,6 +2964,75 @@ class Floorplaner extends IPSModuleStrict
         return ['temperature','humidity'].includes(kind) ? 'value' : 'icon';
     }
 
+    function shutterMappingOptions(selectedValue) {
+        const options = [
+            ['keep', 'Position nicht ändern'],
+            ['100', 'Offen (100 %)'],
+            ['75', '75 % offen'],
+            ['50', 'Halb (50 %)'],
+            ['25', '25 % offen'],
+            ['0', 'Geschlossen (0 %)']
+        ];
+
+        return options.map(([value, label]) =>
+            `<option value="${value}"${String(selectedValue) === value ? ' selected' : ''}>${label}</option>`
+        ).join('');
+    }
+
+    function shutterValueMappingHtml(obj) {
+        if (!obj || Number(obj.shutterVariableID || 0) <= 0) return '';
+        if (Number(obj._shutterVariableType) !== 1) return '';
+
+        const profile = obj._shutterVariableProfile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (!associations.length) return '';
+
+        const enabled = obj.shutterValueMappingEnabled === true;
+        const map = obj.shutterValueMap && typeof obj.shutterValueMap === 'object'
+            ? obj.shutterValueMap
+            : {};
+
+        let html = `
+            <div class="field">
+                <label class="check">
+                    <input data-field="shutterValueMappingEnabled" type="checkbox"${enabled ? ' checked' : ''}>
+                    Rollo-Werte zuordnen
+                </label>
+            </div>
+        `;
+
+        if (!enabled) return html;
+
+        html += `<div class="field"><label>Integerwerte → Rollo-Status</label>`;
+        html += `<div class="profile-hint">Jedem Profilwert kannst du eine grafische Stellung zuordnen.</div>`;
+
+        for (const association of associations) {
+            const rawValue = Number(association.value);
+            if (!Number.isFinite(rawValue)) continue;
+
+            const key = String(rawValue);
+            let selectedValue = Object.prototype.hasOwnProperty.call(map, key)
+                ? String(map[key])
+                : 'keep';
+
+            html += `
+                <div class="row2" style="align-items:center;margin-top:6px">
+                    <div class="field" style="margin:0">
+                        <label>${escapeHtml(String(association.name || key))} (${escapeHtml(key)})</label>
+                    </div>
+                    <div class="field" style="margin:0">
+                        <select data-shutter-map-value="${escapeHtml(key)}">
+                            ${shutterMappingOptions(selectedValue)}
+                        </select>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
     function renderProperties() {
         // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
         // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
@@ -3014,6 +3131,7 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field">
                         <label><input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}> Rollo-Animation invertieren</label>
                     </div>
+                    ${shutterValueMappingHtml(obj)}
                 ` : ''}
 
                 <div class="field">
@@ -3165,6 +3283,13 @@ class Floorplaner extends IPSModuleStrict
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
                 obj[fieldName] = value;
 
+                if (selected.type === 'opening' && fieldName === 'shutterValueMappingEnabled') {
+                    if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
+                        obj.shutterValueMap = {};
+                    }
+                    refreshPropertiesAfterStructuralChange();
+                }
+
                 if (selected.type === 'item' && fieldName === 'displayMode') {
                     obj.displayModeManual = true;
                 }
@@ -3208,6 +3333,33 @@ class Floorplaner extends IPSModuleStrict
                     // Auswahl ist abgeschlossen: erst jetzt darf die Eigenschaftsansicht
                     // neu aufgebaut werden.
                     input.blur();
+                }
+
+                pushHistory();
+                markDirty();
+                render();
+            });
+        });
+
+        properties.querySelectorAll('[data-shutter-map-value]').forEach(select => {
+            select.addEventListener('change', () => {
+                if (!selected || selected.type !== 'opening') return;
+
+                const obj = findEntity('opening', selected.id);
+                if (!obj) return;
+
+                if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
+                    obj.shutterValueMap = {};
+                }
+
+                const rawValue = String(select.dataset.shutterMapValue || '');
+                if (!rawValue) return;
+
+                obj.shutterValueMap[rawValue] = String(select.value || 'keep');
+
+                // Die neue Zuordnung sofort auf die aktuelle grafische Stellung anwenden.
+                if (rawValue === String(Number(obj._shutterVariableRawValue))) {
+                    delete obj._shutterVisualAmount;
                 }
 
                 pushHistory();
@@ -3794,6 +3946,8 @@ class Floorplaner extends IPSModuleStrict
                 shutterSecondaryVariableID: 0,
                 shutterStyle: 'roll',
                 shutterInvert: false,
+                shutterValueMappingEnabled: false,
+                shutterValueMap: {},
                 invert: false
             };
             floor.openings.push(o);
