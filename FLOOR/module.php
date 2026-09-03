@@ -397,6 +397,26 @@ class Floorplaner extends IPSModuleStrict
 
         /* Größere Trefferfläche nur für die Öffnung selbst.
            Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
+        .shutter-control {
+            pointer-events: all;
+        }
+
+        .shutter-control circle {
+            fill: #404040;
+            stroke: #dedede;
+            stroke-width: 1.5;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .shutter-control text {
+            fill: #ffffff;
+            font-size: 11px;
+            font-weight: bold;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+        }
+
         .opening-hit {
             stroke: transparent;
             stroke-width: 22;
@@ -2287,6 +2307,19 @@ class Floorplaner extends IPSModuleStrict
                 );
             }
 
+            // Kleine Bedienfläche nur für einen am Fenster hinterlegten Rollladen/Jalousie.
+            if (state.mode === 'view' && Number(o.shutterVariableID) > 0) {
+                const controlOffset = 16;
+                const sx = geom.cx - geom.nx * controlOffset;
+                const sy = geom.cy - geom.ny * controlOffset;
+                parts.push(
+                    `<g class="shutter-control" data-shutter-control="${o.id}" transform="translate(${sx} ${sy})">` +
+                    `<circle r="10"/>` +
+                    `<text x="0" y="0">↕</text>` +
+                    `</g>`
+                );
+            }
+
             parts.push(`</g>`);
         }
 
@@ -2789,12 +2822,9 @@ class Floorplaner extends IPSModuleStrict
                         <option value="light"${kind === 'light' ? ' selected' : ''}>Licht</option>
                         <option value="switch"${kind === 'switch' ? ' selected' : ''}>Schalter</option>
                         <option value="socket"${kind === 'socket' ? ' selected' : ''}>Steckdose</option>
-                        <option value="shutter"${kind === 'shutter' ? ' selected' : ''}>Rollladen / Jalousie</option>
                         <option value="temperature"${kind === 'temperature' ? ' selected' : ''}>Temperatur</option>
                         <option value="humidity"${kind === 'humidity' ? ' selected' : ''}>Feuchte</option>
                         <option value="motion"${kind === 'motion' ? ' selected' : ''}>Bewegung / Präsenz</option>
-                        <option value="window"${kind === 'window' ? ' selected' : ''}>Fensterkontakt</option>
-                        <option value="door"${kind === 'door' ? ' selected' : ''}>Türkontakt</option>
                         <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Heizung</option>
                     </select>
                 </div>
@@ -2809,7 +2839,8 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
-                ${(Number(obj._variableType) === 0 || numericStatusLevel(obj) !== null) ? `
+                ${(['generic','light','switch','socket','motion'].includes(kind) &&
+                    (Number(obj._variableType) === 0 || numericStatusLevel(obj) !== null)) ? `
                     <div class="field">
                         <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
                         <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
@@ -3263,6 +3294,109 @@ class Floorplaner extends IPSModuleStrict
 
     floorSelect.addEventListener('change', () => {
         switchFloorView(floorSelect.value);
+    });
+
+    function openShutterControl(opening, clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || !opening) return;
+
+        const profile = opening._shutterVariableProfile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        const raw = Number(opening._shutterVariableRawValue);
+        controlTitle.textContent = 'Rollladen / Jalousie';
+
+        let html = '';
+
+        if (associations.length) {
+            html += '<div class="control-associations">';
+            for (const association of associations) {
+                const value = Number(association.value);
+                const current = Number.isFinite(raw) && raw === value ? ' current' : '';
+                html += `<button type="button" class="${current.trim()}" data-shutter-value="${value}">${escapeHtml(association.name || String(value))}</button>`;
+            }
+            html += '</div>';
+        }
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        const configuredStep = Number(profile.step);
+        const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
+
+        if (!associations.length && hasRange) {
+            const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
+            const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+            const suffix = String(profile.suffix || '');
+            html = `
+                <div class="control-slider">
+                    <div class="control-slider-value" data-shutter-slider-value>${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
+                    <input type="range" data-shutter-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)}</div>
+                </div>
+            `;
+        }
+
+        if (!html) {
+            html = '<div class="profile-hint">Für die Rollladenvariable sind keine bedienbaren Profilwerte hinterlegt.</div>';
+        }
+
+        controlBody.innerHTML = html;
+
+        const send = value => requestAction('operateOpeningValue', JSON.stringify({
+            floorId: state.activeFloor,
+            openingId: opening.id,
+            field: 'shutterVariableID',
+            value
+        }));
+
+        controlBody.querySelectorAll('[data-shutter-value]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                send(Number(btn.dataset.shutterValue));
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        });
+
+        const slider = controlBody.querySelector('[data-shutter-slider]');
+        const sliderValue = controlBody.querySelector('[data-shutter-slider-value]');
+        if (slider) {
+            const suffix = String(profile.suffix || '');
+            slider.addEventListener('input', () => {
+                if (sliderValue) sliderValue.textContent = `${slider.value}${suffix}`;
+            });
+            slider.addEventListener('change', () => send(Number(slider.value)));
+        }
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+                let left = Number(clientX) + offset;
+                let top = Number(clientY) + offset;
+                if (left + rect.width > window.innerWidth - margin) left = Number(clientX) - rect.width - offset;
+                if (top + rect.height > window.innerHeight - margin) top = Number(clientY) - rect.height - offset;
+                dialog.style.left = `${Math.max(margin, left)}px`;
+                dialog.style.top = `${Math.max(margin, top)}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        }
+    }
+
+    svg.addEventListener('click', evt => {
+        if (state.mode !== 'view') return;
+        const control = evt.target.closest?.('[data-shutter-control]');
+        if (!control) return;
+
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        const opening = (currentFloor().openings || []).find(o => o.id === control.dataset.shutterControl);
+        if (!opening || Number(opening.shutterVariableID) <= 0) return;
+        openShutterControl(opening, evt.clientX, evt.clientY);
     });
 
     svg.addEventListener('pointerdown', evt => {
@@ -4280,6 +4414,22 @@ HTML;
                 );
                 break;
 
+            case 'operateOpeningValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
+                }
+                $this->OperateOpeningValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['openingId'] ?? ''),
+                    (string) ($request['field'] ?? ''),
+                    $request['value'] ?? null
+                );
+                break;
+
             default:
                 throw new InvalidArgumentException('Unbekannte Aktion: ' . $Ident);
         }
@@ -4849,6 +4999,48 @@ HTML;
 
                 // Die Bedienung wirkt nur auf das reale IP-Symcon-Gerät.
                 // Die HTML-SDK-Kachel wird dabei absichtlich nicht neu gerendert.
+                return;
+            }
+        }
+    }
+
+    private function OperateOpeningValue(string $FloorID, string $OpeningID, string $Field, mixed $Value): void
+    {
+        if (!in_array($Field, ['variableID', 'secondaryVariableID', 'shutterVariableID', 'shutterSecondaryVariableID'], true)) {
+            return;
+        }
+
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            if ((string) ($floor['id'] ?? '') !== $FloorID) {
+                continue;
+            }
+
+            foreach (($floor['openings'] ?? []) as $opening) {
+                if ((string) ($opening['id'] ?? '') !== $OpeningID) {
+                    continue;
+                }
+
+                $variableID = (int) ($opening[$Field] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    return;
+                }
+
+                $variable = IPS_GetVariable($variableID);
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+
+                if ($variableType === 1) {
+                    $targetValue = (int) round((float) $Value);
+                } elseif ($variableType === 2) {
+                    $targetValue = (float) $Value;
+                } elseif ($variableType === 0) {
+                    $targetValue = (bool) $Value;
+                } else {
+                    return;
+                }
+
+                $this->DispatchVariableAction($variableID, $targetValue);
                 return;
             }
         }
