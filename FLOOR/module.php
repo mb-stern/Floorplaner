@@ -2546,12 +2546,21 @@ class Floorplaner extends IPSModuleStrict
                 return {x: 0, y: radius + size + 5 + extra, anchor: 'middle'};
             }
 
-            const namePlace = deviceTextPlacement(item.labelPosition, labelSize, 0);
-            let valueExtra = 0;
-            if (showName && (item.valuePosition || 'below') === (item.labelPosition || 'below')) {
-                valueExtra = Math.max(labelSize, valueSize) + 3;
+            // Wenn ein Direkt-Slider sichtbar ist, beginnt Text mit Position "unten"
+            // erst unterhalb des Sliders. Name und Wert werden danach wie bisher
+            // untereinander angeordnet.
+            const sliderTextOffset = directSlider ? 16 : 0;
+            const namePosition = item.labelPosition || 'below';
+            const valuePosition = item.valuePosition || 'below';
+            const nameBaseExtra = namePosition === 'below' ? sliderTextOffset : 0;
+            const valueBaseExtra = valuePosition === 'below' ? sliderTextOffset : 0;
+
+            const namePlace = deviceTextPlacement(namePosition, labelSize, nameBaseExtra);
+            let valueExtra = valueBaseExtra;
+            if (showName && valuePosition === namePosition) {
+                valueExtra += Math.max(labelSize, valueSize) + 3;
             }
-            const valuePlace = deviceTextPlacement(item.valuePosition, valueSize, valueExtra);
+            const valuePlace = deviceTextPlacement(valuePosition, valueSize, valueExtra);
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}" data-type="item" data-id="${item.id}" ` +
@@ -3131,12 +3140,13 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field">
                         <label><input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}> Rollo-Animation invertieren</label>
                     </div>
-                    ${shutterValueMappingHtml(obj)}
                 ` : ''}
 
                 <div class="field">
                     <label><input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}> ${obj.type === 'door' ? 'Tür' : 'Fenster'}-Animation invertieren</label>
                 </div>
+
+                ${obj.shutterVariableID ? shutterValueMappingHtml(obj) : ''}
             `;
         } else if (selected.type === 'item') {
             propTitle.textContent = 'Gerät';
