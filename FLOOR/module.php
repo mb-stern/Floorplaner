@@ -1191,8 +1191,6 @@ class Floorplaner extends IPSModuleStrict
             <button id="addFloorBtn">+ Etage</button>
             <button id="copyFloorBtn" type="button" title="Aktuelle Etage komplett kopieren">Etage kopieren</button>
             <select id="floorSelect"></select>
-            <button id="floorUpBtn" type="button" title="Etage in der Reihenfolge nach oben">▲</button>
-            <button id="floorDownBtn" type="button" title="Etage in der Reihenfolge nach unten">▼</button>
             <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
         </div>
 
@@ -1375,6 +1373,7 @@ class Floorplaner extends IPSModuleStrict
         q.floors = Array.isArray(q.floors) && q.floors.length ? q.floors : [{
             id: 'floor_1',
             name: 'Erdgeschoss',
+            order: 1,
             walls: [],
             openings: [],
             items: [],
@@ -1383,6 +1382,15 @@ class Floorplaner extends IPSModuleStrict
             areas: [],
             trackers: []
         }];
+
+        q.floors.forEach((floor, index) => {
+            const order = Number(floor.order);
+            floor.order = Number.isFinite(order) && order > 0 ? Math.round(order) : (index + 1);
+        });
+        q.floors.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        q.floors.forEach((floor, index) => {
+            floor.order = index + 1;
+        });
         for (const floor of q.floors) {
             floor.id ||= uid('floor');
             floor.name ||= 'Etage';
@@ -1898,12 +1906,6 @@ class Floorplaner extends IPSModuleStrict
         ).join('');
 
         floorSelect.innerHTML = options;
-
-        const floorIndex = state.floors.findIndex(f => f.id === state.activeFloor);
-        const floorUpBtn = document.getElementById('floorUpBtn');
-        const floorDownBtn = document.getElementById('floorDownBtn');
-        if (floorUpBtn) floorUpBtn.disabled = floorIndex <= 0;
-        if (floorDownBtn) floorDownBtn.disabled = floorIndex < 0 || floorIndex >= state.floors.length - 1;
 
         if (liveFloorSelect) {
             liveFloorSelect.innerHTML = options;
@@ -2649,6 +2651,10 @@ class Floorplaner extends IPSModuleStrict
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
                 <div class="field">
+                    <label>Reihenfolge</label>
+                    <input type="number" min="1" max="${state.floors.length}" step="1" data-project="floorOrder" value="${Number(floor.order) || 1}">
+                </div>
+                <div class="field">
                     <label>Elemente</label>
                     <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte, ${(floor.furniture || []).length} Möbel" disabled>
                 </div>
@@ -2932,10 +2938,38 @@ class Floorplaner extends IPSModuleStrict
             input.addEventListener('change', () => {
                 if (input.dataset.project === 'floorName') {
                     currentFloor().name = input.value.trim() || 'Etage';
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
                 }
-                pushHistory();
-                markDirty();
-                render();
+
+                if (input.dataset.project === 'floorOrder') {
+                    const floor = currentFloor();
+                    const oldIndex = state.floors.findIndex(f => f.id === floor.id);
+                    if (oldIndex < 0) return;
+
+                    const requested = Math.max(1, Math.min(
+                        state.floors.length,
+                        Math.round(Number(input.value) || (oldIndex + 1))
+                    ));
+                    const newIndex = requested - 1;
+
+                    if (newIndex !== oldIndex) {
+                        pushHistory();
+                        const [movedFloor] = state.floors.splice(oldIndex, 1);
+                        state.floors.splice(newIndex, 0, movedFloor);
+                        state.floors.forEach((f, index) => {
+                            f.order = index + 1;
+                        });
+                        markDirty();
+                        renderAll();
+                    } else {
+                        floor.order = requested;
+                        renderProperties();
+                    }
+                    return;
+                }
             });
         });
     }
@@ -3054,6 +3088,7 @@ class Floorplaner extends IPSModuleStrict
             const replacement = {
                 id: uid('floor'),
                 name: 'Erdgeschoss',
+                order: 1,
                 walls: [],
                 openings: [],
                 items: [],
@@ -3067,6 +3102,10 @@ class Floorplaner extends IPSModuleStrict
         } else {
             state.activeFloor = state.floors[Math.min(index, state.floors.length - 1)].id;
         }
+
+        state.floors.forEach((f, floorIndex) => {
+            f.order = floorIndex + 1;
+        });
 
         selected = null;
         wallStart = null;
@@ -3128,6 +3167,9 @@ class Floorplaner extends IPSModuleStrict
 
         const sourceIndex = state.floors.findIndex(f => f.id === sourceFloor.id);
         state.floors.splice(sourceIndex >= 0 ? sourceIndex + 1 : state.floors.length, 0, floor);
+        state.floors.forEach((f, index) => {
+            f.order = index + 1;
+        });
         state.activeFloor = floor.id;
 
         // Keine alte Zoom-/Pan-Ansicht übernehmen.
@@ -3150,6 +3192,7 @@ class Floorplaner extends IPSModuleStrict
         const floor = {
             id: uid('floor'),
             name: name.trim() || 'Etage',
+            order: state.floors.length + 1,
             walls: [],
             openings: [],
             items: [],
@@ -3168,25 +3211,6 @@ class Floorplaner extends IPSModuleStrict
         requestAnimationFrame(fit);
     });
 
-    function moveActiveFloor(direction) {
-        const index = state.floors.findIndex(f => f.id === state.activeFloor);
-        if (index < 0) return;
-
-        const targetIndex = index + direction;
-        if (targetIndex < 0 || targetIndex >= state.floors.length) return;
-
-        pushHistory();
-        const [floor] = state.floors.splice(index, 1);
-        state.floors.splice(targetIndex, 0, floor);
-
-        // Die Array-Reihenfolge ist zugleich die Reihenfolge im Editor
-        // und im Etagenmenü der Bedienansicht.
-        markDirty();
-        renderAll();
-    }
-
-    document.getElementById('floorUpBtn')?.addEventListener('click', () => moveActiveFloor(-1));
-    document.getElementById('floorDownBtn')?.addEventListener('click', () => moveActiveFloor(1));
 
     floorSelect.addEventListener('change', () => {
         switchFloorView(floorSelect.value);
