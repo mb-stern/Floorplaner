@@ -376,6 +376,10 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 12;
             stroke-linecap: square;
             vector-effect: non-scaling-stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .wall {
             cursor: pointer;
         }
 
@@ -384,6 +388,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .opening {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening {
             cursor: pointer;
         }
 
@@ -395,6 +403,10 @@ class Floorplaner extends IPSModuleStrict
             fill: none;
             vector-effect: non-scaling-stroke;
             pointer-events: stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening-hit {
             cursor: move;
         }
 
@@ -433,6 +445,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .furniture {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .furniture {
             cursor: move;
         }
 
@@ -611,6 +627,34 @@ class Floorplaner extends IPSModuleStrict
         #app.view-mode #viewbar { display: flex; }
         #app.view-mode .main { grid-template-columns: 1fr; }
         #app.view-mode .sidebar { display: none; }
+
+        /* Bedienansicht:
+           Nur echte Geräte sollen mit dem Hand-Cursor als bedienbar erscheinen.
+           Wände, Türen/Fenster, Möbel und Texte sind hier reine Darstellung. */
+        #app.view-mode .wall,
+        #app.view-mode .opening,
+        #app.view-mode .opening-hit,
+        #app.view-mode .furniture,
+        #app.view-mode .plan-text {
+            cursor: default !important;
+        }
+
+        #app.view-mode .device {
+            cursor: pointer !important;
+        }
+
+        /* Zusätzliche, direkt am SVG-Szenen-Container gesetzte Laufzeitregel.
+           Damit werden auch Cursor von Unterelementen (SVG-Pfade, Linien usw.)
+           sicher überschrieben. */
+        #scene.runtime-view,
+        #scene.runtime-view * {
+            cursor: default !important;
+        }
+
+        #scene.runtime-view .device,
+        #scene.runtime-view .device * {
+            cursor: pointer !important;
+        }
 
         .modal-backdrop {
             position: fixed;
@@ -1435,6 +1479,7 @@ class Floorplaner extends IPSModuleStrict
     function updateModeUI() {
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
+        scene.classList.toggle('runtime-view', isView);
         statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
 
         const gridControls = document.querySelector('.grid-editor-controls');
@@ -2101,6 +2146,19 @@ class Floorplaner extends IPSModuleStrict
             parts.push(
                 `<line class="wall${sel}" data-type="wall" data-id="${w.id}" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
             );
+
+            if (state.mode !== 'view' && selected?.type === 'wall' && selected.id === w.id) {
+                // Wie bei Möbeln: kleine sichtbare Griffe direkt am Objekt.
+                // Jeder Griff verändert nur das zugehörige Wandende.
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="start" data-id="${w.id}" ` +
+                    `cx="${w.x1}" cy="${w.y1}" r="2.8"/>`
+                );
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="end" data-id="${w.id}" ` +
+                    `cx="${w.x2}" cy="${w.y2}" r="2.8"/>`
+                );
+            }
         }
 
         for (const o of floor.openings) {
@@ -2113,8 +2171,8 @@ class Floorplaner extends IPSModuleStrict
             const isOpen = amount > 0.02;
             const stateClass = isOpen ? ' opening-state-open' : '';
 
-            parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}">`);
-            parts.push(`<line class="opening-hit" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
+            parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}" style="cursor:${state.mode === 'view' ? 'default' : 'pointer'}">`);
+            parts.push(`<line class="opening-hit" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
             parts.push(`<line class="opening-gap" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
 
             if (o.type === 'door') {
@@ -2201,7 +2259,7 @@ class Floorplaner extends IPSModuleStrict
             const rot = Number(f.rotation) || 0;
 
             parts.push(
-                `<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" ` +
+                `<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" ` +
                 `transform="translate(${Number(f.x) || 0} ${Number(f.y) || 0}) rotate(${rot})">`
             );
             parts.push(furnitureShape(f));
@@ -2278,7 +2336,7 @@ class Floorplaner extends IPSModuleStrict
             const valuePlace = deviceTextPlacement(item.valuePosition, valueSize, valueExtra);
 
             parts.push(
-                `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
+                `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" style="cursor:pointer" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`
@@ -3159,7 +3217,8 @@ class Floorplaner extends IPSModuleStrict
                     type: resizeType,
                     id,
                     start: p,
-                    original: structuredClone(obj)
+                    original: structuredClone(obj),
+                    wallEnd: resizeType === 'wall' ? (resizeHandle.dataset.wallEnd || 'end') : null
                 };
                 svg.setPointerCapture(evt.pointerId);
                 evt.preventDefault();
@@ -3413,7 +3472,17 @@ class Floorplaner extends IPSModuleStrict
             const obj = findEntity(drag.type, drag.id);
             if (!obj) return;
 
-            if (drag.type === 'furniture') {
+            if (drag.type === 'wall') {
+                // Wand wie Möbel direkt per Griff bearbeiten:
+                // Start- oder Endpunkt folgt der Maus und rastet auf Snap ein.
+                if (drag.wallEnd === 'start') {
+                    obj.x1 = snapValue(p.x);
+                    obj.y1 = snapValue(p.y);
+                } else {
+                    obj.x2 = snapValue(p.x);
+                    obj.y2 = snapValue(p.y);
+                }
+            } else if (drag.type === 'furniture') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
                 const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
