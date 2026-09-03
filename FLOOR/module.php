@@ -612,34 +612,6 @@ class Floorplaner extends IPSModuleStrict
         #app.view-mode .main { grid-template-columns: 1fr; }
         #app.view-mode .sidebar { display: none; }
 
-        /* Bedienansicht:
-           Nur echte Geräte sollen mit dem Hand-Cursor als bedienbar erscheinen.
-           Wände, Türen/Fenster, Möbel und Texte sind hier reine Darstellung. */
-        #app.view-mode .wall,
-        #app.view-mode .opening,
-        #app.view-mode .opening-hit,
-        #app.view-mode .furniture,
-        #app.view-mode .plan-text {
-            cursor: default !important;
-        }
-
-        #app.view-mode .device {
-            cursor: pointer !important;
-        }
-
-        /* Zusätzliche, direkt am SVG-Szenen-Container gesetzte Laufzeitregel.
-           Damit werden auch Cursor von Unterelementen (SVG-Pfade, Linien usw.)
-           sicher überschrieben. */
-        #scene.runtime-view,
-        #scene.runtime-view * {
-            cursor: default !important;
-        }
-
-        #scene.runtime-view .device,
-        #scene.runtime-view .device * {
-            cursor: pointer !important;
-        }
-
         .modal-backdrop {
             position: fixed;
             inset: 0;
@@ -1463,7 +1435,6 @@ class Floorplaner extends IPSModuleStrict
     function updateModeUI() {
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
-        scene.classList.toggle('runtime-view', isView);
         statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
 
         const gridControls = document.querySelector('.grid-editor-controls');
