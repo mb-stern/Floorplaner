@@ -578,6 +578,40 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 0.4;
         }
 
+        /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
+           Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
+        .device-direct-slider {
+            cursor: pointer;
+        }
+
+        .device-direct-slider-track {
+            stroke: rgba(160,170,185,.65);
+            stroke-width: 5;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .device-direct-slider-fill {
+            stroke: #d7e9ff;
+            stroke-width: 5;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device-direct-slider-thumb {
+            fill: #ffffff;
+            stroke: #66788a;
+            stroke-width: 1.4;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        #app:not(.view-mode) .device-direct-slider {
+            pointer-events: none;
+            opacity: .65;
+        }
+
         .rotate-handle-line {
             stroke: #74b9ff;
             stroke-width: 0.6;
@@ -2470,6 +2504,12 @@ class Floorplaner extends IPSModuleStrict
             const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
             const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
             const radius = Number(item.size) || 18;
+            const directSlider = item.showDirectSlider === true ? directSliderConfig(item) : null;
+            const directSliderY = radius + 13;
+            const directSliderWidth = Math.max(38, radius * 2.4);
+            const directSliderLevel = directSlider
+                ? Math.max(0, Math.min(1, (directSlider.value - directSlider.min) / (directSlider.max - directSlider.min)))
+                : 0;
 
             function deviceTextPlacement(position, size, extra = 0) {
                 const pos = ['above','left','right','below'].includes(position) ? position : 'below';
@@ -2506,6 +2546,13 @@ class Floorplaner extends IPSModuleStrict
                     : '') +
                 (showValue
                     ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
+                    : '') +
+                (directSlider
+                    ? `<g class="device-direct-slider" data-direct-slider="${item.id}" transform="translate(0 ${directSliderY})">` +
+                      `<line class="device-direct-slider-track" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
+                      `<line class="device-direct-slider-fill" x1="${-directSliderWidth / 2}" y1="0" x2="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" y2="0"/>` +
+                      `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="4.5"/>` +
+                      `</g>`
                     : '') +
                 (selected?.type === 'item' && selected.id === item.id
                     ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
@@ -2585,6 +2632,28 @@ class Floorplaner extends IPSModuleStrict
         if (!Number.isFinite(raw) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
 
         return Math.max(0, Math.min(1, (raw - min) / (max - min)));
+    }
+
+    function directSliderConfig(item) {
+        const type = Number(item?._variableType);
+        if (type !== 1 && type !== 2) return null;
+
+        const profile = item?._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (associations.length > 0) return null;
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+
+        const configuredStep = Number(profile.step);
+        const step = Number.isFinite(configuredStep) && configuredStep > 0
+            ? configuredStep
+            : (type === 2 ? Math.max((max - min) / 100, 0.01) : 1);
+
+        const raw = Number(item?._rawValue);
+        const value = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+        return {min, max, step, value};
     }
 
     function truthyVariableValue(value) {
@@ -2932,6 +3001,12 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                ${directSliderConfig(obj) ? `
+                    <div class="field">
+                        <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider direkt anzeigen</label>
+                        <div class="profile-hint">Nur für echte Zahlenbereiche ohne Profil-Assoziationen.</div>
+                    </div>
+                ` : ''}
                 ${supportsStatusColor(obj) ? `
                     <div class="field">
                         <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
@@ -3493,6 +3568,30 @@ class Floorplaner extends IPSModuleStrict
 
         if (evt.button !== 0) return;
 
+        const directSliderTarget = evt.target.closest?.('[data-direct-slider]');
+        if (state.mode === 'view' && directSliderTarget) {
+            const item = floor.items.find(i => i.id === directSliderTarget.dataset.directSlider);
+            const cfg = directSliderConfig(item);
+            if (item && cfg) {
+                evt.preventDefault();
+                evt.stopPropagation();
+
+                const rect = directSliderTarget.getBoundingClientRect();
+                const fraction = rect.width > 0
+                    ? Math.max(0, Math.min(1, (evt.clientX - rect.left) / rect.width))
+                    : 0;
+                let value = cfg.min + fraction * (cfg.max - cfg.min);
+                value = Math.round((value - cfg.min) / cfg.step) * cfg.step + cfg.min;
+                value = Math.max(cfg.min, Math.min(cfg.max, value));
+                if (Number(item._variableType) === 1) value = Math.round(value);
+
+                item._rawValue = value;
+                sendItemValue(item, value);
+                render();
+                return;
+            }
+        }
+
         const shutterControl = evt.target.closest?.('[data-shutter-control]');
         if (state.mode === 'view' && shutterControl) {
             const opening = (currentFloor().openings || []).find(o => o.id === shutterControl.dataset.shutterControl);
@@ -3671,6 +3770,7 @@ class Floorplaner extends IPSModuleStrict
                 showName: false,
                 showValue: false,
                 showIcon: true,
+                showDirectSlider: false,
                 showState: false,
                 statusColor: '#ffe66d',
                 displayMode: 'icon',
