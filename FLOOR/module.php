@@ -543,10 +543,16 @@ class Floorplaner extends IPSModuleStrict
 
         /* Boolean-Statusring für alle Geräte mit Bool-Variable.
            Die Farbe kommt je Gerät aus --device-status-color. */
-        .device.numeric-status circle {
+        /* Numerischer Status: Die normale Geräte-Kontur bleibt immer erhalten.
+           Nur dieser zusätzliche Farbring wird mit dem Zahlenwert ein-/ausgeblendet. */
+        .device.numeric-status .device-status-ring {
+            fill: none;
             stroke: var(--device-status-color, #ffe66d);
+            stroke-width: 2;
             stroke-opacity: var(--device-status-opacity, 1);
             filter: drop-shadow(0 0 var(--device-status-glow, 0px) var(--device-status-color, #ffe66d));
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
         }
 
         .device.boolean-active circle {
@@ -584,11 +590,19 @@ class Floorplaner extends IPSModuleStrict
             cursor: pointer;
         }
 
+        .device-direct-slider-hit {
+            stroke: transparent;
+            stroke-width: 18;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+        }
+
         .device-direct-slider-track {
             stroke: rgba(160,170,185,.65);
             stroke-width: 5;
             stroke-linecap: round;
             vector-effect: non-scaling-stroke;
+            pointer-events: none;
         }
 
         .device-direct-slider-fill {
@@ -2474,7 +2488,12 @@ class Floorplaner extends IPSModuleStrict
             const boolClass = isBooleanDevice && statusRingEnabled
                 ? (boolActive ? ' boolean-active' : ' boolean-inactive')
                 : '';
-            const lightClass = item.kind === 'light' ? (boolActive ? ' active-light' : ' inactive-light') : '';
+            // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
+            // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
+            // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
+            const lightClass = item.kind === 'light' && isBooleanDevice
+                ? (boolActive ? ' active-light' : ' inactive-light')
+                : '';
             const statusColor = normalizeStatusColor(item.statusColor);
             const icon = iconForKind(item.kind);
 
@@ -2539,6 +2558,7 @@ class Floorplaner extends IPSModuleStrict
                           `<circle class="climate-panel-dot" cx="${radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
                           `</g>`
                         : `<circle r="${radius}"/>` +
+                          (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
                           `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`)
                     : '') +
                 (showName && item.name
@@ -2549,6 +2569,7 @@ class Floorplaner extends IPSModuleStrict
                     : '') +
                 (directSlider
                     ? `<g class="device-direct-slider" data-direct-slider="${item.id}" transform="translate(0 ${directSliderY})">` +
+                      `<line class="device-direct-slider-hit" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
                       `<line class="device-direct-slider-track" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
                       `<line class="device-direct-slider-fill" x1="${-directSliderWidth / 2}" y1="0" x2="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" y2="0"/>` +
                       `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="4.5"/>` +
@@ -3597,7 +3618,7 @@ class Floorplaner extends IPSModuleStrict
 
         const directSliderTarget = evt.target.closest?.('[data-direct-slider]');
         if (state.mode === 'view' && directSliderTarget) {
-            const item = floor.items.find(i => i.id === directSliderTarget.dataset.directSlider);
+            const item = currentFloor().items.find(i => i.id === directSliderTarget.dataset.directSlider);
             const cfg = directSliderConfig(item);
             if (item && cfg) {
                 evt.preventDefault();
