@@ -408,6 +408,12 @@ class Floorplaner extends IPSModuleStrict
             vector-effect: non-scaling-stroke;
         }
 
+        .shutter-control .shutter-hit {
+            fill: transparent;
+            stroke: transparent;
+            pointer-events: all;
+        }
+
         .shutter-control text {
             fill: #ffffff;
             font-size: 12px;
@@ -2322,6 +2328,7 @@ class Floorplaner extends IPSModuleStrict
                 parts.push(
                     `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
                     `transform="translate(${sx} ${sy})">` +
+                    `<circle class="shutter-hit" r="20"/>` +
                     `<circle r="12"/>` +
                     `<text x="0" y="0">↕</text>` +
                     `</g>`
@@ -2783,12 +2790,6 @@ class Floorplaner extends IPSModuleStrict
                 </div>
 
                 <div class="field">
-                    <label>Zweiter Flügel (optional)</label>
-                    <input class="variable-select-field" data-variable-field="secondaryVariableID" readonly
-                        value="${obj.secondaryVariableID ? '#' + obj.secondaryVariableID + (obj._secondaryVariablePath ? ' – ' + escapeHtml(obj._secondaryVariablePath) : '') : 'nicht zugeordnet'}">
-                </div>
-
-                <div class="field">
                     <label>Rollo / Rollladen (optional)</label>
                     <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
                         value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
@@ -2804,11 +2805,6 @@ class Floorplaner extends IPSModuleStrict
                     </div>
                     <div class="field">
                         <label><input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}> Rollo-Animation invertieren</label>
-                    </div>
-                    <div class="field">
-                        <label>Zweiter Rollo-Flügel (optional)</label>
-                        <input class="variable-select-field" data-variable-field="shutterSecondaryVariableID" readonly
-                            value="${obj.shutterSecondaryVariableID ? '#' + obj.shutterSecondaryVariableID + (obj._shutterSecondaryVariablePath ? ' – ' + escapeHtml(obj._shutterSecondaryVariablePath) : '') : 'nicht zugeordnet'}">
                     </div>
                 ` : ''}
 
@@ -3397,23 +3393,6 @@ class Floorplaner extends IPSModuleStrict
         }
     }
 
-    svg.addEventListener('click', evt => {
-        if (state.mode !== 'view') return;
-        const control = evt.target.closest?.('[data-shutter-control]');
-        if (!control) return;
-
-        evt.preventDefault();
-        evt.stopPropagation();
-
-        const opening = (currentFloor().openings || []).find(o => o.id === control.dataset.shutterControl);
-        if (!opening) return;
-
-        const field = control.dataset.shutterField || 'shutterVariableID';
-        if (Number(opening[field]) <= 0) return;
-
-        openShutterControl(opening, field, evt.clientX, evt.clientY);
-    });
-
     svg.addEventListener('pointerdown', evt => {
         if (evt.button === 1) {
             drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
@@ -3422,6 +3401,20 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (evt.button !== 0) return;
+
+        const shutterControl = evt.target.closest?.('[data-shutter-control]');
+        if (state.mode === 'view' && shutterControl) {
+            const opening = (currentFloor().openings || []).find(o => o.id === shutterControl.dataset.shutterControl);
+            if (opening) {
+                const field = shutterControl.dataset.shutterField || 'shutterVariableID';
+                if (Number(opening[field]) > 0) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    openShutterControl(opening, field, evt.clientX, evt.clientY);
+                    return;
+                }
+            }
+        }
 
         const rotateHandle = evt.target.closest('[data-rotate-type]');
         const resizeHandle = evt.target.closest('[data-resize-type]');
