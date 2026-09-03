@@ -3751,9 +3751,9 @@ class Floorplaner extends IPSModuleStrict
             const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
             let rotation = pointerAngle + Number(drag.angleOffset || 0);
 
-            // Auf -180..180 normalisieren, damit der gespeicherte Wert handlich bleibt.
+            // Auf -180..180 normalisieren und Möbel nur in ganzen Grad drehen.
             rotation = ((rotation + 180) % 360 + 360) % 360 - 180;
-            obj.rotation = Math.round(rotation * 10) / 10;
+            obj.rotation = Math.round(rotation);
             render();
             return;
         }
