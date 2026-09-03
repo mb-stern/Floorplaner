@@ -132,31 +132,51 @@ class Floorplaner extends IPSModuleStrict
 
         $actions = [
             [
-                'type'    => 'Label',
-                'caption' => 'Projektwerkzeuge'
-            ],
-            [
-                'type'    => 'Button',
-                'caption' => 'Floorplan JSON anzeigen',
-                'onClick' => 'echo FLOOR_GetFloorplanJSON($id);'
-            ],
-            [
                 'type'     => 'Button',
-                'caption'  => 'Floorplan JSON herunterladen',
-                'download' => 'floorplan.json',
+                'caption'  => 'Sichern',
+                'download' => 'floorplan-backup.json',
                 'onClick'  => 'echo "data:application/json;charset=utf-8," . rawurlencode(FLOOR_GetFloorplanJSON($id));'
             ],
             [
-                'type'    => 'Button',
-                'caption' => 'Editor-Daten auf Projekteinstellungen synchronisieren',
-                'onClick' => 'FLOOR_SyncProjectSettings($id); echo "Synchronisiert";'
+                'type'    => 'PopupButton',
+                'caption' => 'Wiederherstellen',
+                'popup'   => [
+                    'caption'      => 'Floorplan wiederherstellen',
+                    'closeCaption' => 'Abbrechen',
+                    'items'        => [
+                        [
+                            'type'       => 'SelectFile',
+                            'name'       => 'FloorplanBackup',
+                            'caption'    => 'Sicherungsdatei auswählen',
+                            'extensions' => '.json'
+                        ],
+                        [
+                            'type'    => 'Label',
+                            'caption' => 'Beim Wiederherstellen wird der aktuell gespeicherte Floorplan durch die ausgewählte Sicherung ersetzt.'
+                        ]
+                    ],
+                    'buttons'      => [
+                        [
+                            'caption' => 'Wiederherstellen',
+                            'onClick' => 'if (empty($FloorplanBackup)) { echo "Bitte zuerst eine Sicherungsdatei auswählen."; } else { FLOOR_RestoreFloorplanBackup($id, $FloorplanBackup); echo "MESSAGE:Floorplan wurde wiederhergestellt."; }'
+                        ]
+                    ]
+                ]
             ],
             [
-                'type'    => 'Button',
-                'caption' => 'Floorplan zurücksetzen',
-                'confirm' => 'Soll der komplette Floorplan wirklich gelöscht werden?',
-                'onClick' => 'FLOOR_ResetFloorplan($id); echo "Floorplan wurde zurückgesetzt";'
-            ]
+                    'type'  => 'RowLayout',
+                    'items' => [
+                        [
+                                'type'   => 'Image',
+                                'onClick'=> "echo 'https://paypal.me/mbstern';",
+                                'image'=> "data:image/jpeg;base64,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"
+                        ],
+                        [
+                            'type'    => 'Label',
+                            'caption' => "Sag danke und unterstütze den Modulentwickler: paypal.me/mbstern"
+                        ],
+                    ],
+                ],
         ];
 
         return json_encode(
@@ -376,6 +396,10 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 12;
             stroke-linecap: square;
             vector-effect: non-scaling-stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .wall {
             cursor: pointer;
         }
 
@@ -384,17 +408,51 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .opening {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening {
             cursor: pointer;
         }
 
         /* Größere Trefferfläche nur für die Öffnung selbst.
            Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
+        .shutter-control {
+            pointer-events: all;
+        }
+
+        .shutter-control circle {
+            fill: #404040;
+            stroke: #dedede;
+            stroke-width: 1.8;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .shutter-control .shutter-hit {
+            fill: transparent;
+            stroke: transparent;
+            pointer-events: all;
+        }
+
+        .shutter-control text {
+            fill: #ffffff;
+            font-size: 12px;
+            font-weight: bold;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+        }
+
         .opening-hit {
             stroke: transparent;
             stroke-width: 22;
             fill: none;
             vector-effect: non-scaling-stroke;
             pointer-events: stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening-hit {
             cursor: move;
         }
 
@@ -433,6 +491,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .furniture {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .furniture {
             cursor: move;
         }
 
@@ -471,10 +533,56 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 3;
         }
 
-        .device.active-light circle {
+        /* Klima / Heizung: bewusst als kleines Wand-Bedienteil statt
+           als rundes Thermostat-/Messwertsymbol darstellen. */
+        .device .climate-panel {
+            fill: #404040;
+            stroke: #dedede;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .device .climate-panel-display {
+            fill: rgba(255,255,255,.08);
+            stroke: #9aa6b2;
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device .climate-panel-dot {
+            fill: #bfc8d2;
+            stroke: none;
+            pointer-events: none;
+        }
+
+        .device.selected .climate-panel {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
+        /* Boolean-Statusring für alle Geräte mit Bool-Variable.
+           Die Farbe kommt je Gerät aus --device-status-color. */
+        /* Numerischer Status: Die normale Geräte-Kontur bleibt immer erhalten.
+           Nur dieser zusätzliche Farbring wird mit dem Zahlenwert ein-/ausgeblendet. */
+        .device.numeric-status .device-status-ring {
+            fill: none;
+            stroke: var(--device-status-color, #ffe66d);
+            stroke-width: 2;
+            stroke-opacity: var(--device-status-opacity, 1);
+            filter: drop-shadow(0 0 var(--device-status-glow, 0px) var(--device-status-color, #ffe66d));
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d));
+        }
+
+        /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
+        .device.active-light.boolean-active circle {
             fill: #5b5422;
-            stroke: #ffe66d;
-            filter: drop-shadow(0 0 7px #ffe66d);
         }
 
         .device.inactive-light {
@@ -494,6 +602,48 @@ class Floorplaner extends IPSModuleStrict
             fill: #ffffff;
             stroke: #74b9ff;
             stroke-width: 0.4;
+        }
+
+        /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
+           Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
+        .device-direct-slider {
+            cursor: pointer;
+        }
+
+        .device-direct-slider-hit {
+            stroke: transparent;
+            stroke-width: 18;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+        }
+
+        .device-direct-slider-track {
+            stroke: rgba(160,170,185,.65);
+            stroke-width: 5;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device-direct-slider-fill {
+            stroke: #d7e9ff;
+            stroke-width: 5;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device-direct-slider-thumb {
+            fill: #ffffff;
+            stroke: #66788a;
+            stroke-width: 1.4;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        #app:not(.view-mode) .device-direct-slider {
+            pointer-events: none;
+            opacity: .65;
         }
 
         .rotate-handle-line {
@@ -578,7 +728,7 @@ class Floorplaner extends IPSModuleStrict
 
         #viewbar select {
             height: 36px;
-            max-width: 150px;
+            max-width: none;
             padding: 0 26px 0 9px;
             border: 1px solid var(--fp-border);
             border-radius: 6px;
@@ -611,6 +761,34 @@ class Floorplaner extends IPSModuleStrict
         #app.view-mode #viewbar { display: flex; }
         #app.view-mode .main { grid-template-columns: 1fr; }
         #app.view-mode .sidebar { display: none; }
+
+        /* Bedienansicht:
+           Nur echte Geräte sollen mit dem Hand-Cursor als bedienbar erscheinen.
+           Wände, Türen/Fenster, Möbel und Texte sind hier reine Darstellung. */
+        #app.view-mode .wall,
+        #app.view-mode .opening,
+        #app.view-mode .opening-hit,
+        #app.view-mode .furniture,
+        #app.view-mode .plan-text {
+            cursor: default !important;
+        }
+
+        #app.view-mode .device {
+            cursor: pointer !important;
+        }
+
+        /* Zusätzliche, direkt am SVG-Szenen-Container gesetzte Laufzeitregel.
+           Damit werden auch Cursor von Unterelementen (SVG-Pfade, Linien usw.)
+           sicher überschrieben. */
+        #scene.runtime-view,
+        #scene.runtime-view * {
+            cursor: default !important;
+        }
+
+        #scene.runtime-view .device,
+        #scene.runtime-view .device * {
+            cursor: pointer !important;
+        }
 
         .modal-backdrop {
             position: fixed;
@@ -1041,6 +1219,20 @@ class Floorplaner extends IPSModuleStrict
             stroke: #777777;
         }
 
+        html[data-theme="light"] .device .climate-panel {
+            fill: rgba(255,255,255,.82);
+            stroke: #777777;
+        }
+
+        html[data-theme="light"] .device .climate-panel-display {
+            fill: rgba(80,80,80,.07);
+            stroke: #888888;
+        }
+
+        html[data-theme="light"] .device .climate-panel-dot {
+            fill: #666666;
+        }
+
         html[data-theme="light"] .device-glyph {
             color: #555555;
         }
@@ -1081,6 +1273,15 @@ class Floorplaner extends IPSModuleStrict
             position: fixed;
             margin: 0;
             pointer-events: auto;
+        }
+
+        /* Einheitlicher Cursor für den Grundriss:
+           Über allen gezeichneten Elementen und Bearbeitungsgriffen wird
+           bewusst immer die Hand angezeigt. Damit gibt es keine wechselnden
+           Pfeil-, Verschiebe- oder Resize-Cursor mehr. */
+        #scene,
+        #scene * {
+            cursor: pointer !important;
         }
 
 </style>
@@ -1238,6 +1439,22 @@ class Floorplaner extends IPSModuleStrict
     let propertiesSelectOpen = false;
     let propertiesControlActive = false;
 
+    function refreshPropertiesAfterStructuralChange() {
+        // Änderungen wie Gerätetyp oder Variablenzuordnung können ganze
+        // Eigenschaftsblöcke ein-/ausblenden (z.B. Statusfarbe).
+        // Nach Abschluss des aktuellen Events die Leiste deshalb gezielt
+        // neu aufbauen, statt auf einen Seiten-Reload zu warten.
+        setTimeout(() => {
+            const active = document.activeElement;
+            if (active && properties.contains(active) && typeof active.blur === 'function') {
+                active.blur();
+            }
+            propertiesControlActive = false;
+            propertiesSelectOpen = false;
+            renderProperties();
+        }, 0);
+    }
+
     function uid(prefix) {
         return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
     }
@@ -1311,13 +1528,16 @@ class Floorplaner extends IPSModuleStrict
         delete q.width;
         delete q.height;
         q.grid = Number(q.grid) || 20;
-        q.snap = Number.isFinite(Number(q.snap)) ? Number(q.snap) : q.grid;
+        // Einrasten verwendet immer direkt die Rastergröße.
+        // Eine separate Snap-Einstellung gibt es nicht mehr.
+        delete q.snap;
         q.background = q.background || '#303030';
         q.showGrid = q.showGrid !== false;
         q.mode = q.mode === 'view' ? 'view' : 'edit';
         q.floors = Array.isArray(q.floors) && q.floors.length ? q.floors : [{
             id: 'floor_1',
             name: 'Erdgeschoss',
+            order: 1,
             walls: [],
             openings: [],
             items: [],
@@ -1326,12 +1546,32 @@ class Floorplaner extends IPSModuleStrict
             areas: [],
             trackers: []
         }];
+
+        q.floors.forEach((floor, index) => {
+            const order = Number(floor.order);
+            floor.order = Number.isFinite(order) && order > 0 ? Math.round(order) : (index + 1);
+        });
+        q.floors.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        q.floors.forEach((floor, index) => {
+            floor.order = index + 1;
+        });
         for (const floor of q.floors) {
             floor.id ||= uid('floor');
             floor.name ||= 'Etage';
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
+            for (const opening of floor.openings) {
+                if (typeof opening.shutterValueMappingEnabled !== 'boolean') {
+                    opening.shutterValueMappingEnabled = false;
+                }
+                if (!opening.shutterValueMap || typeof opening.shutterValueMap !== 'object' || Array.isArray(opening.shutterValueMap)) {
+                    opening.shutterValueMap = {};
+                }
+            }
             floor.items = Array.isArray(floor.items) ? floor.items : [];
+            for (const item of floor.items) {
+                item.statusColor = normalizeStatusColor(item.statusColor);
+            }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
                 if (typeof furniture.showName !== 'boolean') furniture.showName = false;
@@ -1435,6 +1675,7 @@ class Floorplaner extends IPSModuleStrict
     function updateModeUI() {
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
+        scene.classList.toggle('runtime-view', isView);
         statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
 
         const gridControls = document.querySelector('.grid-editor-controls');
@@ -1461,8 +1702,8 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function snapValue(v) {
-        const s = Number(state.snap) || 0;
-        return s > 0 ? Math.round(v / s) * s : v;
+        const s = Math.max(2, Number(state.grid) || 20);
+        return Math.round(v / s) * s;
     }
 
     function svgPointRaw(evt) {
@@ -1824,9 +2065,13 @@ class Floorplaner extends IPSModuleStrict
                 longestWidth = Math.max(longestWidth, ctx.measureText(option.text || '').width);
             }
 
-            // Immer gleich breit: längster Etagenname + Innenabstand + Auswahlpfeil.
-            const width = Math.ceil(longestWidth + 52);
-            liveFloorSelect.style.width = `${Math.max(96, width)}px`;
+            // Immer gleich breit: längster Etagenname + Innenabstand + nativer Auswahlpfeil.
+            // Etwas Reserve verhindert Abschneiden je nach Browser/WebView.
+            const width = Math.ceil(longestWidth + 64);
+            const finalWidth = Math.max(110, width);
+            liveFloorSelect.style.width = `${finalWidth}px`;
+            liveFloorSelect.style.minWidth = `${finalWidth}px`;
+            liveFloorSelect.style.maxWidth = 'none';
         }
     }
 
@@ -2097,6 +2342,19 @@ class Floorplaner extends IPSModuleStrict
             parts.push(
                 `<line class="wall${sel}" data-type="wall" data-id="${w.id}" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
             );
+
+            if (state.mode !== 'view' && selected?.type === 'wall' && selected.id === w.id) {
+                // Wie bei Möbeln: kleine sichtbare Griffe direkt am Objekt.
+                // Jeder Griff verändert nur das zugehörige Wandende.
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="start" data-id="${w.id}" ` +
+                    `cx="${w.x1}" cy="${w.y1}" r="2.8"/>`
+                );
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="end" data-id="${w.id}" ` +
+                    `cx="${w.x2}" cy="${w.y2}" r="2.8"/>`
+                );
+            }
         }
 
         for (const o of floor.openings) {
@@ -2109,8 +2367,8 @@ class Floorplaner extends IPSModuleStrict
             const isOpen = amount > 0.02;
             const stateClass = isOpen ? ' opening-state-open' : '';
 
-            parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}">`);
-            parts.push(`<line class="opening-hit" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
+            parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}" style="cursor:${state.mode === 'view' ? 'default' : 'pointer'}">`);
+            parts.push(`<line class="opening-hit" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
             parts.push(`<line class="opening-gap" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
 
             if (o.type === 'door') {
@@ -2131,16 +2389,16 @@ class Floorplaner extends IPSModuleStrict
                     parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
                     parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
                 } else {
-                    // Zwei Fensterflügel öffnen sich sichtbar in den Raum.
-                    const halfLen = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1) / 2;
-                    const swing = halfLen * .72 * amount;
-                    const leftInnerX = geom.cx + geom.nx * swing;
-                    const leftInnerY = geom.cy + geom.ny * swing;
-                    const rightInnerX = geom.cx + geom.nx * swing;
-                    const rightInnerY = geom.cy + geom.ny * swing;
+                    // Fenster standardmäßig einflügelig darstellen.
+                    // Maximal ca. 20° Öffnung: der Flügel bleibt sehr nah
+                    // an der Wand und ragt kaum aus dem Grundriss.
+                    const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
+                    const maxAngle = 20 * Math.PI / 180;
+                    const angle = maxAngle * amount;
+                    const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
+                    const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
 
-                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x1}" y1="${geom.y1}" x2="${leftInnerX}" y2="${leftInnerY}"/>`);
-                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x2}" y1="${geom.y2}" x2="${rightInnerX}" y2="${rightInnerY}"/>`);
+                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
                 }
             }
 
@@ -2190,6 +2448,26 @@ class Floorplaner extends IPSModuleStrict
             }
 
             parts.push(`</g>`);
+
+            // Rollladen-Bedienung als eigenes SVG-Element AUSSERHALB der Öffnungsgruppe.
+            // So kann sie nicht von Fenster-/Tür-Linien oder deren Trefferflächen verdeckt werden.
+            const shutterField =
+                Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
+                (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
+
+            if (shutterField) {
+                const controlOffset = 24;
+                const sx = geom.cx - geom.nx * controlOffset;
+                const sy = geom.cy - geom.ny * controlOffset;
+                parts.push(
+                    `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
+                    `transform="translate(${sx} ${sy})">` +
+                    `<circle class="shutter-hit" r="20"/>` +
+                    `<circle r="12"/>` +
+                    `<text x="0" y="0">↕</text>` +
+                    `</g>`
+                );
+            }
         }
 
         for (const f of floor.furniture || []) {
@@ -2197,7 +2475,7 @@ class Floorplaner extends IPSModuleStrict
             const rot = Number(f.rotation) || 0;
 
             parts.push(
-                `<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" ` +
+                `<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" ` +
                 `transform="translate(${Number(f.x) || 0} ${Number(f.y) || 0}) rotate(${rot})">`
             );
             parts.push(furnitureShape(f));
@@ -2230,8 +2508,21 @@ class Floorplaner extends IPSModuleStrict
         for (const item of floor.items) {
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
-            const boolActive = item._variableType === 0 && (raw === true || raw === 1 || raw === '1' || raw === 'true');
-            const lightClass = item.kind === 'light' ? (boolActive ? ' active-light' : ' inactive-light') : '';
+            const isBooleanDevice = Number(item._variableType) === 0;
+            const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+            const statusRingEnabled = supportsStatusColor(item);
+            const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
+            const numericClass = numericLevel !== null ? ' numeric-status' : '';
+            const boolClass = isBooleanDevice && statusRingEnabled
+                ? (boolActive ? ' boolean-active' : ' boolean-inactive')
+                : '';
+            // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
+            // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
+            // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
+            const lightClass = item.kind === 'light' && isBooleanDevice
+                ? (boolActive ? ' active-light' : ' inactive-light')
+                : '';
+            const statusColor = normalizeStatusColor(item.statusColor);
             const icon = iconForKind(item.kind);
 
             const showName = item.showName === true;
@@ -2245,7 +2536,10 @@ class Floorplaner extends IPSModuleStrict
                 path: item._variablePath,
                 valueText: item._valueText
             });
-            if (inferredSensorKind && !['temperature','humidity'].includes(item.kind)) {
+            // Nur neutrale Geräte automatisch als Temperatur/Feuchte erkennen.
+            // Ein bewusst gewähltes Klima-/Heizungs-Bedienteil darf dadurch
+            // nicht wieder auf "Temperatur" zurückspringen.
+            if (inferredSensorKind && (item.kind || 'generic') === 'generic') {
                 item.kind = inferredSensorKind;
             }
 
@@ -2257,6 +2551,12 @@ class Floorplaner extends IPSModuleStrict
             const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
             const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
             const radius = Number(item.size) || 18;
+            const directSlider = item.showDirectSlider === true ? directSliderConfig(item) : null;
+            const directSliderY = radius + 13;
+            const directSliderWidth = Math.max(38, radius * 2.4);
+            const directSliderLevel = directSlider
+                ? Math.max(0, Math.min(1, (directSlider.value - directSlider.min) / (directSlider.max - directSlider.min)))
+                : 0;
 
             function deviceTextPlacement(position, size, extra = 0) {
                 const pos = ['above','left','right','below'].includes(position) ? position : 'below';
@@ -2266,24 +2566,51 @@ class Floorplaner extends IPSModuleStrict
                 return {x: 0, y: radius + size + 5 + extra, anchor: 'middle'};
             }
 
-            const namePlace = deviceTextPlacement(item.labelPosition, labelSize, 0);
-            let valueExtra = 0;
-            if (showName && (item.valuePosition || 'below') === (item.labelPosition || 'below')) {
-                valueExtra = Math.max(labelSize, valueSize) + 3;
+            // Wenn ein Direkt-Slider sichtbar ist, beginnt Text mit Position "unten"
+            // erst unterhalb des Sliders. Name und Wert werden danach wie bisher
+            // untereinander angeordnet.
+            const sliderTextOffset = directSlider ? 16 : 0;
+            const namePosition = item.labelPosition || 'below';
+            const valuePosition = item.valuePosition || 'below';
+            const nameBaseExtra = namePosition === 'below' ? sliderTextOffset : 0;
+            const valueBaseExtra = valuePosition === 'below' ? sliderTextOffset : 0;
+
+            const namePlace = deviceTextPlacement(namePosition, labelSize, nameBaseExtra);
+            let valueExtra = valueBaseExtra;
+            if (showName && valuePosition === namePosition) {
+                valueExtra += Math.max(labelSize, valueSize) + 3;
             }
-            const valuePlace = deviceTextPlacement(item.valuePosition, valueSize, valueExtra);
+            const valuePlace = deviceTextPlacement(valuePosition, valueSize, valueExtra);
 
             parts.push(
-                `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
+                `<g class="device${sel}${numericClass}${boolClass}${lightClass}" data-type="item" data-id="${item.id}" ` +
+                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
-                    ? `<circle r="${radius}"/>` +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`
+                    ? (item.kind === 'climate'
+                        ? `<g class="climate-panel-symbol" transform="rotate(${Number(item.angle) || 0})">` +
+                          `<rect class="climate-panel" x="${-radius * .95}" y="${-radius * .68}" width="${radius * 1.9}" height="${radius * 1.36}" rx="${Math.max(2, radius * .16)}"/>` +
+                          `<rect class="climate-panel-display" x="${-radius * .62}" y="${-radius * .38}" width="${radius * 1.24}" height="${radius * .48}" rx="${Math.max(1.5, radius * .08)}"/>` +
+                          `<circle class="climate-panel-dot" cx="${-radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
+                          `<circle class="climate-panel-dot" cx="0" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
+                          `<circle class="climate-panel-dot" cx="${radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
+                          `</g>`
+                        : `<circle r="${radius}"/>` +
+                          (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                          `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`)
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
                     : '') +
                 (showValue
                     ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
+                    : '') +
+                (directSlider
+                    ? `<g class="device-direct-slider" data-direct-slider="${item.id}" transform="translate(0 ${directSliderY})">` +
+                      `<line class="device-direct-slider-hit" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
+                      `<line class="device-direct-slider-track" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
+                      `<line class="device-direct-slider-fill" x1="${-directSliderWidth / 2}" y1="0" x2="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" y2="0"/>` +
+                      `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="4.5"/>` +
+                      `</g>`
                     : '') +
                 (selected?.type === 'item' && selected.id === item.id
                     ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
@@ -2323,6 +2650,95 @@ class Floorplaner extends IPSModuleStrict
     function renderAll() {
         render();
         updateUndoButtons();
+    }
+
+    function normalizeStatusColor(value) {
+        const color = String(value || '').trim();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : '#ffe66d';
+    }
+
+    function supportsStatusColor(item) {
+        const kind = String(item?.kind || 'generic');
+        if (['temperature', 'humidity', 'climate'].includes(kind)) {
+            return false;
+        }
+
+        const type = Number(item?._variableType);
+        if (type === 0) {
+            return ['generic', 'light', 'switch', 'socket', 'motion'].includes(kind);
+        }
+
+        if (type === 1 || type === 2) {
+            return numericStatusLevel(item) !== null &&
+                ['generic', 'light', 'switch', 'socket', 'motion'].includes(kind);
+        }
+
+        return false;
+    }
+
+    function numericStatusLevel(item) {
+        const type = Number(item?._variableType);
+        if (type !== 1 && type !== 2) return null;
+
+        const profile = item?._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (associations.length > 0) return null;
+
+        const raw = Number(item?._rawValue);
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        if (!Number.isFinite(raw) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+
+        return Math.max(0, Math.min(1, (raw - min) / (max - min)));
+    }
+
+    function directSliderConfig(item) {
+        const type = Number(item?._variableType);
+        if (type !== 1 && type !== 2) return null;
+
+        const profile = item?._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (associations.length > 0) return null;
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+
+        const configuredStep = Number(profile.step);
+        const step = Number.isFinite(configuredStep) && configuredStep > 0
+            ? configuredStep
+            : (type === 2 ? Math.max((max - min) / 100, 0.01) : 1);
+
+        const raw = Number(item?._rawValue);
+        const value = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+        return {min, max, step, value};
+    }
+
+    function directSliderValueFromPointer(item, clientX, clientY) {
+        const cfg = directSliderConfig(item);
+        if (!cfg) return null;
+
+        // Mauskoordinate in Grundriss-/Scene-Koordinaten umrechnen.
+        // Dadurch funktioniert das Ziehen unabhängig von Zoom und Pan.
+        const raw = svgPointRaw({clientX, clientY});
+        const radius = Number(item.size) || 18;
+        const width = Math.max(38, radius * 2.4);
+        const localX = raw.x - (Number(item.x) || 0);
+
+        const fraction = Math.max(0, Math.min(1, (localX + width / 2) / width));
+        let value = cfg.min + fraction * (cfg.max - cfg.min);
+
+        value = Math.round((value - cfg.min) / cfg.step) * cfg.step + cfg.min;
+        value = Math.max(cfg.min, Math.min(cfg.max, value));
+
+        if (Number(item._variableType) === 1) {
+            value = Math.round(value);
+        } else {
+            // Float-Werte auf sinnvolle Genauigkeit begrenzen.
+            value = Math.round(value * 10000) / 10000;
+        }
+
+        return value;
     }
 
     function truthyVariableValue(value) {
@@ -2378,13 +2794,53 @@ class Floorplaner extends IPSModuleStrict
         );
     }
 
+    function mappedShutterAmount(o) {
+        if (!o || o.shutterValueMappingEnabled !== true) return null;
+        if (Number(o._shutterVariableType) !== 1) return null;
+
+        const map = o.shutterValueMap && typeof o.shutterValueMap === 'object'
+            ? o.shutterValueMap
+            : {};
+        const raw = Number(o._shutterVariableRawValue);
+        if (!Number.isFinite(raw)) return null;
+
+        const key = String(raw);
+        if (!Object.prototype.hasOwnProperty.call(map, key)) return null;
+
+        const mapped = map[key];
+
+        // "keep" bedeutet: Dieser Befehlswert beschreibt keine feste Position
+        // (z.B. Stop / Schritt auf / Schritt zu). Dann bleibt die zuletzt
+        // bekannte grafische Stellung während der Laufzeit erhalten.
+        if (mapped === 'keep') {
+            return Number.isFinite(Number(o._shutterVisualAmount))
+                ? Math.max(0, Math.min(1, Number(o._shutterVisualAmount)))
+                : 0;
+        }
+
+        const percent = Number(mapped);
+        if (!Number.isFinite(percent)) return null;
+
+        const amount = Math.max(0, Math.min(1, percent / 100));
+        o._shutterVisualAmount = amount;
+        return amount;
+    }
+
     function shutterState(o) {
-        return normalizedOpeningAmount(
-            o._shutterVariableRawValue,
-            o._shutterVariableType,
-            o._shutterVariableProfile,
-            o.shutterInvert === true
-        );
+        let amount = mappedShutterAmount(o);
+
+        if (amount === null) {
+            amount = normalizedOpeningAmount(
+                o._shutterVariableRawValue,
+                o._shutterVariableType,
+                o._shutterVariableProfile,
+                false
+            );
+            o._shutterVisualAmount = amount;
+        }
+
+        amount = Math.max(0, Math.min(1, amount));
+        return o.shutterInvert === true ? 1 - amount : amount;
     }
 
     function openingGeometry(w, o) {
@@ -2537,6 +2993,75 @@ class Floorplaner extends IPSModuleStrict
         return ['temperature','humidity'].includes(kind) ? 'value' : 'icon';
     }
 
+    function shutterMappingOptions(selectedValue) {
+        const options = [
+            ['keep', 'Position nicht ändern'],
+            ['100', 'Offen (100 %)'],
+            ['75', '75 % offen'],
+            ['50', 'Halb (50 %)'],
+            ['25', '25 % offen'],
+            ['0', 'Geschlossen (0 %)']
+        ];
+
+        return options.map(([value, label]) =>
+            `<option value="${value}"${String(selectedValue) === value ? ' selected' : ''}>${label}</option>`
+        ).join('');
+    }
+
+    function shutterValueMappingHtml(obj) {
+        if (!obj || Number(obj.shutterVariableID || 0) <= 0) return '';
+        if (Number(obj._shutterVariableType) !== 1) return '';
+
+        const profile = obj._shutterVariableProfile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (!associations.length) return '';
+
+        const enabled = obj.shutterValueMappingEnabled === true;
+        const map = obj.shutterValueMap && typeof obj.shutterValueMap === 'object'
+            ? obj.shutterValueMap
+            : {};
+
+        let html = `
+            <div class="field">
+                <label class="check">
+                    <input data-field="shutterValueMappingEnabled" type="checkbox"${enabled ? ' checked' : ''}>
+                    Rollo-Werte zuordnen
+                </label>
+            </div>
+        `;
+
+        if (!enabled) return html;
+
+        html += `<div class="field"><label>Integerwerte → Rollo-Status</label>`;
+        html += `<div class="profile-hint">Jedem Profilwert kannst du eine grafische Stellung zuordnen.</div>`;
+
+        for (const association of associations) {
+            const rawValue = Number(association.value);
+            if (!Number.isFinite(rawValue)) continue;
+
+            const key = String(rawValue);
+            let selectedValue = Object.prototype.hasOwnProperty.call(map, key)
+                ? String(map[key])
+                : 'keep';
+
+            html += `
+                <div class="row2" style="align-items:center;margin-top:6px">
+                    <div class="field" style="margin:0">
+                        <label>${escapeHtml(String(association.name || key))} (${escapeHtml(key)})</label>
+                    </div>
+                    <div class="field" style="margin:0">
+                        <select data-shutter-map-value="${escapeHtml(key)}">
+                            ${shutterMappingOptions(selectedValue)}
+                        </select>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
     function renderProperties() {
         // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
         // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
@@ -2568,8 +3093,8 @@ class Floorplaner extends IPSModuleStrict
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
                 <div class="field">
-                    <label>Snap</label>
-                    <input value="${state.snap}" disabled>
+                    <label>Reihenfolge</label>
+                    <input type="number" min="1" max="${state.floors.length}" step="1" data-project="floorOrder" value="${Number(floor.order) || 1}">
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -2619,12 +3144,6 @@ class Floorplaner extends IPSModuleStrict
                 </div>
 
                 <div class="field">
-                    <label>Zweiter Flügel (optional)</label>
-                    <input class="variable-select-field" data-variable-field="secondaryVariableID" readonly
-                        value="${obj.secondaryVariableID ? '#' + obj.secondaryVariableID + (obj._secondaryVariablePath ? ' – ' + escapeHtml(obj._secondaryVariablePath) : '') : 'nicht zugeordnet'}">
-                </div>
-
-                <div class="field">
                     <label>Rollo / Rollladen (optional)</label>
                     <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
                         value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
@@ -2641,16 +3160,13 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field">
                         <label><input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}> Rollo-Animation invertieren</label>
                     </div>
-                    <div class="field">
-                        <label>Zweiter Rollo-Flügel (optional)</label>
-                        <input class="variable-select-field" data-variable-field="shutterSecondaryVariableID" readonly
-                            value="${obj.shutterSecondaryVariableID ? '#' + obj.shutterSecondaryVariableID + (obj._shutterSecondaryVariablePath ? ' – ' + escapeHtml(obj._shutterSecondaryVariablePath) : '') : 'nicht zugeordnet'}">
-                    </div>
                 ` : ''}
 
                 <div class="field">
                     <label><input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}> ${obj.type === 'door' ? 'Tür' : 'Fenster'}-Animation invertieren</label>
                 </div>
+
+                ${obj.shutterVariableID ? shutterValueMappingHtml(obj) : ''}
             `;
         } else if (selected.type === 'item') {
             propTitle.textContent = 'Gerät';
@@ -2664,12 +3180,9 @@ class Floorplaner extends IPSModuleStrict
                         <option value="light"${kind === 'light' ? ' selected' : ''}>Licht</option>
                         <option value="switch"${kind === 'switch' ? ' selected' : ''}>Schalter</option>
                         <option value="socket"${kind === 'socket' ? ' selected' : ''}>Steckdose</option>
-                        <option value="shutter"${kind === 'shutter' ? ' selected' : ''}>Rollladen / Jalousie</option>
                         <option value="temperature"${kind === 'temperature' ? ' selected' : ''}>Temperatur</option>
                         <option value="humidity"${kind === 'humidity' ? ' selected' : ''}>Feuchte</option>
                         <option value="motion"${kind === 'motion' ? ' selected' : ''}>Bewegung / Präsenz</option>
-                        <option value="window"${kind === 'window' ? ' selected' : ''}>Fensterkontakt</option>
-                        <option value="door"${kind === 'door' ? ' selected' : ''}>Türkontakt</option>
                         <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Heizung</option>
                     </select>
                 </div>
@@ -2684,6 +3197,19 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                ${directSliderConfig(obj) ? `
+                    <div class="field">
+                        <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider anzeigen</label>
+                        <div class="profile-hint">Nur für echte Zahlenbereiche ohne Profil-Assoziationen.</div>
+                    </div>
+                ` : ''}
+                ${supportsStatusColor(obj) ? `
+                    <div class="field">
+                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
+                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
+                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
+                    </div>
+                ` : ''}
                 <div class="row2">
                     <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
                     <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
@@ -2787,6 +3313,13 @@ class Floorplaner extends IPSModuleStrict
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
                 obj[fieldName] = value;
 
+                if (selected.type === 'opening' && fieldName === 'shutterValueMappingEnabled') {
+                    if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
+                        obj.shutterValueMap = {};
+                    }
+                    refreshPropertiesAfterStructuralChange();
+                }
+
                 if (selected.type === 'item' && fieldName === 'displayMode') {
                     obj.displayModeManual = true;
                 }
@@ -2798,6 +3331,7 @@ class Floorplaner extends IPSModuleStrict
                         obj.showIcon = false;
                         obj.showValue = true;
                     }
+                    refreshPropertiesAfterStructuralChange();
                 }
 
                 if (selected.type === 'furniture' && fieldName === 'type') {
@@ -2837,6 +3371,33 @@ class Floorplaner extends IPSModuleStrict
             });
         });
 
+        properties.querySelectorAll('[data-shutter-map-value]').forEach(select => {
+            select.addEventListener('change', () => {
+                if (!selected || selected.type !== 'opening') return;
+
+                const obj = findEntity('opening', selected.id);
+                if (!obj) return;
+
+                if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
+                    obj.shutterValueMap = {};
+                }
+
+                const rawValue = String(select.dataset.shutterMapValue || '');
+                if (!rawValue) return;
+
+                obj.shutterValueMap[rawValue] = String(select.value || 'keep');
+
+                // Die neue Zuordnung sofort auf die aktuelle grafische Stellung anwenden.
+                if (rawValue === String(Number(obj._shutterVariableRawValue))) {
+                    delete obj._shutterVisualAmount;
+                }
+
+                pushHistory();
+                markDirty();
+                render();
+            });
+        });
+
         properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
             field.addEventListener('click', () => {
                 if (!selected) return;
@@ -2855,10 +3416,38 @@ class Floorplaner extends IPSModuleStrict
             input.addEventListener('change', () => {
                 if (input.dataset.project === 'floorName') {
                     currentFloor().name = input.value.trim() || 'Etage';
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
                 }
-                pushHistory();
-                markDirty();
-                render();
+
+                if (input.dataset.project === 'floorOrder') {
+                    const floor = currentFloor();
+                    const oldIndex = state.floors.findIndex(f => f.id === floor.id);
+                    if (oldIndex < 0) return;
+
+                    const requested = Math.max(1, Math.min(
+                        state.floors.length,
+                        Math.round(Number(input.value) || (oldIndex + 1))
+                    ));
+                    const newIndex = requested - 1;
+
+                    if (newIndex !== oldIndex) {
+                        pushHistory();
+                        const [movedFloor] = state.floors.splice(oldIndex, 1);
+                        state.floors.splice(newIndex, 0, movedFloor);
+                        state.floors.forEach((f, index) => {
+                            f.order = index + 1;
+                        });
+                        markDirty();
+                        renderAll();
+                    } else {
+                        floor.order = requested;
+                        renderProperties();
+                    }
+                    return;
+                }
             });
         });
     }
@@ -2977,6 +3566,7 @@ class Floorplaner extends IPSModuleStrict
             const replacement = {
                 id: uid('floor'),
                 name: 'Erdgeschoss',
+                order: 1,
                 walls: [],
                 openings: [],
                 items: [],
@@ -2990,6 +3580,10 @@ class Floorplaner extends IPSModuleStrict
         } else {
             state.activeFloor = state.floors[Math.min(index, state.floors.length - 1)].id;
         }
+
+        state.floors.forEach((f, floorIndex) => {
+            f.order = floorIndex + 1;
+        });
 
         selected = null;
         wallStart = null;
@@ -3049,7 +3643,11 @@ class Floorplaner extends IPSModuleStrict
             tracker.id = uid('tracker');
         }
 
-        state.floors.push(floor);
+        const sourceIndex = state.floors.findIndex(f => f.id === sourceFloor.id);
+        state.floors.splice(sourceIndex >= 0 ? sourceIndex + 1 : state.floors.length, 0, floor);
+        state.floors.forEach((f, index) => {
+            f.order = index + 1;
+        });
         state.activeFloor = floor.id;
 
         // Keine alte Zoom-/Pan-Ansicht übernehmen.
@@ -3072,6 +3670,7 @@ class Floorplaner extends IPSModuleStrict
         const floor = {
             id: uid('floor'),
             name: name.trim() || 'Etage',
+            order: state.floors.length + 1,
             walls: [],
             openings: [],
             items: [],
@@ -3090,9 +3689,105 @@ class Floorplaner extends IPSModuleStrict
         requestAnimationFrame(fit);
     });
 
+
     floorSelect.addEventListener('change', () => {
         switchFloorView(floorSelect.value);
     });
+
+    function openShutterControl(opening, field = 'shutterVariableID', clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || !opening) return;
+
+        const secondary = field === 'shutterSecondaryVariableID';
+        const profile = secondary
+            ? (opening._shutterSecondaryVariableProfile || {})
+            : (opening._shutterVariableProfile || {});
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        const raw = Number(secondary
+            ? opening._shutterSecondaryVariableRawValue
+            : opening._shutterVariableRawValue);
+        controlTitle.textContent = 'Rollladen / Jalousie';
+
+        let html = '';
+
+        if (associations.length) {
+            html += '<div class="control-associations">';
+            for (const association of associations) {
+                const value = Number(association.value);
+                const current = Number.isFinite(raw) && raw === value ? ' current' : '';
+                html += `<button type="button" class="${current.trim()}" data-shutter-value="${value}">${escapeHtml(association.name || String(value))}</button>`;
+            }
+            html += '</div>';
+        }
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        const configuredStep = Number(profile.step);
+        const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
+
+        if (!associations.length && hasRange) {
+            const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
+            const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+            const suffix = String(profile.suffix || '');
+            html = `
+                <div class="control-slider">
+                    <div class="control-slider-value" data-shutter-slider-value>${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
+                    <input type="range" data-shutter-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)}</div>
+                </div>
+            `;
+        }
+
+        if (!html) {
+            html = '<div class="profile-hint">Für die Rollladenvariable sind keine bedienbaren Profilwerte hinterlegt.</div>';
+        }
+
+        controlBody.innerHTML = html;
+
+        const send = value => requestAction('operateOpeningValue', JSON.stringify({
+            floorId: state.activeFloor,
+            openingId: opening.id,
+            field,
+            value
+        }));
+
+        controlBody.querySelectorAll('[data-shutter-value]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                send(Number(btn.dataset.shutterValue));
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        });
+
+        const slider = controlBody.querySelector('[data-shutter-slider]');
+        const sliderValue = controlBody.querySelector('[data-shutter-slider-value]');
+        if (slider) {
+            const suffix = String(profile.suffix || '');
+            slider.addEventListener('input', () => {
+                if (sliderValue) sliderValue.textContent = `${slider.value}${suffix}`;
+            });
+            slider.addEventListener('change', () => send(Number(slider.value)));
+        }
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+                let left = Number(clientX) + offset;
+                let top = Number(clientY) + offset;
+                if (left + rect.width > window.innerWidth - margin) left = Number(clientX) - rect.width - offset;
+                if (top + rect.height > window.innerHeight - margin) top = Number(clientY) - rect.height - offset;
+                dialog.style.left = `${Math.max(margin, left)}px`;
+                dialog.style.top = `${Math.max(margin, top)}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        }
+    }
 
     svg.addEventListener('pointerdown', evt => {
         if (evt.button === 1) {
@@ -3102,6 +3797,44 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (evt.button !== 0) return;
+
+        const directSliderTarget = evt.target.closest?.('[data-direct-slider]');
+        if (state.mode === 'view' && directSliderTarget) {
+            const item = currentFloor().items.find(i => i.id === directSliderTarget.dataset.directSlider);
+            const cfg = directSliderConfig(item);
+            if (item && cfg) {
+                evt.preventDefault();
+                evt.stopPropagation();
+
+                const value = directSliderValueFromPointer(item, evt.clientX, evt.clientY);
+                if (value !== null) {
+                    item._rawValue = value;
+                    drag = {
+                        mode: 'direct-slider',
+                        type: 'item',
+                        id: item.id,
+                        value
+                    };
+                    svg.setPointerCapture(evt.pointerId);
+                    render();
+                }
+                return;
+            }
+        }
+
+        const shutterControl = evt.target.closest?.('[data-shutter-control]');
+        if (state.mode === 'view' && shutterControl) {
+            const opening = (currentFloor().openings || []).find(o => o.id === shutterControl.dataset.shutterControl);
+            if (opening) {
+                const field = shutterControl.dataset.shutterField || 'shutterVariableID';
+                if (Number(opening[field]) > 0) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    openShutterControl(opening, field, evt.clientX, evt.clientY);
+                    return;
+                }
+            }
+        }
 
         const rotateHandle = evt.target.closest('[data-rotate-type]');
         const resizeHandle = evt.target.closest('[data-resize-type]');
@@ -3155,7 +3888,8 @@ class Floorplaner extends IPSModuleStrict
                     type: resizeType,
                     id,
                     start: p,
-                    original: structuredClone(obj)
+                    original: structuredClone(obj),
+                    wallEnd: resizeType === 'wall' ? (resizeHandle.dataset.wallEnd || 'end') : null
                 };
                 svg.setPointerCapture(evt.pointerId);
                 evt.preventDefault();
@@ -3242,6 +3976,8 @@ class Floorplaner extends IPSModuleStrict
                 shutterSecondaryVariableID: 0,
                 shutterStyle: 'roll',
                 shutterInvert: false,
+                shutterValueMappingEnabled: false,
+                shutterValueMap: {},
                 invert: false
             };
             floor.openings.push(o);
@@ -3266,7 +4002,9 @@ class Floorplaner extends IPSModuleStrict
                 showName: false,
                 showValue: false,
                 showIcon: true,
+                showDirectSlider: false,
                 showState: false,
+                statusColor: '#ffe66d',
                 displayMode: 'icon',
                 displayModeManual: false,
                 labelSize: 12,
@@ -3334,6 +4072,19 @@ class Floorplaner extends IPSModuleStrict
 
         if (!drag) return;
 
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (!item) return;
+
+            const value = directSliderValueFromPointer(item, evt.clientX, evt.clientY);
+            if (value !== null) {
+                item._rawValue = value;
+                drag.value = value;
+                render();
+            }
+            return;
+        }
+
         if (drag.mode === 'pan') {
             panX = drag.panX + (evt.clientX - drag.x);
             panY = drag.panY + (evt.clientY - drag.y);
@@ -3398,9 +4149,9 @@ class Floorplaner extends IPSModuleStrict
             const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
             let rotation = pointerAngle + Number(drag.angleOffset || 0);
 
-            // Auf -180..180 normalisieren, damit der gespeicherte Wert handlich bleibt.
+            // Auf -180..180 normalisieren und Möbel nur in ganzen Grad drehen.
             rotation = ((rotation + 180) % 360 + 360) % 360 - 180;
-            obj.rotation = Math.round(rotation * 10) / 10;
+            obj.rotation = Math.round(rotation);
             render();
             return;
         }
@@ -3409,7 +4160,17 @@ class Floorplaner extends IPSModuleStrict
             const obj = findEntity(drag.type, drag.id);
             if (!obj) return;
 
-            if (drag.type === 'furniture') {
+            if (drag.type === 'wall') {
+                // Wand wie Möbel direkt per Griff bearbeiten:
+                // Start- oder Endpunkt folgt der Maus und rastet auf Snap ein.
+                if (drag.wallEnd === 'start') {
+                    obj.x1 = snapValue(p.x);
+                    obj.y1 = snapValue(p.y);
+                } else {
+                    obj.x2 = snapValue(p.x);
+                    obj.y2 = snapValue(p.y);
+                }
+            } else if (drag.type === 'furniture') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
                 const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
@@ -3473,9 +4234,38 @@ class Floorplaner extends IPSModuleStrict
     svg.addEventListener('pointerup', evt => {
         if (!drag) return;
 
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (item && drag.value !== null && drag.value !== undefined) {
+                item._rawValue = drag.value;
+                sendItemValue(item, drag.value);
+                render();
+            }
+
+            try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+            drag = null;
+            return;
+        }
+
         if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate') {
             pushHistory();
             markDirty();
+        }
+
+        try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+        drag = null;
+    });
+
+    svg.addEventListener('pointercancel', evt => {
+        if (!drag) return;
+
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (item && drag.value !== null && drag.value !== undefined) {
+                item._rawValue = drag.value;
+                sendItemValue(item, drag.value);
+                render();
+            }
         }
 
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
@@ -3717,7 +4507,7 @@ class Floorplaner extends IPSModuleStrict
         // erkennen und ohne Icon direkt als Messwert anzeigen.
         if (entityType === 'item' && field === 'variableID' && node) {
             const inferredKind = inferSensorKindFromVariableNode(node);
-            if (inferredKind) {
+            if (inferredKind && (entity.kind || 'generic') === 'generic') {
                 entity.kind = inferredKind;
                 entity.displayMode = 'value';
                 entity.displayModeManual = false;
@@ -3729,6 +4519,7 @@ class Floorplaner extends IPSModuleStrict
         pushHistory();
         markDirty();
         render();
+        refreshPropertiesAfterStructuralChange();
     }
 
     if (!variableModal || !variableList || !variableSearch) {
@@ -4097,6 +4888,22 @@ HTML;
                 );
                 break;
 
+            case 'operateOpeningValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
+                }
+                $this->OperateOpeningValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['openingId'] ?? ''),
+                    (string) ($request['field'] ?? ''),
+                    $request['value'] ?? null
+                );
+                break;
+
             default:
                 throw new InvalidArgumentException('Unbekannte Aktion: ' . $Ident);
         }
@@ -4139,6 +4946,17 @@ HTML;
             )
         );
         $this->ReloadForm();
+    }
+
+    public function RestoreFloorplanBackup(string $Base64Data): void
+    {
+        $json = base64_decode($Base64Data, true);
+        if ($json === false || trim($json) === '') {
+            throw new InvalidArgumentException('Die ausgewählte Sicherungsdatei ist ungültig.');
+        }
+
+        $this->SetFloorplanJSON($json);
+        $this->RegisterRuntimeVariableMessages();
     }
 
     public function ResetFloorplan(): void
@@ -4666,6 +5484,48 @@ HTML;
 
                 // Die Bedienung wirkt nur auf das reale IP-Symcon-Gerät.
                 // Die HTML-SDK-Kachel wird dabei absichtlich nicht neu gerendert.
+                return;
+            }
+        }
+    }
+
+    private function OperateOpeningValue(string $FloorID, string $OpeningID, string $Field, mixed $Value): void
+    {
+        if (!in_array($Field, ['variableID', 'secondaryVariableID', 'shutterVariableID', 'shutterSecondaryVariableID'], true)) {
+            return;
+        }
+
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            if ((string) ($floor['id'] ?? '') !== $FloorID) {
+                continue;
+            }
+
+            foreach (($floor['openings'] ?? []) as $opening) {
+                if ((string) ($opening['id'] ?? '') !== $OpeningID) {
+                    continue;
+                }
+
+                $variableID = (int) ($opening[$Field] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    return;
+                }
+
+                $variable = IPS_GetVariable($variableID);
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+
+                if ($variableType === 1) {
+                    $targetValue = (int) round((float) $Value);
+                } elseif ($variableType === 2) {
+                    $targetValue = (float) $Value;
+                } elseif ($variableType === 0) {
+                    $targetValue = (bool) $Value;
+                } else {
+                    return;
+                }
+
+                $this->DispatchVariableAction($variableID, $targetValue);
                 return;
             }
         }
