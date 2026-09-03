@@ -537,8 +537,7 @@ IP-Symcon an.
 
 -   Erweiterte Geräte- und Variablenanbindung
 -   Variablenauswahl über den IP-Symcon-Objektbaum
--   Automatische Gerätesymbole mit lokal integrierten Material Design
-    Icons
+-   Automatische Gerätesymbole mit lokal integrierten Material Design Icons
 -   Getrennte Anzeige von Name, Wert und Symbol
 -   Einstellbare Position und Größe von Name und Wert
 -   Statusfarben für unterstützte Geräte
