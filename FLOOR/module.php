@@ -578,7 +578,7 @@ class Floorplaner extends IPSModuleStrict
 
         #viewbar select {
             height: 36px;
-            max-width: 150px;
+            max-width: none;
             padding: 0 26px 0 9px;
             border: 1px solid var(--fp-border);
             border-radius: 6px;
@@ -1824,9 +1824,13 @@ class Floorplaner extends IPSModuleStrict
                 longestWidth = Math.max(longestWidth, ctx.measureText(option.text || '').width);
             }
 
-            // Immer gleich breit: längster Etagenname + Innenabstand + Auswahlpfeil.
-            const width = Math.ceil(longestWidth + 52);
-            liveFloorSelect.style.width = `${Math.max(96, width)}px`;
+            // Immer gleich breit: längster Etagenname + Innenabstand + nativer Auswahlpfeil.
+            // Etwas Reserve verhindert Abschneiden je nach Browser/WebView.
+            const width = Math.ceil(longestWidth + 64);
+            const finalWidth = Math.max(110, width);
+            liveFloorSelect.style.width = `${finalWidth}px`;
+            liveFloorSelect.style.minWidth = `${finalWidth}px`;
+            liveFloorSelect.style.maxWidth = 'none';
         }
     }
 
