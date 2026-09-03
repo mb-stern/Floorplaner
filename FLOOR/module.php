@@ -1127,6 +1127,15 @@ class Floorplaner extends IPSModuleStrict
             pointer-events: auto;
         }
 
+        /* Einheitlicher Cursor für den Grundriss:
+           Über allen gezeichneten Elementen und Bearbeitungsgriffen wird
+           bewusst immer die Hand angezeigt. Damit gibt es keine wechselnden
+           Pfeil-, Verschiebe- oder Resize-Cursor mehr. */
+        #scene,
+        #scene * {
+            cursor: pointer !important;
+        }
+
 </style>
 </head>
 <body>
