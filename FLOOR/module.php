@@ -487,10 +487,22 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 3;
         }
 
-        .device.active-light circle {
+        /* Boolean-Statusring für alle Geräte mit Bool-Variable.
+           Die Farbe kommt je Gerät aus --device-status-color. */
+        .device.numeric-status circle {
+            stroke: var(--device-status-color, #ffe66d);
+            stroke-opacity: var(--device-status-opacity, 1);
+            filter: drop-shadow(0 0 var(--device-status-glow, 0px) var(--device-status-color, #ffe66d));
+        }
+
+        .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d));
+        }
+
+        /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
+        .device.active-light.boolean-active circle {
             fill: #5b5422;
-            stroke: #ffe66d;
-            filter: drop-shadow(0 0 7px #ffe66d);
         }
 
         .device.inactive-light {
@@ -1397,6 +1409,9 @@ class Floorplaner extends IPSModuleStrict
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
             floor.items = Array.isArray(floor.items) ? floor.items : [];
+            for (const item of floor.items) {
+                item.statusColor = normalizeStatusColor(item.statusColor);
+            }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
                 if (typeof furniture.showName !== 'boolean') furniture.showName = false;
@@ -2313,8 +2328,13 @@ class Floorplaner extends IPSModuleStrict
         for (const item of floor.items) {
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
-            const boolActive = item._variableType === 0 && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+            const isBooleanDevice = Number(item._variableType) === 0;
+            const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+            const numericLevel = numericStatusLevel(item);
+            const numericClass = numericLevel !== null ? ' numeric-status' : '';
+            const boolClass = isBooleanDevice ? (boolActive ? ' boolean-active' : ' boolean-inactive') : '';
             const lightClass = item.kind === 'light' ? (boolActive ? ' active-light' : ' inactive-light') : '';
+            const statusColor = normalizeStatusColor(item.statusColor);
             const icon = iconForKind(item.kind);
 
             const showName = item.showName === true;
@@ -2357,7 +2377,8 @@ class Floorplaner extends IPSModuleStrict
             const valuePlace = deviceTextPlacement(item.valuePosition, valueSize, valueExtra);
 
             parts.push(
-                `<g class="device${sel}${lightClass}" data-type="item" data-id="${item.id}" style="cursor:pointer" transform="translate(${item.x} ${item.y})">` +
+                `<g class="device${sel}${numericClass}${boolClass}${lightClass}" data-type="item" data-id="${item.id}" ` +
+                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? Math.max(.18, numericLevel).toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`
@@ -2406,6 +2427,27 @@ class Floorplaner extends IPSModuleStrict
     function renderAll() {
         render();
         updateUndoButtons();
+    }
+
+    function normalizeStatusColor(value) {
+        const color = String(value || '').trim();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : '#ffe66d';
+    }
+
+    function numericStatusLevel(item) {
+        const type = Number(item?._variableType);
+        if (type !== 1 && type !== 2) return null;
+
+        const profile = item?._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (associations.length > 0) return null;
+
+        const raw = Number(item?._rawValue);
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        if (!Number.isFinite(raw) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+
+        return Math.max(0, Math.min(1, (raw - min) / (max - min)));
     }
 
     function truthyVariableValue(value) {
@@ -2767,6 +2809,13 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                ${(Number(obj._variableType) === 0 || numericStatusLevel(obj) !== null) ? `
+                    <div class="field">
+                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
+                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
+                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
+                    </div>
+                ` : ''}
                 <div class="row2">
                     <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
                     <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
@@ -3390,6 +3439,7 @@ class Floorplaner extends IPSModuleStrict
                 showValue: false,
                 showIcon: true,
                 showState: false,
+                statusColor: '#ffe66d',
                 displayMode: 'icon',
                 displayModeManual: false,
                 labelSize: 12,
