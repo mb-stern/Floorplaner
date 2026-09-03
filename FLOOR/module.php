@@ -2656,6 +2656,33 @@ class Floorplaner extends IPSModuleStrict
         return {min, max, step, value};
     }
 
+    function directSliderValueFromPointer(item, clientX, clientY) {
+        const cfg = directSliderConfig(item);
+        if (!cfg) return null;
+
+        // Mauskoordinate in Grundriss-/Scene-Koordinaten umrechnen.
+        // Dadurch funktioniert das Ziehen unabhängig von Zoom und Pan.
+        const raw = svgPointRaw({clientX, clientY});
+        const radius = Number(item.size) || 18;
+        const width = Math.max(38, radius * 2.4);
+        const localX = raw.x - (Number(item.x) || 0);
+
+        const fraction = Math.max(0, Math.min(1, (localX + width / 2) / width));
+        let value = cfg.min + fraction * (cfg.max - cfg.min);
+
+        value = Math.round((value - cfg.min) / cfg.step) * cfg.step + cfg.min;
+        value = Math.max(cfg.min, Math.min(cfg.max, value));
+
+        if (Number(item._variableType) === 1) {
+            value = Math.round(value);
+        } else {
+            // Float-Werte auf sinnvolle Genauigkeit begrenzen.
+            value = Math.round(value * 10000) / 10000;
+        }
+
+        return value;
+    }
+
     function truthyVariableValue(value) {
         return value === true || value === 1 || value === '1' || value === 'true' || value === 'on' || value === 'open';
     }
@@ -3003,7 +3030,7 @@ class Floorplaner extends IPSModuleStrict
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
                 ${directSliderConfig(obj) ? `
                     <div class="field">
-                        <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider direkt anzeigen</label>
+                        <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider anzeigen</label>
                         <div class="profile-hint">Nur für echte Zahlenbereiche ohne Profil-Assoziationen.</div>
                     </div>
                 ` : ''}
@@ -3576,18 +3603,18 @@ class Floorplaner extends IPSModuleStrict
                 evt.preventDefault();
                 evt.stopPropagation();
 
-                const rect = directSliderTarget.getBoundingClientRect();
-                const fraction = rect.width > 0
-                    ? Math.max(0, Math.min(1, (evt.clientX - rect.left) / rect.width))
-                    : 0;
-                let value = cfg.min + fraction * (cfg.max - cfg.min);
-                value = Math.round((value - cfg.min) / cfg.step) * cfg.step + cfg.min;
-                value = Math.max(cfg.min, Math.min(cfg.max, value));
-                if (Number(item._variableType) === 1) value = Math.round(value);
-
-                item._rawValue = value;
-                sendItemValue(item, value);
-                render();
+                const value = directSliderValueFromPointer(item, evt.clientX, evt.clientY);
+                if (value !== null) {
+                    item._rawValue = value;
+                    drag = {
+                        mode: 'direct-slider',
+                        type: 'item',
+                        id: item.id,
+                        value
+                    };
+                    svg.setPointerCapture(evt.pointerId);
+                    render();
+                }
                 return;
             }
         }
@@ -3840,6 +3867,19 @@ class Floorplaner extends IPSModuleStrict
 
         if (!drag) return;
 
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (!item) return;
+
+            const value = directSliderValueFromPointer(item, evt.clientX, evt.clientY);
+            if (value !== null) {
+                item._rawValue = value;
+                drag.value = value;
+                render();
+            }
+            return;
+        }
+
         if (drag.mode === 'pan') {
             panX = drag.panX + (evt.clientX - drag.x);
             panY = drag.panY + (evt.clientY - drag.y);
@@ -3989,9 +4029,38 @@ class Floorplaner extends IPSModuleStrict
     svg.addEventListener('pointerup', evt => {
         if (!drag) return;
 
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (item && drag.value !== null && drag.value !== undefined) {
+                item._rawValue = drag.value;
+                sendItemValue(item, drag.value);
+                render();
+            }
+
+            try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+            drag = null;
+            return;
+        }
+
         if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate') {
             pushHistory();
             markDirty();
+        }
+
+        try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+        drag = null;
+    });
+
+    svg.addEventListener('pointercancel', evt => {
+        if (!drag) return;
+
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (item && drag.value !== null && drag.value !== undefined) {
+                item._rawValue = drag.value;
+                sendItemValue(item, drag.value);
+                render();
+            }
         }
 
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
