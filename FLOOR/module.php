@@ -397,26 +397,6 @@ class Floorplaner extends IPSModuleStrict
 
         /* Größere Trefferfläche nur für die Öffnung selbst.
            Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
-        .shutter-control {
-            pointer-events: all;
-        }
-
-        .shutter-control circle {
-            fill: #404040;
-            stroke: #dedede;
-            stroke-width: 1.5;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .shutter-control text {
-            fill: #ffffff;
-            font-size: 11px;
-            font-weight: bold;
-            text-anchor: middle;
-            dominant-baseline: central;
-            pointer-events: none;
-        }
-
         .opening-hit {
             stroke: transparent;
             stroke-width: 22;
@@ -2342,18 +2322,6 @@ class Floorplaner extends IPSModuleStrict
                 );
             }
 
-            if (o.type === 'shutter' && Number(o.variableID) > 0) {
-                const sg = openingGeometry(wall, o);
-                const sx = (Number(sg.x1) + Number(sg.x2)) / 2;
-                const sy = (Number(sg.y1) + Number(sg.y2)) / 2;
-                parts.push(
-                    `<g class="shutter-control" data-shutter-control="${o.id}" transform="translate(${sx} ${sy})">` +
-                    `<circle r="10"/>` +
-                    `<text x="0" y="0">↕</text>` +
-                    `</g>`
-                );
-            }
-
             parts.push(`</g>`);
         }
 
@@ -2821,9 +2789,12 @@ class Floorplaner extends IPSModuleStrict
                         <option value="light"${kind === 'light' ? ' selected' : ''}>Licht</option>
                         <option value="switch"${kind === 'switch' ? ' selected' : ''}>Schalter</option>
                         <option value="socket"${kind === 'socket' ? ' selected' : ''}>Steckdose</option>
+                        <option value="shutter"${kind === 'shutter' ? ' selected' : ''}>Rollladen / Jalousie</option>
                         <option value="temperature"${kind === 'temperature' ? ' selected' : ''}>Temperatur</option>
                         <option value="humidity"${kind === 'humidity' ? ' selected' : ''}>Feuchte</option>
                         <option value="motion"${kind === 'motion' ? ' selected' : ''}>Bewegung / Präsenz</option>
+                        <option value="window"${kind === 'window' ? ' selected' : ''}>Fensterkontakt</option>
+                        <option value="door"${kind === 'door' ? ' selected' : ''}>Türkontakt</option>
                         <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Heizung</option>
                     </select>
                 </div>
@@ -2838,8 +2809,7 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
-                ${(['generic','light','switch','socket','motion'].includes(kind) &&
-                    (Number(obj._variableType) === 0 || numericStatusLevel(obj) !== null)) ? `
+                ${(Number(obj._variableType) === 0 || numericStatusLevel(obj) !== null) ? `
                     <div class="field">
                         <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
                         <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
@@ -3293,22 +3263,6 @@ class Floorplaner extends IPSModuleStrict
 
     floorSelect.addEventListener('change', () => {
         switchFloorView(floorSelect.value);
-    });
-
-    svg.addEventListener('click', evt => {
-        if (state.mode !== 'view') return;
-        const control = evt.target.closest?.('[data-shutter-control]');
-        if (!control) return;
-
-        evt.preventDefault();
-        evt.stopPropagation();
-
-        const opening = (currentFloor().openings || []).find(o => o.id === control.dataset.shutterControl);
-        if (!opening || !Number(opening.variableID)) return;
-
-        // Für Rollladen/Jalousie verwenden wir die vorhandene kompakte
-        // Bedienlogik: Assoziationsprofil => Buttons, kontinuierliches Profil => Slider.
-        openItemControl(opening, evt.clientX, evt.clientY);
     });
 
     svg.addEventListener('pointerdown', evt => {
