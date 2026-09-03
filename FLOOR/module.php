@@ -513,6 +513,34 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 3;
         }
 
+        /* Klima / Heizung: bewusst als kleines Wand-Bedienteil statt
+           als rundes Thermostat-/Messwertsymbol darstellen. */
+        .device .climate-panel {
+            fill: #404040;
+            stroke: #dedede;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .device .climate-panel-display {
+            fill: rgba(255,255,255,.08);
+            stroke: #9aa6b2;
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device .climate-panel-dot {
+            fill: #bfc8d2;
+            stroke: none;
+            pointer-events: none;
+        }
+
+        .device.selected .climate-panel {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
         /* Boolean-Statusring für alle Geräte mit Bool-Variable.
            Die Farbe kommt je Gerät aus --device-status-color. */
         .device.numeric-status circle {
@@ -1121,6 +1149,20 @@ class Floorplaner extends IPSModuleStrict
         html[data-theme="light"] .device circle {
             fill: rgba(255,255,255,.72);
             stroke: #777777;
+        }
+
+        html[data-theme="light"] .device .climate-panel {
+            fill: rgba(255,255,255,.82);
+            stroke: #777777;
+        }
+
+        html[data-theme="light"] .device .climate-panel-display {
+            fill: rgba(80,80,80,.07);
+            stroke: #888888;
+        }
+
+        html[data-theme="light"] .device .climate-panel-dot {
+            fill: #666666;
         }
 
         html[data-theme="light"] .device-glyph {
@@ -2271,16 +2313,16 @@ class Floorplaner extends IPSModuleStrict
                     parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
                     parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
                 } else {
-                    // Zwei Fensterflügel öffnen sich sichtbar in den Raum.
-                    const halfLen = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1) / 2;
-                    const swing = halfLen * .72 * amount;
-                    const leftInnerX = geom.cx + geom.nx * swing;
-                    const leftInnerY = geom.cy + geom.ny * swing;
-                    const rightInnerX = geom.cx + geom.nx * swing;
-                    const rightInnerY = geom.cy + geom.ny * swing;
+                    // Fenster standardmäßig einflügelig darstellen.
+                    // Maximal ca. 30° Öffnung: dadurch bleibt der Flügel nahe
+                    // an der Wand und ragt deutlich weniger aus dem Grundriss.
+                    const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
+                    const maxAngle = 30 * Math.PI / 180;
+                    const angle = maxAngle * amount;
+                    const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
+                    const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
 
-                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x1}" y1="${geom.y1}" x2="${leftInnerX}" y2="${leftInnerY}"/>`);
-                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x2}" y1="${geom.y2}" x2="${rightInnerX}" y2="${rightInnerY}"/>`);
+                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
                 }
             }
 
@@ -2413,7 +2455,10 @@ class Floorplaner extends IPSModuleStrict
                 path: item._variablePath,
                 valueText: item._valueText
             });
-            if (inferredSensorKind && !['temperature','humidity'].includes(item.kind)) {
+            // Nur neutrale Geräte automatisch als Temperatur/Feuchte erkennen.
+            // Ein bewusst gewähltes Klima-/Heizungs-Bedienteil darf dadurch
+            // nicht wieder auf "Temperatur" zurückspringen.
+            if (inferredSensorKind && (item.kind || 'generic') === 'generic') {
                 item.kind = inferredSensorKind;
             }
 
@@ -2445,8 +2490,16 @@ class Floorplaner extends IPSModuleStrict
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
-                    ? `<circle r="${radius}"/>` +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`
+                    ? (item.kind === 'climate'
+                        ? `<g class="climate-panel-symbol" transform="rotate(${Number(item.angle) || 0})">` +
+                          `<rect class="climate-panel" x="${-radius * .95}" y="${-radius * .68}" width="${radius * 1.9}" height="${radius * 1.36}" rx="${Math.max(2, radius * .16)}"/>` +
+                          `<rect class="climate-panel-display" x="${-radius * .62}" y="${-radius * .38}" width="${radius * 1.24}" height="${radius * .48}" rx="${Math.max(1.5, radius * .08)}"/>` +
+                          `<circle class="climate-panel-dot" cx="${-radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
+                          `<circle class="climate-panel-dot" cx="0" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
+                          `<circle class="climate-panel-dot" cx="${radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
+                          `</g>`
+                        : `<circle r="${radius}"/>` +
+                          `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`)
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
@@ -4080,7 +4133,7 @@ class Floorplaner extends IPSModuleStrict
         // erkennen und ohne Icon direkt als Messwert anzeigen.
         if (entityType === 'item' && field === 'variableID' && node) {
             const inferredKind = inferSensorKindFromVariableNode(node);
-            if (inferredKind) {
+            if (inferredKind && (entity.kind || 'generic') === 'generic') {
                 entity.kind = inferredKind;
                 entity.displayMode = 'value';
                 entity.displayModeManual = false;
