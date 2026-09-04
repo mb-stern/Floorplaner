@@ -1052,6 +1052,36 @@ class Floorplaner extends IPSModuleStrict
             outline: 1px solid #74b9ff;
         }
 
+        .device-icon-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(34px, 1fr));
+            gap: 5px;
+            padding: 6px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: color-mix(in srgb, var(--fp-panel-2) 70%, transparent);
+        }
+
+        .device-icon-grid button {
+            min-width: 34px;
+            min-height: 34px;
+            padding: 4px;
+            border: 1px solid var(--fp-border);
+            border-radius: 5px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+        }
+
+        .device-icon-grid button.selected {
+            outline: 2px solid var(--fp-accent);
+        }
+
+        .device-icon-grid svg {
+            display: block;
+            margin: auto;
+        }
+
 
         .device-glyph { color: currentColor; pointer-events: none; }
         .device-glyph * { vector-effect: non-scaling-stroke; }
@@ -1463,6 +1493,26 @@ class Floorplaner extends IPSModuleStrict
     // nicht durch ein Hintergrund-render() ersetzt werden. Sonst verschwinden
     // bei Zahlen-/Textfeldern Cursor und Markierung und native Select-Listen
     // klappen zu.
+    properties.addEventListener('click', evt => {
+        const iconButton = evt.target.closest('[data-device-icon-choice]');
+        if (!iconButton || !properties.contains(iconButton)) return;
+
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        if (!selected || selected.type !== 'item') return;
+
+        const obj = findEntity('item', selected.id);
+        if (!obj) return;
+
+        obj.icon = iconButton.dataset.deviceIconChoice || '';
+        pushHistory();
+        markDirty();
+
+        // Eigenschaften und Floorplan sofort aktualisieren.
+        render();
+    }, true);
+
     properties.addEventListener('pointerdown', evt => {
         const control = evt.target.closest('input, select, textarea');
         if (control && properties.contains(control)) {
@@ -3199,14 +3249,23 @@ class Floorplaner extends IPSModuleStrict
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
                 ${kind === 'generic' && obj.showIcon !== false ? `
                     <div class="field">
-                        <label>Symbol</label>
-                        <input
-                            class="icon-input-clickable"
-                            data-icon-picker="device"
-                            type="text"
-                            readonly
-                            value="${escapeHtml(obj.icon || 'Standardsymbol')}"
-                            title="MDI-Symbol auswählen">
+                        <label>Symbol auswählen</label>
+                        <div class="device-icon-grid">
+                            <button type="button"
+                                data-device-icon-choice=""
+                                class="${!obj.icon ? 'selected' : ''}"
+                                title="Standardsymbol">↩</button>
+                            ${deviceIconChoices.map(([icon, label]) => `
+                                <button type="button"
+                                    data-device-icon-choice="${escapeHtml(icon)}"
+                                    class="${obj.icon === icon ? 'selected' : ''}"
+                                    title="${escapeHtml(label + ' · ' + icon)}">
+                                    <svg viewBox="-16 -16 32 32" width="22" height="22">
+                                        ${renderMdiGlyph(icon, 12)}
+                                    </svg>
+                                </button>
+                            `).join('')}
+                        </div>
                     </div>
                 ` : ''}
                 ${directSliderConfig(obj) ? `
