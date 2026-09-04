@@ -419,12 +419,13 @@ class Floorplaner extends IPSModuleStrict
            Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
         .shutter-control {
             pointer-events: all;
+            isolation: isolate;
         }
 
-        .shutter-control circle {
-            fill: #404040;
-            stroke: #dedede;
-            stroke-width: 1.8;
+        .shutter-control circle:not(.shutter-hit) {
+            fill: #202020;
+            stroke: #ffffff;
+            stroke-width: 2.2;
             vector-effect: non-scaling-stroke;
         }
 
@@ -436,11 +437,23 @@ class Floorplaner extends IPSModuleStrict
 
         .shutter-control text {
             fill: #ffffff;
+            stroke: none;
             font-size: 12px;
-            font-weight: bold;
+            font-weight: 700;
             text-anchor: middle;
             dominant-baseline: central;
             pointer-events: none;
+        }
+
+        html[data-theme="light"] .shutter-control circle:not(.shutter-hit) {
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
+        }
+
+        html[data-theme="light"] .shutter-control text {
+            fill: #202020;
+            stroke: none;
         }
 
         .opening-hit {
@@ -2334,6 +2347,10 @@ class Floorplaner extends IPSModuleStrict
     function render() {
         const floor = currentFloor();
         const parts = [];
+        // Rollladen-Bedienelemente werden separat gesammelt und ganz zum Schluss
+        // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
+        // zuverlässig anklickbar.
+        const shutterControlParts = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
 
@@ -2449,17 +2466,18 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(`</g>`);
 
-            // Rollladen-Bedienung als eigenes SVG-Element AUSSERHALB der Öffnungsgruppe.
-            // So kann sie nicht von Fenster-/Tür-Linien oder deren Trefferflächen verdeckt werden.
+            // Rollladen-Bedienung wird in der Mitte direkt AUF dem Rollladen platziert.
+            // Sie wird separat gesammelt und erst nach Möbeln/Geräten gerendert,
+            // damit kein anderes SVG-Element den Klick abfangen kann.
             const shutterField =
                 Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
                 (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
 
             if (shutterField) {
-                const controlOffset = 24;
-                const sx = geom.cx - geom.nx * controlOffset;
-                const sy = geom.cy - geom.ny * controlOffset;
-                parts.push(
+                const shutterControlOffset = 8;
+                const sx = geom.cx - geom.nx * shutterControlOffset;
+                const sy = geom.cy - geom.ny * shutterControlOffset;
+                shutterControlParts.push(
                     `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
                     `transform="translate(${sx} ${sy})">` +
                     `<circle class="shutter-hit" r="20"/>` +
@@ -2640,6 +2658,10 @@ class Floorplaner extends IPSModuleStrict
         if (preview && tool === 'wall') {
             parts.push(`<line class="preview-line" x1="${preview.x1}" y1="${preview.y1}" x2="${preview.x2}" y2="${preview.y2}"/>`);
         }
+
+        // Immer als letzte Ebene: Rollladen-Steuerung bleibt sichtbar und klickbar,
+        // selbst wenn an derselben Position ein Möbelstück oder Gerät liegt.
+        parts.push(...shutterControlParts);
 
         scene.innerHTML = parts.join('');
         setTransform();
