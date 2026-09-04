@@ -487,7 +487,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .opening-state-open {
-            stroke: #74d680;
+            stroke: #4da3ff;
         }
 
         .opening-shutter {
@@ -2483,16 +2483,18 @@ class Floorplaner extends IPSModuleStrict
                     parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
                     parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
                 } else {
-                    // Fenster standardmäßig einflügelig darstellen.
-                    // Maximal ca. 20° Öffnung: der Flügel bleibt sehr nah
-                    // an der Wand und ragt kaum aus dem Grundriss.
-                    const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
-                    const maxAngle = 20 * Math.PI / 180;
-                    const angle = maxAngle * amount;
-                    const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
-                    const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
+                    // Geöffnetes Fenster nicht mehr schräg nach außen darstellen.
+                    // Der komplette Flügel bleibt parallel zur Wand und wird mit
+                    // zunehmendem Öffnungsgrad gleichmäßig nach INNEN versetzt.
+                    // Die negative Normale ist hier die Innenseite des Grundrisses.
+                    const maxInset = 14;
+                    const inset = maxInset * amount;
+                    const ix1 = geom.x1 - geom.nx * inset;
+                    const iy1 = geom.y1 - geom.ny * inset;
+                    const ix2 = geom.x2 - geom.nx * inset;
+                    const iy2 = geom.y2 - geom.ny * inset;
 
-                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
+                    parts.push(`<line class="opening-line opening-state-open" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
                 }
             }
 
