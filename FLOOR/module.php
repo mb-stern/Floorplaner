@@ -419,12 +419,13 @@ class Floorplaner extends IPSModuleStrict
            Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
         .shutter-control {
             pointer-events: all;
+            isolation: isolate;
         }
 
-        .shutter-control circle {
-            fill: #404040;
-            stroke: #dedede;
-            stroke-width: 1.8;
+        .shutter-control circle:not(.shutter-hit) {
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
             vector-effect: non-scaling-stroke;
         }
 
@@ -435,12 +436,24 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .shutter-control text {
-            fill: #ffffff;
+            fill: #202020;
+            stroke: none;
             font-size: 12px;
-            font-weight: bold;
+            font-weight: 700;
             text-anchor: middle;
             dominant-baseline: central;
             pointer-events: none;
+        }
+
+        html[data-theme="light"] .shutter-control circle:not(.shutter-hit) {
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
+        }
+
+        html[data-theme="light"] .shutter-control text {
+            fill: #202020;
+            stroke: none;
         }
 
         .opening-hit {
@@ -474,7 +487,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .opening-state-open {
-            stroke: #74d680;
+            stroke: #4da3ff;
         }
 
         .opening-shutter {
@@ -612,14 +625,14 @@ class Floorplaner extends IPSModuleStrict
 
         .device-direct-slider-hit {
             stroke: transparent;
-            stroke-width: 18;
+            stroke-width: 30;
             vector-effect: non-scaling-stroke;
             pointer-events: stroke;
         }
 
         .device-direct-slider-track {
             stroke: rgba(160,170,185,.65);
-            stroke-width: 5;
+            stroke-width: 4;
             stroke-linecap: round;
             vector-effect: non-scaling-stroke;
             pointer-events: none;
@@ -909,6 +922,27 @@ class Floorplaner extends IPSModuleStrict
             fill: #d7e9ff !important;
         }
 
+        .runtime-value-frame {
+            fill: rgba(255,255,255,.06);
+            stroke: currentColor;
+            stroke-width: 1.2;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .runtime-value-frame {
+            fill: rgba(255,255,255,.78);
+            stroke: #5f5f5f;
+        }
+
+        /* Reine Status-/Messwertvariablen ohne Aktion sind im Bedienmodus
+           bewusst nicht als klickbares Bedienelement dargestellt. */
+        #app.view-mode .device.status-only,
+        #scene.runtime-view .device.status-only,
+        #scene.runtime-view .device.status-only * {
+            cursor: default !important;
+        }
+
         .control-modal {
             width: max-content;
             min-width: 0;
@@ -936,9 +970,34 @@ class Floorplaner extends IPSModuleStrict
             max-width: calc(92vw - 24px);
         }
 
-        .control-slider { min-width: 240px; padding: 6px 2px; }
+        .control-slider { min-width: 260px; padding: 6px 2px; }
         .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .control-slider input[type="range"] { width: 100%; }
+        .control-slider-row { display: grid; grid-template-columns: 38px minmax(180px, 1fr) 38px; gap: 8px; align-items: center; }
+        .control-slider-row button {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            min-height: 38px;
+            padding: 0;
+            font-size: 22px;
+            line-height: 36px;
+            touch-action: manipulation;
+        }
+        .control-slider input[type="range"] {
+            width: 100%;
+            min-height: 38px;
+            margin: 0;
+            cursor: pointer;
+            touch-action: none;
+        }
+        .control-slider input[type="range"]::-webkit-slider-thumb {
+            width: 22px;
+            height: 22px;
+        }
+        .control-slider input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+        }
 
         .control-associations {
             display: flex;
@@ -1193,6 +1252,13 @@ class Floorplaner extends IPSModuleStrict
             stroke: #5f5f5f;
         }
 
+        /* Offenes Fenster muss auch im hellen Theme blau bleiben.
+           Diese spezifischere Regel verhindert, dass die allgemeine
+           helle Fensterfarbe den Offen-Status überschreibt. */
+        html[data-theme="light"] .opening-line.opening-state-open {
+            stroke: #1769aa;
+        }
+
         html[data-theme="light"] .opening-shutter {
             stroke: #707070;
         }
@@ -1245,8 +1311,26 @@ class Floorplaner extends IPSModuleStrict
         html[data-theme="light"] text,
         html[data-theme="light"] tspan,
         html[data-theme="light"] .furniture-label {
-            fill: #5a5a5a;
-            color: #5a5a5a;
+            fill: #303030;
+            color: #303030;
+            stroke: none !important;
+            paint-order: normal !important;
+            text-rendering: optimizeLegibility;
+        }
+
+        /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
+           Das verhindert den verwaschenen Eindruck bei Text und Symbolen. */
+        html[data-theme="light"] #scene text,
+        html[data-theme="light"] #scene tspan {
+            stroke: none !important;
+            filter: none !important;
+        }
+
+        html[data-theme="light"] .device-glyph,
+        html[data-theme="light"] .furniture,
+        html[data-theme="light"] .opening,
+        html[data-theme="light"] .wall {
+            filter: none !important;
         }
 
         html[data-theme="light"] .status,
@@ -1732,14 +1816,14 @@ class Floorplaner extends IPSModuleStrict
         const box = svg.getBoundingClientRect();
 
         /*
-         * Im Bedienmodus liegt oben die Visualisierungs-Kopfzone von IP-Symcon.
+         * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
          * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
          * interaktive Grundriss dort nicht hineinragen.
          *
-         * 40 px + 24 px Innenabstand werden für die Kopfzone verwendet,
-         * ohne oben unnötig viel Platz zu verschenken.
+         * 40 px + 24 px Innenabstand werden für die Kopfzone verwendet.
+         * Der Abstand gilt sowohl im Editor- als auch im Bedienmodus.
          */
-        const headerTop = state.mode === 'view' ? 40 : 0;
+        const headerTop = 40;
 
         // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 40 : 0;
@@ -2125,6 +2209,19 @@ class Floorplaner extends IPSModuleStrict
             window: 'mdi:window-closed',
             door: 'mdi:door',
             climate: 'mdi:thermostat',
+            fan: 'mdi:fan',
+            radiator: 'mdi:radiator',
+            television: 'mdi:television',
+            camera: 'mdi:camera',
+            washer: 'mdi:washing-machine',
+            dishwasher: 'mdi:dishwasher',
+            boiler: 'mdi:water-boiler',
+            car: 'mdi:car-electric',
+            vacuum: 'mdi:robot-vacuum',
+            lock: 'mdi:lock',
+            shutter: 'mdi:blinds',
+            window: 'mdi:window-closed',
+            door: 'mdi:door',
             generic: 'mdi:circle'
         };
         return icons[kind] || icons.generic;
@@ -2334,6 +2431,10 @@ class Floorplaner extends IPSModuleStrict
     function render() {
         const floor = currentFloor();
         const parts = [];
+        // Rollladen-Bedienelemente werden separat gesammelt und ganz zum Schluss
+        // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
+        // zuverlässig anklickbar.
+        const shutterControlParts = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
 
@@ -2389,16 +2490,18 @@ class Floorplaner extends IPSModuleStrict
                     parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
                     parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
                 } else {
-                    // Fenster standardmäßig einflügelig darstellen.
-                    // Maximal ca. 20° Öffnung: der Flügel bleibt sehr nah
-                    // an der Wand und ragt kaum aus dem Grundriss.
-                    const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
-                    const maxAngle = 20 * Math.PI / 180;
-                    const angle = maxAngle * amount;
-                    const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
-                    const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
+                    // Geöffnetes Fenster nicht mehr schräg nach außen darstellen.
+                    // Der komplette Flügel bleibt parallel zur Wand und wird mit
+                    // zunehmendem Öffnungsgrad gleichmäßig nach INNEN versetzt.
+                    // Die negative Normale ist hier die Innenseite des Grundrisses.
+                    const maxInset = 14;
+                    const inset = maxInset * amount;
+                    const ix1 = geom.x1 - geom.nx * inset;
+                    const iy1 = geom.y1 - geom.ny * inset;
+                    const ix2 = geom.x2 - geom.nx * inset;
+                    const iy2 = geom.y2 - geom.ny * inset;
 
-                    parts.push(`<line class="opening-line opening-state-open" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
+                    parts.push(`<line class="opening-line opening-state-open" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
                 }
             }
 
@@ -2449,17 +2552,17 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(`</g>`);
 
-            // Rollladen-Bedienung als eigenes SVG-Element AUSSERHALB der Öffnungsgruppe.
-            // So kann sie nicht von Fenster-/Tür-Linien oder deren Trefferflächen verdeckt werden.
+            // Rollladen-Bedienung wird in der Mitte direkt AUF dem Rollladen platziert.
+            // Sie wird separat gesammelt und erst nach Möbeln/Geräten gerendert,
+            // damit kein anderes SVG-Element den Klick abfangen kann.
             const shutterField =
                 Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
                 (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
 
             if (shutterField) {
-                const controlOffset = 24;
-                const sx = geom.cx - geom.nx * controlOffset;
-                const sy = geom.cy - geom.ny * controlOffset;
-                parts.push(
+                const sx = geom.cx;
+                const sy = geom.cy;
+                shutterControlParts.push(
                     `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
                     `transform="translate(${sx} ${sy})">` +
                     `<circle class="shutter-hit" r="20"/>` +
@@ -2523,7 +2626,7 @@ class Floorplaner extends IPSModuleStrict
                 ? (boolActive ? ' active-light' : ' inactive-light')
                 : '';
             const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = iconForKind(item.kind);
+            const icon = item.icon || iconForKind(item.kind);
 
             const showName = item.showName === true;
             const legacyShowState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
@@ -2553,7 +2656,7 @@ class Floorplaner extends IPSModuleStrict
             const radius = Number(item.size) || 18;
             const directSlider = item.showDirectSlider === true ? directSliderConfig(item) : null;
             const directSliderY = radius + 13;
-            const directSliderWidth = Math.max(38, radius * 2.4);
+            const directSliderWidth = Math.max(64, radius * 2.8);
             const directSliderLevel = directSlider
                 ? Math.max(0, Math.min(1, (directSlider.value - directSlider.min) / (directSlider.max - directSlider.min)))
                 : 0;
@@ -2581,9 +2684,16 @@ class Floorplaner extends IPSModuleStrict
                 valueExtra += Math.max(labelSize, valueSize) + 3;
             }
             const valuePlace = deviceTextPlacement(valuePosition, valueSize, valueExtra);
+            const statusOnlyClass = item._canAction === true ? '' : ' status-only';
+            const valueFrameWidth = Math.max(26, valueText.length * valueSize * 0.62 + 12);
+            const valueFrameHeight = valueSize + 10;
+            const valueFrameX = valuePlace.anchor === 'end'
+                ? valuePlace.x - valueFrameWidth - 4
+                : (valuePlace.anchor === 'start' ? valuePlace.x - 4 : valuePlace.x - valueFrameWidth / 2);
+            const valueFrameY = valuePlace.y - valueSize * 0.82 - 5;
 
             parts.push(
-                `<g class="device${sel}${numericClass}${boolClass}${lightClass}" data-type="item" data-id="${item.id}" ` +
+                `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? (item.kind === 'climate'
@@ -2601,6 +2711,9 @@ class Floorplaner extends IPSModuleStrict
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
                     : '') +
+                (showValue && item.valueFrame === true
+                    ? `<rect class="runtime-value-frame" x="${valueFrameX}" y="${valueFrameY}" width="${valueFrameWidth}" height="${valueFrameHeight}" rx="4"/>`
+                    : '') +
                 (showValue
                     ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
                     : '') +
@@ -2609,7 +2722,7 @@ class Floorplaner extends IPSModuleStrict
                       `<line class="device-direct-slider-hit" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
                       `<line class="device-direct-slider-track" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
                       `<line class="device-direct-slider-fill" x1="${-directSliderWidth / 2}" y1="0" x2="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" y2="0"/>` +
-                      `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="4.5"/>` +
+                      `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="6.5"/>` +
                       `</g>`
                     : '') +
                 (selected?.type === 'item' && selected.id === item.id
@@ -2640,6 +2753,10 @@ class Floorplaner extends IPSModuleStrict
         if (preview && tool === 'wall') {
             parts.push(`<line class="preview-line" x1="${preview.x1}" y1="${preview.y1}" x2="${preview.x2}" y2="${preview.y2}"/>`);
         }
+
+        // Immer als letzte Ebene: Rollladen-Steuerung bleibt sichtbar und klickbar,
+        // selbst wenn an derselben Position ein Möbelstück oder Gerät liegt.
+        parts.push(...shutterControlParts);
 
         scene.innerHTML = parts.join('');
         setTransform();
@@ -2693,6 +2810,10 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function directSliderConfig(item) {
+        // Ein Slider ist nur für Variablen sinnvoll, die in IP-Symcon
+        // tatsächlich eine Aktion besitzen. Reine Istwerte bleiben Anzeige.
+        if (item?._canAction !== true) return null;
+
         const type = Number(item?._variableType);
         if (type !== 1 && type !== 2) return null;
 
@@ -2722,7 +2843,7 @@ class Floorplaner extends IPSModuleStrict
         // Dadurch funktioniert das Ziehen unabhängig von Zoom und Pan.
         const raw = svgPointRaw({clientX, clientY});
         const radius = Number(item.size) || 18;
-        const width = Math.max(38, radius * 2.4);
+        const width = Math.max(64, radius * 2.8);
         const localX = raw.x - (Number(item.x) || 0);
 
         const fraction = Math.max(0, Math.min(1, (localX + width / 2) / width));
@@ -3183,7 +3304,27 @@ class Floorplaner extends IPSModuleStrict
                         <option value="temperature"${kind === 'temperature' ? ' selected' : ''}>Temperatur</option>
                         <option value="humidity"${kind === 'humidity' ? ' selected' : ''}>Feuchte</option>
                         <option value="motion"${kind === 'motion' ? ' selected' : ''}>Bewegung / Präsenz</option>
-                        <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Heizung</option>
+                        <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Thermostat</option>
+                        <option value="radiator"${kind === 'radiator' ? ' selected' : ''}>Heizung / Radiator</option>
+                        <option value="fan"${kind === 'fan' ? ' selected' : ''}>Ventilator</option>
+                        <option value="shutter"${kind === 'shutter' ? ' selected' : ''}>Rollladen / Jalousie / Markise</option>
+                        <option value="window"${kind === 'window' ? ' selected' : ''}>Fenster</option>
+                        <option value="door"${kind === 'door' ? ' selected' : ''}>Tür</option>
+                        <option value="lock"${kind === 'lock' ? ' selected' : ''}>Schloss</option>
+                        <option value="television"${kind === 'television' ? ' selected' : ''}>Fernseher</option>
+                        <option value="camera"${kind === 'camera' ? ' selected' : ''}>Kamera</option>
+                        <option value="washer"${kind === 'washer' ? ' selected' : ''}>Waschmaschine</option>
+                        <option value="dishwasher"${kind === 'dishwasher' ? ' selected' : ''}>Geschirrspüler</option>
+                        <option value="boiler"${kind === 'boiler' ? ' selected' : ''}>Boiler / Warmwasser</option>
+                        <option value="car"${kind === 'car' ? ' selected' : ''}>Elektroauto</option>
+                        <option value="vacuum"${kind === 'vacuum' ? ' selected' : ''}>Saugroboter</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Symbol</label>
+                    <select data-field="icon">
+                        <option value=""${!obj.icon ? ' selected' : ''}>Standard des Gerätetyps</option>
+                        ${deviceIconChoices.map(([icon,label]) => `<option value="${escapeHtml(icon)}"${obj.icon === icon ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="field">
@@ -3196,7 +3337,11 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
-                <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                <div class="row2">
+                    <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="valueFrame" type="checkbox"${obj.valueFrame === true ? ' checked' : ''}> Rahmen um Istwert</label></div>
+                </div>
+                ${obj.variableID && obj._canAction !== true ? `<div class="profile-hint">Reiner Istwert: Für diese Variable ist keine Aktion hinterlegt. Sie wird deshalb nur angezeigt und nicht bedient.</div>` : ''}
                 ${directSliderConfig(obj) ? `
                     <div class="field">
                         <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider anzeigen</label>
@@ -3325,6 +3470,9 @@ class Floorplaner extends IPSModuleStrict
                 }
 
                 if (selected.type === 'item' && fieldName === 'kind') {
+                    // Beim Wechsel des Gerätetyps wieder dessen Standardsymbol verwenden.
+                    // Danach kann im längeren Symbol-Dropdown bewusst ein anderes gewählt werden.
+                    obj.icon = '';
                     obj.displayMode = ['temperature','humidity'].includes(String(value)) ? 'value' : 'icon';
                     obj.displayModeManual = false;
                     if (['temperature','humidity'].includes(String(value))) {
@@ -3731,8 +3879,12 @@ class Floorplaner extends IPSModuleStrict
             html = `
                 <div class="control-slider">
                     <div class="control-slider-value" data-shutter-slider-value>${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
-                    <input type="range" data-shutter-slider min="${min}" max="${max}" step="${step}" value="${current}">
-                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)}</div>
+                    <div class="control-slider-row">
+                        <button type="button" data-shutter-step="-1" title="Einen Schritt kleiner">−</button>
+                        <input type="range" data-shutter-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                        <button type="button" data-shutter-step="1" title="Einen Schritt größer">+</button>
+                    </div>
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)} · Schritt ${escapeHtml(String(step))}${escapeHtml(suffix)}</div>
                 </div>
             `;
         }
@@ -3760,6 +3912,16 @@ class Floorplaner extends IPSModuleStrict
 
         const slider = controlBody.querySelector('[data-shutter-slider]');
         const sliderValue = controlBody.querySelector('[data-shutter-slider-value]');
+        controlBody.querySelectorAll('[data-shutter-step]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!slider) return;
+                const direction = Number(btn.dataset.shutterStep) || 0;
+                const next = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(slider.value) + direction * Number(slider.step || 1)));
+                slider.value = String(next);
+                if (sliderValue) sliderValue.textContent = `${slider.value}${String(profile.suffix || '')}`;
+                send(Number(slider.value));
+            });
+        });
         if (slider) {
             const suffix = String(profile.suffix || '');
             slider.addEventListener('input', () => {
@@ -3903,13 +4065,17 @@ class Floorplaner extends IPSModuleStrict
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
 
-                if (item && Number(item._variableType) === 1) {
-                    // Integer-Variablen behalten den kompakten Bedien-Dialog.
+                if (!item || item._canAction !== true) {
+                    // Reine Istwerte/Messwerte besitzen keine Bedienaktion.
+                    return;
+                }
+
+                const variableType = Number(item._variableType);
+                if (variableType === 1 || variableType === 2) {
+                    // Integer/Float mit Aktion: Profil-Assoziationen oder Zahlenbereich.
                     openItemControl(item, evt.clientX, evt.clientY);
-                } else {
-                    // Boolean-Geräte wieder über den bewährten direkten Action-Pfad
-                    // bedienen. Nicht von clientseitigen Runtime-Metadaten abhängig
-                    // machen: PHP prüft die echte Variable und deren Typ selbst.
+                } else if (variableType === 0) {
+                    // Boolean mit Aktion direkt umschalten.
                     requestAction('operate', JSON.stringify({
                         floorId: state.activeFloor,
                         itemId: target.dataset.id
@@ -4003,6 +4169,7 @@ class Floorplaner extends IPSModuleStrict
                 showValue: false,
                 showIcon: true,
                 showDirectSlider: false,
+                valueFrame: false,
                 showState: false,
                 statusColor: '#ffe66d',
                 displayMode: 'icon',
@@ -4494,6 +4661,7 @@ class Floorplaner extends IPSModuleStrict
         const profileNameKey = prefix ? `_${prefix}ProfileName` : '_profileName';
         const profileSummaryKey = prefix ? `_${prefix}ProfileSummary` : '_profileSummary';
         const profileKey = prefix ? `_${prefix}Profile` : '_profile';
+        const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4502,6 +4670,10 @@ class Floorplaner extends IPSModuleStrict
         entity[profileNameKey] = node?.profileName || '';
         entity[profileSummaryKey] = node?.profileSummary || '';
         entity[profileKey] = node?.profile || null;
+        entity[canActionKey] = node?.canAction === true;
+        if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
+            entity.showDirectSlider = false;
+        }
 
         // Bei der Hauptvariable eines Geräts Temperatur/Feuchte automatisch
         // erkennen und ohne Icon direkt als Messwert anzeigen.
@@ -4548,7 +4720,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function openItemControl(item, clientX = null, clientY = null) {
-        if (!controlModal || !controlBody) return;
+        if (!controlModal || !controlBody || item?._canAction !== true) return;
 
         const profile = item._profile || {};
         const associations = Array.isArray(profile.associations) ? profile.associations : [];
@@ -4580,8 +4752,12 @@ class Floorplaner extends IPSModuleStrict
             html = `
                 <div class="control-slider">
                     <div class="control-slider-value" data-slider-value>${escapeHtml(prefix)}${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
-                    <input type="range" data-control-slider min="${min}" max="${max}" step="${step}" value="${current}">
-                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)}</div>
+                    <div class="control-slider-row">
+                        <button type="button" data-control-step="-1" title="Einen Schritt kleiner">−</button>
+                        <input type="range" data-control-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                        <button type="button" data-control-step="1" title="Einen Schritt größer">+</button>
+                    </div>
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)} · Schritt ${escapeHtml(String(step))}${escapeHtml(suffix)}</div>
                 </div>
             `;
         }
@@ -4602,6 +4778,18 @@ class Floorplaner extends IPSModuleStrict
 
         const slider = controlBody.querySelector('[data-control-slider]');
         const sliderValue = controlBody.querySelector('[data-slider-value]');
+        controlBody.querySelectorAll('[data-control-step]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!slider) return;
+                const direction = Number(btn.dataset.controlStep) || 0;
+                const next = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(slider.value) + direction * Number(slider.step || 1)));
+                slider.value = String(next);
+                const prefix = String(profile.prefix || '');
+                const suffix = String(profile.suffix || '');
+                if (sliderValue) sliderValue.textContent = `${prefix}${slider.value}${suffix}`;
+                sendItemValue(item, Number(slider.value));
+            });
+        });
         if (slider) {
             const prefix = String(profile.prefix || '');
             const suffix = String(profile.suffix || '');
@@ -5300,6 +5488,7 @@ HTML;
                     $node['profileName'] = $meta['_profileName'] ?? '';
                     $node['profileSummary'] = $meta['_profileSummary'] ?? '';
                     $node['profile'] = $meta['_profile'] ?? null;
+                    $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -5389,6 +5578,9 @@ HTML;
             }
         }
 
+        $variableInfo = IPS_GetVariable($VariableID);
+        $actionID = (int) (($variableInfo['VariableCustomAction'] ?? 0) ?: ($variableInfo['VariableAction'] ?? 0));
+
         return [
             '_variableType'   => $variableType,
             '_variablePath'   => $this->GetObjectPath($VariableID),
@@ -5396,7 +5588,8 @@ HTML;
             '_valueText'      => $valueText,
             '_profileName'    => $profileName,
             '_profileSummary' => $profileSummary,
-            '_profile'        => $profile
+            '_profile'        => $profile,
+            '_canAction'      => $actionID > 0
         ];
     }
 
