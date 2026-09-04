@@ -625,14 +625,14 @@ class Floorplaner extends IPSModuleStrict
 
         .device-direct-slider-hit {
             stroke: transparent;
-            stroke-width: 18;
+            stroke-width: 30;
             vector-effect: non-scaling-stroke;
             pointer-events: stroke;
         }
 
         .device-direct-slider-track {
             stroke: rgba(160,170,185,.65);
-            stroke-width: 5;
+            stroke-width: 4;
             stroke-linecap: round;
             vector-effect: non-scaling-stroke;
             pointer-events: none;
@@ -949,9 +949,34 @@ class Floorplaner extends IPSModuleStrict
             max-width: calc(92vw - 24px);
         }
 
-        .control-slider { min-width: 240px; padding: 6px 2px; }
+        .control-slider { min-width: 260px; padding: 6px 2px; }
         .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .control-slider input[type="range"] { width: 100%; }
+        .control-slider-row { display: grid; grid-template-columns: 38px minmax(180px, 1fr) 38px; gap: 8px; align-items: center; }
+        .control-slider-row button {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            min-height: 38px;
+            padding: 0;
+            font-size: 22px;
+            line-height: 36px;
+            touch-action: manipulation;
+        }
+        .control-slider input[type="range"] {
+            width: 100%;
+            min-height: 38px;
+            margin: 0;
+            cursor: pointer;
+            touch-action: none;
+        }
+        .control-slider input[type="range"]::-webkit-slider-thumb {
+            width: 22px;
+            height: 22px;
+        }
+        .control-slider input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+        }
 
         .control-associations {
             display: flex;
@@ -2588,7 +2613,7 @@ class Floorplaner extends IPSModuleStrict
             const radius = Number(item.size) || 18;
             const directSlider = item.showDirectSlider === true ? directSliderConfig(item) : null;
             const directSliderY = radius + 13;
-            const directSliderWidth = Math.max(38, radius * 2.4);
+            const directSliderWidth = Math.max(64, radius * 2.8);
             const directSliderLevel = directSlider
                 ? Math.max(0, Math.min(1, (directSlider.value - directSlider.min) / (directSlider.max - directSlider.min)))
                 : 0;
@@ -2644,7 +2669,7 @@ class Floorplaner extends IPSModuleStrict
                       `<line class="device-direct-slider-hit" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
                       `<line class="device-direct-slider-track" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
                       `<line class="device-direct-slider-fill" x1="${-directSliderWidth / 2}" y1="0" x2="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" y2="0"/>` +
-                      `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="4.5"/>` +
+                      `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="6.5"/>` +
                       `</g>`
                     : '') +
                 (selected?.type === 'item' && selected.id === item.id
@@ -2761,7 +2786,7 @@ class Floorplaner extends IPSModuleStrict
         // Dadurch funktioniert das Ziehen unabhängig von Zoom und Pan.
         const raw = svgPointRaw({clientX, clientY});
         const radius = Number(item.size) || 18;
-        const width = Math.max(38, radius * 2.4);
+        const width = Math.max(64, radius * 2.8);
         const localX = raw.x - (Number(item.x) || 0);
 
         const fraction = Math.max(0, Math.min(1, (localX + width / 2) / width));
@@ -3770,8 +3795,12 @@ class Floorplaner extends IPSModuleStrict
             html = `
                 <div class="control-slider">
                     <div class="control-slider-value" data-shutter-slider-value>${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
-                    <input type="range" data-shutter-slider min="${min}" max="${max}" step="${step}" value="${current}">
-                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)}</div>
+                    <div class="control-slider-row">
+                        <button type="button" data-shutter-step="-1" title="Einen Schritt kleiner">−</button>
+                        <input type="range" data-shutter-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                        <button type="button" data-shutter-step="1" title="Einen Schritt größer">+</button>
+                    </div>
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)} · Schritt ${escapeHtml(String(step))}${escapeHtml(suffix)}</div>
                 </div>
             `;
         }
@@ -3799,6 +3828,16 @@ class Floorplaner extends IPSModuleStrict
 
         const slider = controlBody.querySelector('[data-shutter-slider]');
         const sliderValue = controlBody.querySelector('[data-shutter-slider-value]');
+        controlBody.querySelectorAll('[data-shutter-step]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!slider) return;
+                const direction = Number(btn.dataset.shutterStep) || 0;
+                const next = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(slider.value) + direction * Number(slider.step || 1)));
+                slider.value = String(next);
+                if (sliderValue) sliderValue.textContent = `${slider.value}${String(profile.suffix || '')}`;
+                send(Number(slider.value));
+            });
+        });
         if (slider) {
             const suffix = String(profile.suffix || '');
             slider.addEventListener('input', () => {
@@ -4619,8 +4658,12 @@ class Floorplaner extends IPSModuleStrict
             html = `
                 <div class="control-slider">
                     <div class="control-slider-value" data-slider-value>${escapeHtml(prefix)}${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
-                    <input type="range" data-control-slider min="${min}" max="${max}" step="${step}" value="${current}">
-                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)}</div>
+                    <div class="control-slider-row">
+                        <button type="button" data-control-step="-1" title="Einen Schritt kleiner">−</button>
+                        <input type="range" data-control-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                        <button type="button" data-control-step="1" title="Einen Schritt größer">+</button>
+                    </div>
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)} · Schritt ${escapeHtml(String(step))}${escapeHtml(suffix)}</div>
                 </div>
             `;
         }
@@ -4641,6 +4684,18 @@ class Floorplaner extends IPSModuleStrict
 
         const slider = controlBody.querySelector('[data-control-slider]');
         const sliderValue = controlBody.querySelector('[data-slider-value]');
+        controlBody.querySelectorAll('[data-control-step]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!slider) return;
+                const direction = Number(btn.dataset.controlStep) || 0;
+                const next = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(slider.value) + direction * Number(slider.step || 1)));
+                slider.value = String(next);
+                const prefix = String(profile.prefix || '');
+                const suffix = String(profile.suffix || '');
+                if (sliderValue) sliderValue.textContent = `${prefix}${slider.value}${suffix}`;
+                sendItemValue(item, Number(slider.value));
+            });
+        });
         if (slider) {
             const prefix = String(profile.prefix || '');
             const suffix = String(profile.suffix || '');
