@@ -419,13 +419,7 @@ class Floorplaner extends IPSModuleStrict
            Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
         .shutter-control {
             pointer-events: all;
-        }
-
-        .shutter-control circle {
-            fill: #404040;
-            stroke: #dedede;
-            stroke-width: 1.8;
-            vector-effect: non-scaling-stroke;
+            cursor: pointer;
         }
 
         .shutter-control .shutter-hit {
@@ -434,12 +428,15 @@ class Floorplaner extends IPSModuleStrict
             pointer-events: all;
         }
 
-        .shutter-control text {
-            fill: #ffffff;
-            font-size: 12px;
-            font-weight: bold;
-            text-anchor: middle;
-            dominant-baseline: central;
+        .shutter-control .shutter-button {
+            fill: var(--fp-panel-2);
+            stroke: var(--fp-text);
+            stroke-width: 1.2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .shutter-control .device-glyph {
+            color: var(--fp-text);
             pointer-events: none;
         }
 
@@ -909,6 +906,23 @@ class Floorplaner extends IPSModuleStrict
             fill: #d7e9ff !important;
         }
 
+        .sensor-value-badge {
+            fill: var(--fp-panel-2);
+            stroke: var(--fp-text);
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .sensor-value-badge-text {
+            fill: var(--fp-text) !important;
+            font-family: Arial, Helvetica, sans-serif;
+            font-weight: 600;
+            paint-order: normal !important;
+            stroke: none !important;
+            pointer-events: none;
+        }
+
         .control-modal {
             width: max-content;
             min-width: 0;
@@ -936,9 +950,13 @@ class Floorplaner extends IPSModuleStrict
             max-width: calc(92vw - 24px);
         }
 
-        .control-slider { min-width: 240px; padding: 6px 2px; }
-        .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .control-slider input[type="range"] { width: 100%; }
+        .control-slider { min-width: 320px; max-width: 78vw; padding: 10px 4px; }
+        .control-slider-value { text-align: center; font-size: 20px; font-weight: 600; margin-bottom: 12px; }
+        .control-slider input[type="range"] {
+            width: 100%;
+            min-height: 32px;
+            cursor: pointer;
+        }
 
         .control-associations {
             display: flex;
@@ -2147,6 +2165,7 @@ class Floorplaner extends IPSModuleStrict
         'mdi:toggle-switch': 'M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z',
         'mdi:power-socket-eu': 'M7.5,10.5A1.5,1.5 0 0,1 9,12A1.5,1.5 0 0,1 7.5,13.5C6.66,13.5 6,12.83 6,12A1.5,1.5 0 0,1 7.5,10.5M16.5,10.5A1.5,1.5 0 0,1 18,12A1.5,1.5 0 0,1 16.5,13.5A1.5,1.5 0 0,1 15,12A1.5,1.5 0 0,1 16.5,10.5M4.22,2H19.78C21,2 22,3 22,4.22V19.78A2.22,2.22 0 0,1 19.78,22H4.22C3,22 2,21 2,19.78V4.22A2.22,2.22 0 0,1 4.22,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z',
         'mdi:thermometer': 'M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 13 5V8H11V5A1 1 0 0 1 12 4Z',
+        'mdi:window-shutter': 'M6,2H18V4H6V2M5,5H19V8H5V5M5,9H19V12H5V9M5,13H19V16H5V13M5,17H19V20H13V22H11V20H5V17Z',
         'mdi:water-percent': 'M12,3.25C12,3.25 6,10 6,14C6,17.32 8.69,20 12,20A6,6 0 0,0 18,14C18,10 12,3.25 12,3.25M14.47,9.97L15.53,11.03L9.53,17.03L8.47,15.97M9.75,10A1.25,1.25 0 0,1 11,11.25A1.25,1.25 0 0,1 9.75,12.5A1.25,1.25 0 0,1 8.5,11.25A1.25,1.25 0 0,1 9.75,10M14.25,14.5A1.25,1.25 0 0,1 15.5,15.75A1.25,1.25 0 0,1 14.25,17A1.25,1.25 0 0,1 13,15.75A1.25,1.25 0 0,1 14.25,14.5Z',
         'mdi:motion-sensor': 'M10,0.2C9,0.2 8.2,1 8.2,2C8.2,3 9,3.8 10,3.8C11,3.8 11.8,3 11.8,2C11.8,1 11,0.2 10,0.2M15.67,1A7.33,7.33 0 0,0 23,8.33V7A6,6 0 0,1 17,1H15.67M18.33,1C18.33,3.58 20.42,5.67 23,5.67V4.33C21.16,4.33 19.67,2.84 19.67,1H18.33M21,1A2,2 0 0,0 23,3V1H21M7.92,4.03C7.75,4.03 7.58,4.06 7.42,4.11L2,5.8V11H3.8V7.33L5.91,6.67L2,22H3.8L6.67,13.89L9,17V22H10.8V15.59L8.31,11.05L9.04,8.18L10.12,10H15V8.2H11.38L9.38,4.87C9.08,4.37 8.54,4.03 7.92,4.03Z',
         'mdi:door': 'M8,3C6.89,3 6,3.89 6,5V21H18V5C18,3.89 17.11,3 16,3H8M8,5H16V19H8V5M13,11V13H15V11H13Z',
@@ -2334,6 +2353,7 @@ class Floorplaner extends IPSModuleStrict
     function render() {
         const floor = currentFloor();
         const parts = [];
+        const shutterControls = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
 
@@ -2456,15 +2476,17 @@ class Floorplaner extends IPSModuleStrict
                 (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
 
             if (shutterField) {
-                const controlOffset = 24;
-                const sx = geom.cx - geom.nx * controlOffset;
-                const sy = geom.cy - geom.ny * controlOffset;
-                parts.push(
+                // Bedienicon direkt auf der zugehörigen Öffnung.
+                // Es wird erst ganz am Ende gerendert, damit Möbel/Geräte
+                // die Bedienung nicht mehr überdecken können.
+                const sx = geom.cx;
+                const sy = geom.cy;
+                shutterControls.push(
                     `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
                     `transform="translate(${sx} ${sy})">` +
-                    `<circle class="shutter-hit" r="20"/>` +
-                    `<circle r="12"/>` +
-                    `<text x="0" y="0">↕</text>` +
+                    `<rect class="shutter-hit" x="-20" y="-20" width="40" height="40" rx="6"/>` +
+                    `<rect class="shutter-button" x="-12" y="-12" width="24" height="24" rx="5"/>` +
+                    `<g class="device-glyph">${renderMdiGlyph('mdi:window-shutter', 15)}</g>` +
                     `</g>`
                 );
             }
@@ -2551,7 +2573,9 @@ class Floorplaner extends IPSModuleStrict
             const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
             const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
             const radius = Number(item.size) || 18;
-            const directSlider = item.showDirectSlider === true ? directSliderConfig(item) : null;
+            const directSlider = item.kind !== 'climate' && item.showDirectSlider === true
+                ? directSliderConfig(item)
+                : null;
             const directSliderY = radius + 13;
             const directSliderWidth = Math.max(38, radius * 2.4);
             const directSliderLevel = directSlider
@@ -2590,6 +2614,7 @@ class Floorplaner extends IPSModuleStrict
                         ? `<g class="climate-panel-symbol" transform="rotate(${Number(item.angle) || 0})">` +
                           `<rect class="climate-panel" x="${-radius * .95}" y="${-radius * .68}" width="${radius * 1.9}" height="${radius * 1.36}" rx="${Math.max(2, radius * .16)}"/>` +
                           `<rect class="climate-panel-display" x="${-radius * .62}" y="${-radius * .38}" width="${radius * 1.24}" height="${radius * .48}" rx="${Math.max(1.5, radius * .08)}"/>` +
+                          `<text x="0" y="${-radius * .12}" text-anchor="middle" font-size="${Math.max(7, radius * .42)}" style="fill:var(--fp-text);stroke:none;paint-order:normal;pointer-events:none">${escapeHtml(valueText)}</text>` +
                           `<circle class="climate-panel-dot" cx="${-radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
                           `<circle class="climate-panel-dot" cx="0" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
                           `<circle class="climate-panel-dot" cx="${radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
@@ -2601,8 +2626,21 @@ class Floorplaner extends IPSModuleStrict
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
                     : '') +
-                (showValue
-                    ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
+                (showValue && item.kind !== 'climate'
+                    ? (['temperature','humidity'].includes(item.kind)
+                        ? (() => {
+                            const badgeWidth = Math.max(42, String(valueText).length * valueSize * .62 + 14);
+                            const badgeHeight = valueSize + 12;
+                            const badgeX = valuePlace.anchor === 'start'
+                                ? valuePlace.x
+                                : (valuePlace.anchor === 'end' ? valuePlace.x - badgeWidth : valuePlace.x - badgeWidth / 2);
+                            const textX = valuePlace.anchor === 'start'
+                                ? valuePlace.x + badgeWidth / 2
+                                : (valuePlace.anchor === 'end' ? valuePlace.x - badgeWidth / 2 : valuePlace.x);
+                            return `<rect class="sensor-value-badge" x="${badgeX}" y="${valuePlace.y - badgeHeight * .72}" width="${badgeWidth}" height="${badgeHeight}" rx="4"/>` +
+                                   `<text class="sensor-value-badge-text" x="${textX}" y="${valuePlace.y}" text-anchor="middle" font-size="${valueSize}">${escapeHtml(valueText)}</text>`;
+                        })()
+                        : `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`)
                     : '') +
                 (directSlider
                     ? `<g class="device-direct-slider" data-direct-slider="${item.id}" transform="translate(0 ${directSliderY})">` +
@@ -2640,6 +2678,9 @@ class Floorplaner extends IPSModuleStrict
         if (preview && tool === 'wall') {
             parts.push(`<line class="preview-line" x1="${preview.x1}" y1="${preview.y1}" x2="${preview.x2}" y2="${preview.y2}"/>`);
         }
+
+        // Bedienicons bewusst zuletzt: immer über Möbeln/Geräten und anklickbar.
+        parts.push(...shutterControls);
 
         scene.innerHTML = parts.join('');
         setTransform();
@@ -2693,6 +2734,8 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function directSliderConfig(item) {
+        if (String(item?.kind || '') === 'climate') return null;
+
         const type = Number(item?._variableType);
         if (type !== 1 && type !== 2) return null;
 
@@ -3903,8 +3946,9 @@ class Floorplaner extends IPSModuleStrict
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
 
-                if (item && Number(item._variableType) === 1) {
-                    // Integer-Variablen behalten den kompakten Bedien-Dialog.
+                if (item && (Number(item._variableType) === 1 || Number(item._variableType) === 2)) {
+                    // Numerische Geräte (Integer/Float) verwenden den großen
+                    // Bedien-Dialog mit Wertanzeige und Slider/Profilwerten.
                     openItemControl(item, evt.clientX, evt.clientY);
                 } else {
                     // Boolean-Geräte wieder über den bewährten direkten Action-Pfad
