@@ -1571,18 +1571,6 @@ class Floorplaner extends IPSModuleStrict
             floor.items = Array.isArray(floor.items) ? floor.items : [];
             for (const item of floor.items) {
                 item.statusColor = normalizeStatusColor(item.statusColor);
-
-                if (item.kind === 'temperature' || item.kind === 'humidity') {
-                    item.kind = 'value';
-                    item.showValue = true;
-                    if (typeof item.showIcon !== 'boolean') {
-                        item.showIcon = false;
-                    }
-                }
-
-                if (typeof item.showValueFrame !== 'boolean') {
-                    item.showValueFrame = false;
-                }
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -2131,7 +2119,8 @@ class Floorplaner extends IPSModuleStrict
             switch: 'mdi:toggle-switch',
             socket: 'mdi:power-socket-eu',
             shutter: 'mdi:blinds',
-            value: 'mdi:circle',
+            temperature: 'mdi:thermometer',
+            humidity: 'mdi:water-percent',
             motion: 'mdi:motion-sensor',
             window: 'mdi:window-closed',
             door: 'mdi:door',
@@ -2537,7 +2526,7 @@ class Floorplaner extends IPSModuleStrict
             const icon = item.icon || iconForKind(item.kind);
 
             const showName = item.showName === true;
-            const legacyShowState = item.showState === true || (item.showState == null && item.kind === 'value');
+            const legacyShowState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
 
             // Bestehende Projekte bleiben kompatibel. Temperatur und Feuchte
             // werden ohne explizite Einstellung automatisch als reiner Wert dargestellt.
@@ -2613,20 +2602,7 @@ class Floorplaner extends IPSModuleStrict
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
                     : '') +
                 (showValue
-                    ? (item.showValueFrame === true
-                        ? (() => {
-                            const boxWidth = Math.max(42, String(valueText).length * valueSize * .62 + 14);
-                            const boxHeight = valueSize + 12;
-                            const boxX = valuePlace.anchor === 'start'
-                                ? valuePlace.x
-                                : (valuePlace.anchor === 'end' ? valuePlace.x - boxWidth : valuePlace.x - boxWidth / 2);
-                            const textX = valuePlace.anchor === 'start'
-                                ? valuePlace.x + boxWidth / 2
-                                : (valuePlace.anchor === 'end' ? valuePlace.x - boxWidth / 2 : valuePlace.x);
-                            return `<rect class="device-value-box" x="${boxX}" y="${valuePlace.y - boxHeight * .72}" width="${boxWidth}" height="${boxHeight}" rx="4"/>` +
-                                   `<text class="runtime-value" x="${textX}" y="${valuePlace.y}" text-anchor="middle" font-size="${valueSize}">${escapeHtml(valueText)}</text>`;
-                        })()
-                        : `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`)
+                    ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
                     : '') +
                 (directSlider
                     ? `<g class="device-direct-slider" data-direct-slider="${item.id}" transform="translate(0 ${directSliderY})">` +
@@ -2683,7 +2659,7 @@ class Floorplaner extends IPSModuleStrict
 
     function supportsStatusColor(item) {
         const kind = String(item?.kind || 'generic');
-        if (['value', 'climate'].includes(kind)) {
+        if (['temperature', 'humidity', 'climate'].includes(kind)) {
             return false;
         }
 
@@ -2717,8 +2693,6 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function directSliderConfig(item) {
-        if (item?._hasAction !== true) return null;
-
         const type = Number(item?._variableType);
         if (type !== 1 && type !== 2) return null;
 
@@ -3016,7 +2990,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function defaultDisplayModeForKind(kind) {
-        return kind === 'value' ? 'value' : 'icon';
+        return ['temperature','humidity'].includes(kind) ? 'value' : 'icon';
     }
 
     function shutterMappingOptions(selectedValue) {
@@ -3206,7 +3180,8 @@ class Floorplaner extends IPSModuleStrict
                         <option value="light"${kind === 'light' ? ' selected' : ''}>Licht</option>
                         <option value="switch"${kind === 'switch' ? ' selected' : ''}>Schalter</option>
                         <option value="socket"${kind === 'socket' ? ' selected' : ''}>Steckdose</option>
-                        <option value="value"${kind === 'value' ? ' selected' : ''}>Allgemeine Variable / Messwert</option>
+                        <option value="temperature"${kind === 'temperature' ? ' selected' : ''}>Temperatur</option>
+                        <option value="humidity"${kind === 'humidity' ? ' selected' : ''}>Feuchte</option>
                         <option value="motion"${kind === 'motion' ? ' selected' : ''}>Bewegung / Präsenz</option>
                         <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Heizung</option>
                     </select>
@@ -3220,21 +3195,18 @@ class Floorplaner extends IPSModuleStrict
                 <div class="row2">
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
-                ${obj.showValue === true ? `
-                    <div class="field">
-                        <label class="check"><input data-field="showValueFrame" type="checkbox"${obj.showValueFrame === true ? ' checked' : ''}> Rahmen um Wert</label>
-                    </div>
-                ` : ''}
                 </div>
                 <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
-                ${kind === 'value' && obj.showIcon !== false ? `
+                ${kind === 'generic' && obj.showIcon !== false ? `
                     <div class="field">
                         <label>Symbol</label>
-                        <input class="icon-input-clickable"
+                        <input
+                            class="icon-input-clickable"
                             data-icon-picker="device"
+                            type="text"
                             readonly
                             value="${escapeHtml(obj.icon || 'Standardsymbol')}"
-                            title="Symbol auswählen">
+                            title="MDI-Symbol auswählen">
                     </div>
                 ` : ''}
                 ${directSliderConfig(obj) ? `
@@ -3360,7 +3332,7 @@ class Floorplaner extends IPSModuleStrict
                     refreshPropertiesAfterStructuralChange();
                 }
 
-                if (selected.type === 'item' && fieldName === 'showValue') {
+                if (selected.type === 'item' && fieldName === 'showIcon') {
                     refreshPropertiesAfterStructuralChange();
                 }
 
@@ -3369,9 +3341,9 @@ class Floorplaner extends IPSModuleStrict
                 }
 
                 if (selected.type === 'item' && fieldName === 'kind') {
-                    obj.displayMode = String(value) === 'value' ? 'value' : 'icon';
+                    obj.displayMode = ['temperature','humidity'].includes(String(value)) ? 'value' : 'icon';
                     obj.displayModeManual = false;
-                    if (String(value) === 'value') {
+                    if (['temperature','humidity'].includes(String(value))) {
                         obj.showIcon = false;
                         obj.showValue = true;
                     }
@@ -4047,7 +4019,6 @@ class Floorplaner extends IPSModuleStrict
                 showValue: false,
                 showIcon: true,
                 showDirectSlider: false,
-                showValueFrame: false,
                 showState: false,
                 statusColor: '#ffe66d',
                 displayMode: 'icon',
@@ -4488,7 +4459,7 @@ class Floorplaner extends IPSModuleStrict
             /\b(feuchte|luftfeuchte|humidity|humid)\b/i.test(haystack) ||
             (suffix.includes('%') && /\b(feuchte|humidity|humid)\b/i.test(haystack))
         ) {
-            return 'value';
+            return 'humidity';
         }
 
         if (
@@ -4496,7 +4467,7 @@ class Floorplaner extends IPSModuleStrict
             suffix.includes('°f') ||
             /\b(temperatur|temperature|temp)\b/i.test(haystack)
         ) {
-            return 'value';
+            return 'temperature';
         }
 
         return '';
@@ -5434,9 +5405,6 @@ HTML;
             }
         }
 
-        $actionID = (int) (($variable['VariableCustomAction'] ?? 0) ?: ($variable['VariableAction'] ?? 0));
-        $hasAction = $actionID > 0;
-
         return [
             '_variableType'   => $variableType,
             '_variablePath'   => $this->GetObjectPath($VariableID),
@@ -5444,8 +5412,7 @@ HTML;
             '_valueText'      => $valueText,
             '_profileName'    => $profileName,
             '_profileSummary' => $profileSummary,
-            '_profile'        => $profile,
-            '_hasAction'      => $hasAction
+            '_profile'        => $profile
         ];
     }
 
