@@ -1077,42 +1077,7 @@ class Floorplaner extends IPSModuleStrict
                 border-top: 1px solid var(--fp-border);
             }
         }
-            .icon-picker {
-            position: absolute;
-            z-index: 90;
-            display: none;
-            grid-template-columns: repeat(6, minmax(34px, auto));
-            gap: 5px;
-            padding: 8px;
-            border: 1px solid var(--fp-border);
-            border-radius: 8px;
-            background: var(--fp-panel);
-            box-shadow: 0 4px 14px rgba(0,0,0,.28);
-            max-width: min(320px, calc(100vw - 24px));
-            max-height: min(300px, calc(100vh - 24px));
-            overflow: auto;
-        }
-
-        .icon-picker button {
-            min-width: 34px;
-            min-height: 32px;
-            padding: 4px 6px;
-            font-size: 18px;
-            line-height: 1;
-            cursor: pointer;
-        }
-
-        .icon-input-clickable {
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .icon-input-clickable:hover {
-            outline: 1px solid #74b9ff;
-        }
-
-
-        .device-glyph { color: currentColor; pointer-events: none; }
+            .device-glyph { color: currentColor; pointer-events: none; }
         .device-glyph * { vector-effect: non-scaling-stroke; }
 
 
@@ -1386,7 +1351,7 @@ class Floorplaner extends IPSModuleStrict
                 <b>Bedienung</b><br>
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: MDI-Symbol in den Eigenschaften auswählen.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
+                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: Gerätetyp wählen; das passende MDI-Symbol wird automatisch verwendet.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
                 Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
                 Verschieben: Werkzeug wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
@@ -2227,16 +2192,6 @@ class Floorplaner extends IPSModuleStrict
         return icons[kind] || icons.generic;
     }
 
-    const mdiIconChoices = [
-        ['mdi:lightbulb','Licht'],['mdi:toggle-switch','Schalter'],['mdi:power-socket-eu','Steckdose'],
-        ['mdi:thermometer','Temperatur'],['mdi:water-percent','Feuchte'],['mdi:motion-sensor','Bewegung'],
-        ['mdi:door','Tür'],['mdi:window-closed','Fenster'],['mdi:blinds','Rollladen'],['mdi:thermostat','Thermostat'],
-        ['mdi:fan','Ventilator'],['mdi:radiator','Heizung'],['mdi:television','TV'],['mdi:camera','Kamera'],
-        ['mdi:washing-machine','Waschmaschine'],['mdi:dishwasher','Geschirrspüler'],['mdi:water-boiler','Boiler'],
-        ['mdi:car-electric','Elektroauto'],['mdi:robot-vacuum','Saugroboter'],['mdi:lock','Schloss'],
-        ['mdi:home','Haus'],['mdi:cog','Allgemein']
-    ];
-
     // Original Material Design Icons v7.4.47, lokal eingebettet.
     // Kein CDN, kein Webfont und kein externer Modulimport nötig.
     const originalMdiPaths = {
@@ -2626,7 +2581,7 @@ class Floorplaner extends IPSModuleStrict
                 ? (boolActive ? ' active-light' : ' inactive-light')
                 : '';
             const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = item.icon || iconForKind(item.kind);
+            const icon = iconForKind(item.kind);
 
             const showName = item.showName === true;
             const legacyShowState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
@@ -3053,63 +3008,6 @@ class Floorplaner extends IPSModuleStrict
         render();
     }
 
-    const deviceIconChoices = mdiIconChoices;
-
-    function getDeviceIconPicker() {
-        return document.getElementById('deviceIconPicker');
-    }
-
-    function closeDeviceIconPicker() {
-        const picker = getDeviceIconPicker();
-        if (picker) picker.style.display = 'none';
-    }
-
-    function openDeviceIconPicker(input) {
-        const picker = getDeviceIconPicker();
-        if (!picker || !input) return;
-
-        picker.innerHTML =
-            `<button type="button" data-device-icon="" title="Standardsymbol des Gerätetyps">↩</button>` +
-            deviceIconChoices
-                .map(([icon,label]) =>
-                    `<button type="button" data-device-icon="${escapeHtml(icon)}" title="${escapeHtml(label + ' · ' + icon)}">` +
-                    `<svg viewBox="-16 -16 32 32" width="22" height="22">${renderMdiGlyph(icon, 12)}</svg>` +
-                    `</button>`)
-                .join('');
-
-        const rect = input.getBoundingClientRect();
-        picker.style.left = `${Math.min(rect.left, Math.max(8, window.innerWidth - 330))}px`;
-        picker.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 310))}px`;
-        picker.style.display = 'grid';
-
-        picker.querySelectorAll('[data-device-icon]').forEach(button => {
-            button.addEventListener('click', evt => {
-                evt.preventDefault();
-                evt.stopPropagation();
-
-                if (!selected || selected.type !== 'item') {
-                    closeDeviceIconPicker();
-                    return;
-                }
-
-                const obj = findEntity('item', selected.id);
-                if (!obj) {
-                    closeDeviceIconPicker();
-                    return;
-                }
-
-                obj.icon = button.dataset.deviceIcon || '';
-                pushHistory();
-                markDirty();
-                closeDeviceIconPicker();
-
-                // Direkt neu zeichnen. selected bleibt erhalten, daher bleibt auch
-                // die Gerätekonfiguration offen und zeigt das gewählte Symbol.
-                render();
-            });
-        });
-    }
-
     function defaultDisplayModeForKind(kind) {
         return ['temperature','humidity'].includes(kind) ? 'value' : 'icon';
     }
@@ -3321,13 +3219,6 @@ class Floorplaner extends IPSModuleStrict
                     </select>
                 </div>
                 <div class="field">
-                    <label>Symbol</label>
-                    <select data-field="icon">
-                        <option value=""${!obj.icon ? ' selected' : ''}>Standard des Gerätetyps</option>
-                        ${deviceIconChoices.map(([icon,label]) => `<option value="${escapeHtml(icon)}"${obj.icon === icon ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
-                    </select>
-                </div>
-                <div class="field">
                     <label>IP-Symcon Variable</label>
                     <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
                         value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
@@ -3470,8 +3361,8 @@ class Floorplaner extends IPSModuleStrict
                 }
 
                 if (selected.type === 'item' && fieldName === 'kind') {
-                    // Beim Wechsel des Gerätetyps wieder dessen Standardsymbol verwenden.
-                    // Danach kann im längeren Symbol-Dropdown bewusst ein anderes gewählt werden.
+                    // Der Gerätetyp bestimmt das Symbol vollständig.
+                    // Einen eventuell aus älteren Versionen gespeicherten Icon-Override verwerfen.
                     obj.icon = '';
                     obj.displayMode = ['temperature','humidity'].includes(String(value)) ? 'value' : 'icon';
                     obj.displayModeManual = false;
@@ -3647,20 +3538,6 @@ class Floorplaner extends IPSModuleStrict
 
     window.addEventListener('resize', scheduleResponsiveFit);
 
-
-    document.addEventListener('click', evt => {
-        const iconInput = evt.target.closest('[data-icon-picker="device"]');
-        if (iconInput) {
-            evt.preventDefault();
-            evt.stopPropagation();
-            openDeviceIconPicker(iconInput);
-            return;
-        }
-
-        if (!evt.target.closest('#deviceIconPicker')) {
-            closeDeviceIconPicker();
-        }
-    });
 
     const showGridVisu = document.getElementById('showGridVisu');
     const gridSizeVisu = document.getElementById('gridSizeVisu');
@@ -4990,7 +4867,6 @@ class Floorplaner extends IPSModuleStrict
 })();
 </script>
 
-    <div id="deviceIconPicker" class="icon-picker" aria-label="Symbol auswählen"></div>
 
 </body>
 </html>
