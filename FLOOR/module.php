@@ -1252,6 +1252,13 @@ class Floorplaner extends IPSModuleStrict
             stroke: #5f5f5f;
         }
 
+        /* Offenes Fenster muss auch im hellen Theme blau bleiben.
+           Diese spezifischere Regel verhindert, dass die allgemeine
+           helle Fensterfarbe den Offen-Status überschreibt. */
+        html[data-theme="light"] .opening-line.opening-state-open {
+            stroke: #1769aa;
+        }
+
         html[data-theme="light"] .opening-shutter {
             stroke: #707070;
         }
