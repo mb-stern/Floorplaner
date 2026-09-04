@@ -1732,15 +1732,15 @@ class Floorplaner extends IPSModuleStrict
         const box = svg.getBoundingClientRect();
 
         /*
-         * Im Bedienmodus liegt oben die Visualisierungs-Kopfzone von IP-Symcon.
+         * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
          * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
          * interaktive Grundriss dort nicht hineinragen.
          *
-         * 80 px + 24 px Innenabstand werden für die Kopfzone verwendet.
+         * 60 px + 24 px Innenabstand werden für die Kopfzone verwendet.
          * Damit bleibt oben wieder mehr Abstand zur Symcon-Kopfzone, sodass
          * die obersten Elemente des Grundrisses zuverlässig anklickbar bleiben.
          */
-        const headerTop = state.mode === 'view' ? 80 : 0;
+        const headerTop = 60;
 
         // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 40 : 0;
