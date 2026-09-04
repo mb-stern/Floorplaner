@@ -1736,11 +1736,10 @@ class Floorplaner extends IPSModuleStrict
          * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
          * interaktive Grundriss dort nicht hineinragen.
          *
-         * 60 px + 24 px Innenabstand werden für die Kopfzone verwendet.
-         * Damit bleibt oben wieder mehr Abstand zur Symcon-Kopfzone, sodass
-         * die obersten Elemente des Grundrisses zuverlässig anklickbar bleiben.
+         * 40 px + 24 px Innenabstand werden für die Kopfzone verwendet.
+         * Der Abstand gilt sowohl im Editor- als auch im Bedienmodus.
          */
-        const headerTop = 60;
+        const headerTop = 40;
 
         // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 40 : 0;
