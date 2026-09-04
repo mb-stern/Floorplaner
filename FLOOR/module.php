@@ -922,6 +922,27 @@ class Floorplaner extends IPSModuleStrict
             fill: #d7e9ff !important;
         }
 
+        .runtime-value-frame {
+            fill: rgba(255,255,255,.06);
+            stroke: currentColor;
+            stroke-width: 1.2;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .runtime-value-frame {
+            fill: rgba(255,255,255,.78);
+            stroke: #5f5f5f;
+        }
+
+        /* Reine Status-/Messwertvariablen ohne Aktion sind im Bedienmodus
+           bewusst nicht als klickbares Bedienelement dargestellt. */
+        #app.view-mode .device.status-only,
+        #scene.runtime-view .device.status-only,
+        #scene.runtime-view .device.status-only * {
+            cursor: default !important;
+        }
+
         .control-modal {
             width: max-content;
             min-width: 0;
@@ -2181,6 +2202,19 @@ class Floorplaner extends IPSModuleStrict
             window: 'mdi:window-closed',
             door: 'mdi:door',
             climate: 'mdi:thermostat',
+            fan: 'mdi:fan',
+            radiator: 'mdi:radiator',
+            television: 'mdi:television',
+            camera: 'mdi:camera',
+            washer: 'mdi:washing-machine',
+            dishwasher: 'mdi:dishwasher',
+            boiler: 'mdi:water-boiler',
+            car: 'mdi:car-electric',
+            vacuum: 'mdi:robot-vacuum',
+            lock: 'mdi:lock',
+            shutter: 'mdi:blinds',
+            window: 'mdi:window-closed',
+            door: 'mdi:door',
             generic: 'mdi:circle'
         };
         return icons[kind] || icons.generic;
@@ -2583,7 +2617,7 @@ class Floorplaner extends IPSModuleStrict
                 ? (boolActive ? ' active-light' : ' inactive-light')
                 : '';
             const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = iconForKind(item.kind);
+            const icon = item.icon || iconForKind(item.kind);
 
             const showName = item.showName === true;
             const legacyShowState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
@@ -2641,9 +2675,16 @@ class Floorplaner extends IPSModuleStrict
                 valueExtra += Math.max(labelSize, valueSize) + 3;
             }
             const valuePlace = deviceTextPlacement(valuePosition, valueSize, valueExtra);
+            const statusOnlyClass = item._canAction === true ? '' : ' status-only';
+            const valueFrameWidth = Math.max(26, valueText.length * valueSize * 0.62 + 12);
+            const valueFrameHeight = valueSize + 10;
+            const valueFrameX = valuePlace.anchor === 'end'
+                ? valuePlace.x - valueFrameWidth - 4
+                : (valuePlace.anchor === 'start' ? valuePlace.x - 4 : valuePlace.x - valueFrameWidth / 2);
+            const valueFrameY = valuePlace.y - valueSize * 0.82 - 5;
 
             parts.push(
-                `<g class="device${sel}${numericClass}${boolClass}${lightClass}" data-type="item" data-id="${item.id}" ` +
+                `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? (item.kind === 'climate'
@@ -2660,6 +2701,9 @@ class Floorplaner extends IPSModuleStrict
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
+                    : '') +
+                (showValue && item.valueFrame === true
+                    ? `<rect class="runtime-value-frame" x="${valueFrameX}" y="${valueFrameY}" width="${valueFrameWidth}" height="${valueFrameHeight}" rx="4"/>`
                     : '') +
                 (showValue
                     ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
@@ -2757,6 +2801,10 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function directSliderConfig(item) {
+        // Ein Slider ist nur für Variablen sinnvoll, die in IP-Symcon
+        // tatsächlich eine Aktion besitzen. Reine Istwerte bleiben Anzeige.
+        if (item?._canAction !== true) return null;
+
         const type = Number(item?._variableType);
         if (type !== 1 && type !== 2) return null;
 
@@ -3247,7 +3295,27 @@ class Floorplaner extends IPSModuleStrict
                         <option value="temperature"${kind === 'temperature' ? ' selected' : ''}>Temperatur</option>
                         <option value="humidity"${kind === 'humidity' ? ' selected' : ''}>Feuchte</option>
                         <option value="motion"${kind === 'motion' ? ' selected' : ''}>Bewegung / Präsenz</option>
-                        <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Heizung</option>
+                        <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Thermostat</option>
+                        <option value="radiator"${kind === 'radiator' ? ' selected' : ''}>Heizung / Radiator</option>
+                        <option value="fan"${kind === 'fan' ? ' selected' : ''}>Ventilator</option>
+                        <option value="shutter"${kind === 'shutter' ? ' selected' : ''}>Rollladen / Jalousie / Markise</option>
+                        <option value="window"${kind === 'window' ? ' selected' : ''}>Fenster</option>
+                        <option value="door"${kind === 'door' ? ' selected' : ''}>Tür</option>
+                        <option value="lock"${kind === 'lock' ? ' selected' : ''}>Schloss</option>
+                        <option value="television"${kind === 'television' ? ' selected' : ''}>Fernseher</option>
+                        <option value="camera"${kind === 'camera' ? ' selected' : ''}>Kamera</option>
+                        <option value="washer"${kind === 'washer' ? ' selected' : ''}>Waschmaschine</option>
+                        <option value="dishwasher"${kind === 'dishwasher' ? ' selected' : ''}>Geschirrspüler</option>
+                        <option value="boiler"${kind === 'boiler' ? ' selected' : ''}>Boiler / Warmwasser</option>
+                        <option value="car"${kind === 'car' ? ' selected' : ''}>Elektroauto</option>
+                        <option value="vacuum"${kind === 'vacuum' ? ' selected' : ''}>Saugroboter</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Symbol</label>
+                    <select data-field="icon">
+                        <option value=""${!obj.icon ? ' selected' : ''}>Standard des Gerätetyps</option>
+                        ${deviceIconChoices.map(([icon,label]) => `<option value="${escapeHtml(icon)}"${obj.icon === icon ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="field">
@@ -3260,7 +3328,11 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
                 </div>
-                <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                <div class="row2">
+                    <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="valueFrame" type="checkbox"${obj.valueFrame === true ? ' checked' : ''}> Rahmen um Istwert</label></div>
+                </div>
+                ${obj.variableID && obj._canAction !== true ? `<div class="profile-hint">Reiner Istwert: Für diese Variable ist keine Aktion hinterlegt. Sie wird deshalb nur angezeigt und nicht bedient.</div>` : ''}
                 ${directSliderConfig(obj) ? `
                     <div class="field">
                         <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider anzeigen</label>
@@ -3389,6 +3461,9 @@ class Floorplaner extends IPSModuleStrict
                 }
 
                 if (selected.type === 'item' && fieldName === 'kind') {
+                    // Beim Wechsel des Gerätetyps wieder dessen Standardsymbol verwenden.
+                    // Danach kann im längeren Symbol-Dropdown bewusst ein anderes gewählt werden.
+                    obj.icon = '';
                     obj.displayMode = ['temperature','humidity'].includes(String(value)) ? 'value' : 'icon';
                     obj.displayModeManual = false;
                     if (['temperature','humidity'].includes(String(value))) {
@@ -3981,13 +4056,17 @@ class Floorplaner extends IPSModuleStrict
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
 
-                if (item && Number(item._variableType) === 1) {
-                    // Integer-Variablen behalten den kompakten Bedien-Dialog.
+                if (!item || item._canAction !== true) {
+                    // Reine Istwerte/Messwerte besitzen keine Bedienaktion.
+                    return;
+                }
+
+                const variableType = Number(item._variableType);
+                if (variableType === 1 || variableType === 2) {
+                    // Integer/Float mit Aktion: Profil-Assoziationen oder Zahlenbereich.
                     openItemControl(item, evt.clientX, evt.clientY);
-                } else {
-                    // Boolean-Geräte wieder über den bewährten direkten Action-Pfad
-                    // bedienen. Nicht von clientseitigen Runtime-Metadaten abhängig
-                    // machen: PHP prüft die echte Variable und deren Typ selbst.
+                } else if (variableType === 0) {
+                    // Boolean mit Aktion direkt umschalten.
                     requestAction('operate', JSON.stringify({
                         floorId: state.activeFloor,
                         itemId: target.dataset.id
@@ -4081,6 +4160,7 @@ class Floorplaner extends IPSModuleStrict
                 showValue: false,
                 showIcon: true,
                 showDirectSlider: false,
+                valueFrame: false,
                 showState: false,
                 statusColor: '#ffe66d',
                 displayMode: 'icon',
@@ -4572,6 +4652,7 @@ class Floorplaner extends IPSModuleStrict
         const profileNameKey = prefix ? `_${prefix}ProfileName` : '_profileName';
         const profileSummaryKey = prefix ? `_${prefix}ProfileSummary` : '_profileSummary';
         const profileKey = prefix ? `_${prefix}Profile` : '_profile';
+        const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4580,6 +4661,10 @@ class Floorplaner extends IPSModuleStrict
         entity[profileNameKey] = node?.profileName || '';
         entity[profileSummaryKey] = node?.profileSummary || '';
         entity[profileKey] = node?.profile || null;
+        entity[canActionKey] = node?.canAction === true;
+        if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
+            entity.showDirectSlider = false;
+        }
 
         // Bei der Hauptvariable eines Geräts Temperatur/Feuchte automatisch
         // erkennen und ohne Icon direkt als Messwert anzeigen.
@@ -4626,7 +4711,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function openItemControl(item, clientX = null, clientY = null) {
-        if (!controlModal || !controlBody) return;
+        if (!controlModal || !controlBody || item?._canAction !== true) return;
 
         const profile = item._profile || {};
         const associations = Array.isArray(profile.associations) ? profile.associations : [];
@@ -5394,6 +5479,7 @@ HTML;
                     $node['profileName'] = $meta['_profileName'] ?? '';
                     $node['profileSummary'] = $meta['_profileSummary'] ?? '';
                     $node['profile'] = $meta['_profile'] ?? null;
+                    $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -5483,6 +5569,9 @@ HTML;
             }
         }
 
+        $variableInfo = IPS_GetVariable($VariableID);
+        $actionID = (int) (($variableInfo['VariableCustomAction'] ?? 0) ?: ($variableInfo['VariableAction'] ?? 0));
+
         return [
             '_variableType'   => $variableType,
             '_variablePath'   => $this->GetObjectPath($VariableID),
@@ -5490,7 +5579,8 @@ HTML;
             '_valueText'      => $valueText,
             '_profileName'    => $profileName,
             '_profileSummary' => $profileSummary,
-            '_profile'        => $profile
+            '_profile'        => $profile,
+            '_canAction'      => $actionID > 0
         ];
     }
 
