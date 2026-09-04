@@ -423,9 +423,9 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .shutter-control circle:not(.shutter-hit) {
-            fill: #202020;
-            stroke: #ffffff;
-            stroke-width: 2.2;
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
             vector-effect: non-scaling-stroke;
         }
 
@@ -436,7 +436,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .shutter-control text {
-            fill: #ffffff;
+            fill: #202020;
             stroke: none;
             font-size: 12px;
             font-weight: 700;
@@ -1258,8 +1258,26 @@ class Floorplaner extends IPSModuleStrict
         html[data-theme="light"] text,
         html[data-theme="light"] tspan,
         html[data-theme="light"] .furniture-label {
-            fill: #5a5a5a;
-            color: #5a5a5a;
+            fill: #303030;
+            color: #303030;
+            stroke: none !important;
+            paint-order: normal !important;
+            text-rendering: optimizeLegibility;
+        }
+
+        /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
+           Das verhindert den verwaschenen Eindruck bei Text und Symbolen. */
+        html[data-theme="light"] #scene text,
+        html[data-theme="light"] #scene tspan {
+            stroke: none !important;
+            filter: none !important;
+        }
+
+        html[data-theme="light"] .device-glyph,
+        html[data-theme="light"] .furniture,
+        html[data-theme="light"] .opening,
+        html[data-theme="light"] .wall {
+            filter: none !important;
         }
 
         html[data-theme="light"] .status,
@@ -2474,9 +2492,8 @@ class Floorplaner extends IPSModuleStrict
                 (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
 
             if (shutterField) {
-                const shutterControlOffset = 8;
-                const sx = geom.cx - geom.nx * shutterControlOffset;
-                const sy = geom.cy - geom.ny * shutterControlOffset;
+                const sx = geom.cx;
+                const sy = geom.cy;
                 shutterControlParts.push(
                     `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
                     `transform="translate(${sx} ${sy})">` +
