@@ -2407,8 +2407,8 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function propertyIconPreviewHtml(item) {
-        const icon = normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
-        const storedSvg = String(item?.iconSvg || '').trim();
+        const icon = automaticVariableIcon(item);
+        const storedSvg = item?.iconManual === true ? String(item?.iconSvg || '').trim() : '';
         if (storedSvg.startsWith('<svg')) {
             return storedSvg;
         }
@@ -2417,6 +2417,31 @@ class Floorplaner extends IPSModuleStrict
             return generated;
         }
         return `<i class="${escapeHtml(icon)}"></i>`;
+    }
+
+    function automaticVariableIcon(item) {
+        if (item?.iconManual === true) {
+            return normalizeSymconIcon(item.icon || 'fa-light fa-circle');
+        }
+        const associations = Array.isArray(item?._profile?.associations) ? item._profile.associations : [];
+        const raw = item?._rawValue;
+        const variableType = Number(item?._variableType);
+        const current = associations.find(association => {
+            if (variableType === 0) {
+                return Boolean(Number(association?.value)) === Boolean(truthyVariableValue(raw));
+            }
+            const av = Number(association?.value);
+            const rv = Number(raw);
+            return Number.isFinite(av) && Number.isFinite(rv) ? av === rv : String(association?.value) === String(raw);
+        });
+        if (current && String(current.icon || '').trim() !== '') {
+            return normalizeSymconIcon(String(current.icon));
+        }
+        const objectIcon = String(item?._objectIcon || '').trim();
+        if (objectIcon !== '') {
+            return normalizeSymconIcon(objectIcon);
+        }
+        return normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
     }
 
     function renderSymconGlyph(icon, radius, storedSvg = '') {
@@ -2820,7 +2845,7 @@ class Floorplaner extends IPSModuleStrict
             // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
             const lightClass = '';
             const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = item.icon || defaultSymconIconForLegacyKind(item.kind);
+            const icon = automaticVariableIcon(item);
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -2875,7 +2900,7 @@ class Floorplaner extends IPSModuleStrict
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '')}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconManual === true ? (item.iconSvg || '') : '')}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
