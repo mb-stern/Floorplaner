@@ -2429,7 +2429,7 @@ class Floorplaner extends IPSModuleStrict
         const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
         const content = svgHtml !== ''
             ? svgHtml
-            : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>';
+            : `<i class="${escapeHtml(parsed.cls)}"></i>`;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
             `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
@@ -2820,9 +2820,7 @@ class Floorplaner extends IPSModuleStrict
             // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
             const lightClass = '';
             const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = item.iconManual === true
-                ? (item.icon || defaultSymconIconForLegacyKind(item.kind))
-                : (item._presentationIcon || item._objectIcon || item.icon || defaultSymconIconForLegacyKind(item.kind));
+            const icon = item.icon || defaultSymconIconForLegacyKind(item.kind);
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -4789,7 +4787,7 @@ class Floorplaner extends IPSModuleStrict
             if (!item) return;
             item.iconManual = false;
             item.iconSvg = '';
-            item.icon = item._presentationIcon || item._objectIcon || 'fa-light fa-circle';
+            item.icon = item._objectIcon || 'fa-light fa-circle';
             iconModal.classList.remove('open');
             iconModal.setAttribute('aria-hidden', 'true');
             pushHistory();
@@ -4844,7 +4842,6 @@ class Floorplaner extends IPSModuleStrict
         const profileKey = prefix ? `_${prefix}Profile` : '_profile';
         const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
         const objectIconKey = prefix ? `_${prefix}ObjectIcon` : '_objectIcon';
-        const presentationIconKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4855,18 +4852,16 @@ class Floorplaner extends IPSModuleStrict
         entity[profileKey] = node?.profile || null;
         entity[canActionKey] = node?.canAction === true;
         entity[objectIconKey] = node?.objectIcon || '';
-        entity[presentationIconKey] = node?.presentationIcon || '';
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
 
-        // Automatik:
-        // - Neue Variablendarstellung: aktuelles Icon aus IPS_GetVariablePresentation()
-        // - Legacy: ausschließlich ObjectIcon aus den zusätzlichen visuellen Eigenschaften
-        // Profil-/Assoziations-Icons werden NICHT als Geräteicon verwendet.
+        // Das Icon wird beim Zuordnen der Hauptvariable automatisch aus
+        // IPS_GetObject(...)[ObjectIcon] übernommen, solange der Benutzer
+        // im Floorplaner noch kein eigenes Icon gewählt hat.
         if (entityType === 'item' && field === 'variableID') {
             if (node && entity.iconManual !== true) {
-                entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
+                entity.icon = node.objectIcon || 'fa-light fa-circle';
                 entity.iconSvg = '';
             }
             if (!node && entity.iconManual !== true) {
@@ -5055,8 +5050,8 @@ class Floorplaner extends IPSModuleStrict
                         if (Number(item.variableID || 0) === variableID) {
                             const manualIcon = item.iconManual === true;
                             Object.assign(item, meta);
-                            if (!manualIcon) {
-                                item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                            if (!manualIcon && meta._objectIcon !== undefined) {
+                                item.icon = meta._objectIcon || 'fa-light fa-circle';
                                 item.iconSvg = '';
                             }
                         }
@@ -5608,9 +5603,7 @@ HTML;
                                         'valueText'      => 'ValueText',
                                         'profileName'    => 'ProfileName',
                                         'profileSummary' => 'ProfileSummary',
-                                        'profile'          => 'Profile',
-                                        'presentationIcon' => 'PresentationIcon',
-                                        'objectIcon'       => 'ObjectIcon'
+                                        'profile'        => 'Profile'
                                     ];
                                     $targetKey = '_' . $prefix . ($mapSuffix[$suffix] ?? ucfirst($suffix));
                                 }
@@ -5685,7 +5678,6 @@ HTML;
                     $node['profileSummary'] = $meta['_profileSummary'] ?? '';
                     $node['profile'] = $meta['_profile'] ?? null;
                     $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
-                    $node['presentationIcon'] = (string) ($meta['_presentationIcon'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -5714,90 +5706,6 @@ HTML;
         );
 
         return $result;
-    }
-
-    private function GetCurrentPresentationIcon(int $VariableID, mixed $RawValue): string
-    {
-        // IPS_GetVariablePresentation gibt es ab Symcon 8.1.
-        // function_exists verhindert einen roten Fehlerbalken auf Installationen,
-        // auf denen die Funktion aus irgendeinem Grund nicht verfügbar ist.
-        if (!function_exists('IPS_GetVariablePresentation')) {
-            return '';
-        }
-
-        try {
-            $presentation = IPS_GetVariablePresentation($VariableID);
-            if (!is_array($presentation) || $presentation === []) {
-                return '';
-            }
-
-            // Schalter: ICON_TRUE gilt auch für false, solange USE_ICON_FALSE=false ist.
-            if (array_key_exists('ICON_TRUE', $presentation)) {
-                $iconTrue = trim((string) ($presentation['ICON_TRUE'] ?? ''));
-                $useIconFalse = (bool) ($presentation['USE_ICON_FALSE'] ?? false);
-                $iconFalse = trim((string) ($presentation['ICON_FALSE'] ?? ''));
-
-                if (is_bool($RawValue)) {
-                    if ($RawValue) {
-                        return $iconTrue;
-                    }
-                    if ($useIconFalse && $iconFalse !== '') {
-                        return $iconFalse;
-                    }
-                    return $iconTrue;
-                }
-            }
-
-            // Aufzählung/Werteanzeige: OPTIONS kommt je nach Darstellung als JSON-String.
-            if (isset($presentation['OPTIONS'])) {
-                $options = $presentation['OPTIONS'];
-                if (is_string($options) && trim($options) !== '') {
-                    $decoded = json_decode($options, true);
-                    if (is_array($decoded)) {
-                        $options = $decoded;
-                    }
-                }
-
-                if (is_array($options)) {
-                    foreach ($options as $option) {
-                        if (!is_array($option)) {
-                            continue;
-                        }
-
-                        $optionValue = $option['Value'] ?? null;
-                        $matches = false;
-
-                        if (is_bool($RawValue)) {
-                            $matches = ((bool) $optionValue) === $RawValue;
-                        } elseif (is_int($RawValue) || is_float($RawValue)) {
-                            $matches = is_numeric($optionValue) && ((float) $optionValue === (float) $RawValue);
-                        } else {
-                            $matches = (string) $optionValue === (string) $RawValue;
-                        }
-
-                        if (!$matches) {
-                            continue;
-                        }
-
-                        $iconActive = !array_key_exists('IconActive', $option) || (bool) $option['IconActive'];
-                        $iconValue = trim((string) ($option['IconValue'] ?? ''));
-                        if ($iconActive && $iconValue !== '') {
-                            return $iconValue;
-                        }
-                    }
-                }
-            }
-
-            // Darstellungen mit einem einzigen Icon.
-            $icon = trim((string) ($presentation['ICON'] ?? ''));
-            if ($icon !== '') {
-                return $icon;
-            }
-        } catch (Throwable $e) {
-            $this->SendDebug('VariablePresentationIcon', $e->getMessage(), 0);
-        }
-
-        return '';
     }
 
     private function GetVariableRuntimeMeta(int $VariableID): array
@@ -5863,12 +5771,10 @@ HTML;
         $actionID = (int) (($variableInfo['VariableCustomAction'] ?? 0) ?: ($variableInfo['VariableAction'] ?? 0));
 
         $objectInfo = IPS_GetObject($VariableID);
-        $presentationIcon = $this->GetCurrentPresentationIcon($VariableID, $rawValue);
 
         return [
-            '_variableType'     => $variableType,
-            '_presentationIcon' => $presentationIcon,
-            '_objectIcon'       => (string) ($objectInfo['ObjectIcon'] ?? ''),
+            '_variableType'   => $variableType,
+            '_objectIcon'     => (string) ($objectInfo['ObjectIcon'] ?? ''),
             '_variablePath'   => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
