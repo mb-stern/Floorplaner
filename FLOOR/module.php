@@ -2455,33 +2455,11 @@ class Floorplaner extends IPSModuleStrict
             return normalizeSymconIcon(item.icon || 'fa-light fa-circle');
         }
 
-        const raw = item?._rawValue;
-        const variableType = Number(item?._variableType);
-
-        // 1) Aktuelle IP-Symcon-Darstellung (ab 8.1). OPTIONS kann pro Wert
-        // ein eigenes Icon enthalten, z. B. Aus/Ein bei Boolean.
-        const presentationOptions = Array.isArray(item?._presentation?.options) ? item._presentation.options : [];
-        const presentationEntry = symconAssociationForValue(presentationOptions, raw, variableType);
-        if (presentationEntry && presentationEntry.iconActive !== false && String(presentationEntry.icon || '').trim() !== '') {
-            return normalizeSymconIcon(String(presentationEntry.icon));
-        }
-        const presentationIcon = String(item?._presentation?.icon || '').trim();
-        if (presentationIcon !== '') {
-            return normalizeSymconIcon(presentationIcon);
+        const resolved = String(item?._autoIcon || '').trim();
+        if (resolved !== '') {
+            return normalizeSymconIcon(resolved);
         }
 
-        // 2) Klassisches Variablenprofil als Fallback.
-        const associations = Array.isArray(item?._profile?.associations) ? item._profile.associations : [];
-        const profileEntry = symconAssociationForValue(associations, raw, variableType);
-        if (profileEntry && String(profileEntry.icon || '').trim() !== '') {
-            return normalizeSymconIcon(String(profileEntry.icon));
-        }
-        const profileIcon = String(item?._profile?.icon || '').trim();
-        if (profileIcon !== '') {
-            return normalizeSymconIcon(profileIcon);
-        }
-
-        // 3) Objekt-Icon / gespeicherter Legacy-Fallback.
         const objectIcon = String(item?._objectIcon || '').trim();
         if (objectIcon !== '') {
             return normalizeSymconIcon(objectIcon);
@@ -4799,20 +4777,23 @@ class Floorplaner extends IPSModuleStrict
             .trim();
     }
 
-    function renderSymconIconPicker(filter = '') {
-        if (!iconList) return;
-        const query = String(filter || '').trim().toLowerCase();
-        const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
-        const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
-        const current = normalizeSymconIcon(item?.icon || 'fa-light fa-circle');
-        const icons = availableSymconIcons().filter(icon => !query || iconSearchText(icon).includes(query));
-        const shown = icons.slice(0, 500);
-        iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
-            const cls = icon === current ? ' current' : '';
-            const preview = fontAwesomeSvgHtml(icon) || `<i class="${escapeHtml(icon)}"></i>`;
-            return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}">${preview}</button>`;
-        }).join('') + `</div>` + (icons.length > shown.length ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>` : '');
+    const curatedSymconIconGroups = [
+        { name: 'Allgemein', icons: ['fa-light fa-circle','fa-light fa-house','fa-light fa-power-off','fa-light fa-toggle-on','fa-light fa-gear','fa-light fa-circle-info','fa-light fa-triangle-exclamation'] },
+        { name: 'Licht & Energie', icons: ['fa-light fa-lightbulb','fa-light fa-lamp','fa-light fa-plug','fa-light fa-bolt','fa-light fa-gauge','fa-light fa-battery-half','fa-light fa-sun'] },
+        { name: 'Klima & Wasser', icons: ['fa-light fa-temperature-half','fa-light fa-droplet','fa-light fa-droplet-percent','fa-light fa-fan','fa-light fa-radiator','fa-light fa-fire','fa-light fa-snowflake','fa-light fa-wind','fa-light fa-water'] },
+        { name: 'Haus & Beschattung', icons: ['fa-light fa-window-frame','fa-light fa-door-open','fa-light fa-lock','fa-light fa-unlock','fa-light fa-blinds'] },
+        { name: 'Sicherheit & Präsenz', icons: ['fa-light fa-camera','fa-light fa-bell','fa-light fa-person','fa-light fa-person-walking','fa-light fa-eye'] },
+        { name: 'Medien & Geräte', icons: ['fa-light fa-tv','fa-light fa-speaker','fa-light fa-music','fa-light fa-washing-machine','fa-light fa-dishwasher'] },
+        { name: 'Mobilität & Zeit', icons: ['fa-light fa-car','fa-light fa-bicycle','fa-light fa-clock','fa-light fa-calendar','fa-light fa-wifi','fa-light fa-network-wired'] }
+    ];
 
+    function iconButtonHtml(icon, current) {
+        const cls = icon === current ? ' current' : '';
+        const preview = fontAwesomeSvgHtml(icon) || `<i class="${escapeHtml(icon)}"></i>`;
+        return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}">${preview}</button>`;
+    }
+
+    function bindIconPickerButtons() {
         iconList.querySelectorAll('[data-symcon-icon]').forEach(button => {
             button.addEventListener('click', () => {
                 const targetFloor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
@@ -4820,8 +4801,6 @@ class Floorplaner extends IPSModuleStrict
                 if (!targetItem) return;
                 targetItem.icon = String(button.dataset.symconIcon || 'fa-light fa-circle');
                 targetItem.iconManual = true;
-                // /icons.js ersetzt die <i>-Vorschau üblicherweise durch ein echtes <svg>.
-                // Dieses konkrete SVG wird mit dem Gerät gespeichert und später direkt wiederverwendet.
                 const renderedSvg = button.querySelector('svg');
                 targetItem.iconSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(targetItem.icon) || '');
                 iconModal.classList.remove('open');
@@ -4832,6 +4811,32 @@ class Floorplaner extends IPSModuleStrict
                 renderProperties();
             });
         });
+    }
+
+    function renderSymconIconPicker(filter = '') {
+        if (!iconList) return;
+        const query = String(filter || '').trim().toLowerCase();
+        const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
+        const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
+        const current = normalizeSymconIcon(item?.icon || 'fa-light fa-circle');
+
+        if (!query) {
+            iconList.innerHTML = curatedSymconIconGroups.map(group => {
+                const buttons = group.icons.map(icon => iconButtonHtml(icon, current)).join('');
+                return `<div style="padding:4px 8px 10px"><div style="margin:4px 0 6px;color:var(--fp-muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(group.name)}</div><div class="symcon-icon-grid">${buttons}</div></div>`;
+            }).join('') +
+            `<div class="profile-hint" style="padding:10px 14px">Weitere Symcon-Icons findest du über die Suche oben.</div>`;
+            bindIconPickerButtons();
+            return;
+        }
+
+        const icons = availableSymconIcons().filter(icon => iconSearchText(icon).includes(query));
+        const shown = icons.slice(0, 120);
+        iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => iconButtonHtml(icon, current)).join('') + `</div>` +
+            (icons.length > shown.length
+                ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>`
+                : '');
+        bindIconPickerButtons();
     }
 
     function openSymconIconPicker() {
@@ -5843,46 +5848,157 @@ HTML;
 
         $objectInfo = IPS_GetObject($VariableID);
 
-        // Ab IP-Symcon 8.1 kann die aktuelle Darstellung eigene, wertabhängige
-        // Icons enthalten. Diese Informationen liegen nicht zwingend mehr im
-        // klassischen Variablenprofil. Deshalb lesen wir zusätzlich die
-        // effektive Variablen-Darstellung aus.
+        // Effektive Variablendarstellung ermitteln.
         $presentation = null;
-        if (function_exists('IPS_GetVariablePresentation')) {
-            try {
-                $vp = IPS_GetVariablePresentation($VariableID);
-                if (is_array($vp)) {
-                    $options = [];
-                    $optionsRaw = $vp['OPTIONS'] ?? [];
-                    if (is_string($optionsRaw) && $optionsRaw !== '') {
-                        $decodedOptions = json_decode($optionsRaw, true);
-                        if (is_array($decodedOptions)) {
-                            $optionsRaw = $decodedOptions;
-                        }
-                    }
-                    if (is_array($optionsRaw)) {
-                        foreach ($optionsRaw as $option) {
-                            if (!is_array($option)) {
-                                continue;
-                            }
-                            $options[] = [
-                                'value'      => $option['Value'] ?? null,
-                                'name'       => (string) ($option['Caption'] ?? $option['Name'] ?? ''),
-                                'icon'       => (string) ($option['IconValue'] ?? $option['Icon'] ?? ''),
-                                'iconActive' => (bool) ($option['IconActive'] ?? (($option['IconValue'] ?? '') !== '')),
-                                'color'      => (int) ($option['Color'] ?? $option['ColorValue'] ?? -1)
-                            ];
-                        }
-                    }
+        $effectivePresentation = [];
 
-                    $presentation = [
-                        'icon'    => (string) ($vp['ICON'] ?? ''),
-                        'options' => $options
-                    ];
+        try {
+            if (function_exists('IPS_GetVariablePresentation')) {
+                $candidate = IPS_GetVariablePresentation($VariableID);
+                if (is_array($candidate)) {
+                    $effectivePresentation = $candidate;
                 }
-            } catch (Throwable $e) {
-                $this->SendDebug('VariablePresentation', $VariableID . ': ' . $e->getMessage(), 0);
             }
+
+            if ($effectivePresentation === []) {
+                $systemPresentation = $variable['VariablePresentation'] ?? [];
+                $customPresentation = $variable['VariableCustomPresentation'] ?? [];
+
+                if (is_array($systemPresentation)) {
+                    $effectivePresentation = $systemPresentation;
+                }
+                if (is_array($customPresentation) && $customPresentation !== []) {
+                    $effectivePresentation = array_replace($effectivePresentation, $customPresentation);
+                }
+            }
+
+            if ($effectivePresentation !== []) {
+                $options = [];
+                $optionsRaw = $effectivePresentation['OPTIONS'] ?? [];
+
+                if (is_string($optionsRaw) && $optionsRaw !== '') {
+                    $decodedOptions = json_decode($optionsRaw, true);
+                    if (is_array($decodedOptions)) {
+                        $optionsRaw = $decodedOptions;
+                    }
+                }
+
+                if (is_array($optionsRaw)) {
+                    foreach ($optionsRaw as $option) {
+                        if (!is_array($option)) {
+                            continue;
+                        }
+
+                        $iconValue = (string) (
+                            $option['IconValue']
+                            ?? $option['ICON_VALUE']
+                            ?? $option['Icon']
+                            ?? $option['ICON']
+                            ?? ''
+                        );
+
+                        $iconActive = array_key_exists('IconActive', $option)
+                            ? (bool) $option['IconActive']
+                            : (array_key_exists('ICON_ACTIVE', $option)
+                                ? (bool) $option['ICON_ACTIVE']
+                                : ($iconValue !== ''));
+
+                        $options[] = [
+                            'value'      => $option['Value'] ?? $option['VALUE'] ?? null,
+                            'name'       => (string) ($option['Caption'] ?? $option['CAPTION'] ?? $option['Name'] ?? ''),
+                            'icon'       => $iconValue,
+                            'iconActive' => $iconActive,
+                            'color'      => (int) ($option['Color'] ?? $option['ColorValue'] ?? -1)
+                        ];
+                    }
+                }
+
+                $presentation = [
+                    'icon'    => (string) ($effectivePresentation['ICON'] ?? $effectivePresentation['Icon'] ?? ''),
+                    'options' => $options
+                ];
+            }
+        } catch (Throwable $e) {
+            $this->SendDebug('VariablePresentation', $VariableID . ': ' . $e->getMessage(), 0);
+        }
+
+        $autoIcon = '';
+
+        $matchValue = static function (array $entries, mixed $value, int $type): ?array {
+            if ($entries === []) {
+                return null;
+            }
+
+            if ($type === 0) {
+                $target = (bool) $value;
+                foreach ($entries as $entry) {
+                    if ((bool) ($entry['value'] ?? false) === $target) {
+                        return $entry;
+                    }
+                }
+                return null;
+            }
+
+            if ($type === 3) {
+                foreach ($entries as $entry) {
+                    if ((string) ($entry['value'] ?? '') === (string) $value) {
+                        return $entry;
+                    }
+                }
+                return null;
+            }
+
+            if (is_numeric($value)) {
+                $numeric = [];
+                foreach ($entries as $entry) {
+                    if (isset($entry['value']) && is_numeric($entry['value'])) {
+                        $numeric[] = $entry;
+                    }
+                }
+                usort($numeric, static fn(array $a, array $b): int => (float) $a['value'] <=> (float) $b['value']);
+
+                $match = null;
+                foreach ($numeric as $entry) {
+                    if ((float) $value >= (float) $entry['value']) {
+                        $match = $entry;
+                    } else {
+                        break;
+                    }
+                }
+                return $match ?? ($numeric[0] ?? null);
+            }
+
+            return null;
+        };
+
+        if (is_array($presentation)) {
+            $presentationMatch = $matchValue($presentation['options'] ?? [], $rawValue, $variableType);
+            if (
+                is_array($presentationMatch)
+                && ($presentationMatch['iconActive'] ?? true)
+                && trim((string) ($presentationMatch['icon'] ?? '')) !== ''
+            ) {
+                $autoIcon = trim((string) $presentationMatch['icon']);
+            }
+
+            if ($autoIcon === '' && trim((string) ($presentation['icon'] ?? '')) !== '') {
+                $autoIcon = trim((string) $presentation['icon']);
+            }
+        }
+
+        if ($autoIcon === '' && is_array($profile)) {
+            $profileMatch = $matchValue($profile['associations'] ?? [], $rawValue, $variableType);
+            if (is_array($profileMatch) && trim((string) ($profileMatch['icon'] ?? '')) !== '') {
+                $autoIcon = trim((string) $profileMatch['icon']);
+            }
+
+            if ($autoIcon === '' && trim((string) ($profile['icon'] ?? '')) !== '') {
+                $autoIcon = trim((string) $profile['icon']);
+            }
+        }
+
+        if ($autoIcon === '') {
+            $autoIcon = trim((string) ($objectInfo['ObjectIcon'] ?? ''));
         }
 
         return [
@@ -5895,6 +6011,7 @@ HTML;
             '_profileSummary' => $profileSummary,
             '_profile'        => $profile,
             '_presentation'   => $presentation,
+            '_autoIcon'       => $autoIcon,
             '_canAction'      => $actionID > 0
         ];
     }
