@@ -1395,6 +1395,24 @@ class Floorplaner extends IPSModuleStrict
             outline: 2px solid var(--fp-accent);
         }
 
+        .device-icon-html svg {
+            width: 1em;
+            height: 1em;
+            display: block;
+            margin: auto;
+            fill: currentColor;
+            color: inherit;
+        }
+
+        .symcon-icon-grid button svg {
+            width: 1.15em;
+            height: 1.15em;
+            display: block;
+            margin: auto;
+            fill: currentColor;
+            color: inherit;
+        }
+
         .icon-picker-hint {
             padding: 6px 14px 0;
             color: var(--fp-muted);
@@ -2332,13 +2350,53 @@ class Floorplaner extends IPSModuleStrict
         return slug ? `fa-light fa-${slug}` : 'fa-light fa-circle';
     }
 
-    function renderSymconGlyph(icon, radius) {
+    function parseSymconIcon(icon) {
         const cls = normalizeSymconIcon(icon);
+        const parts = cls.split(/\s+/).filter(Boolean);
+        const styleClass = parts.find(part => /^fa-(light|brands|kit|solid|regular|thin|duotone|sharp)$/.test(part)) || 'fa-light';
+        const iconClass = parts.find(part => /^fa-[a-z0-9-]+$/i.test(part) && part !== styleClass) || 'fa-circle';
+        const prefixMap = {
+            'fa-light': 'fal',
+            'fa-brands': 'fab',
+            'fa-kit': 'fak',
+            'fa-solid': 'fas',
+            'fa-regular': 'far',
+            'fa-thin': 'fat',
+            'fa-duotone': 'fad',
+            'fa-sharp': 'fass'
+        };
+        return {
+            cls,
+            prefix: prefixMap[styleClass] || 'fal',
+            iconName: iconClass.replace(/^fa-/, '')
+        };
+    }
+
+    function fontAwesomeSvgHtml(icon) {
+        const parsed = parseSymconIcon(icon);
+        try {
+            if (window.FontAwesome && typeof window.FontAwesome.icon === 'function') {
+                const rendered = window.FontAwesome.icon({ prefix: parsed.prefix, iconName: parsed.iconName });
+                if (rendered && Array.isArray(rendered.html) && rendered.html.length > 0) {
+                    return rendered.html.join('');
+                }
+            }
+        } catch (e) {
+            // Fallback weiter unten.
+        }
+        return '';
+    }
+
+    function renderSymconGlyph(icon, radius) {
+        const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
         const fontSize = Math.max(12, r * 1.18);
+        const svgHtml = fontAwesomeSvgHtml(parsed.cls);
+        const content = svgHtml !== ''
+            ? svgHtml
+            : `<i class="${escapeHtml(parsed.cls)}"></i>`;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
-            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">` +
-            `<i class="${escapeHtml(cls)}"></i></div></foreignObject>`;
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
 
 
@@ -4645,7 +4703,8 @@ class Floorplaner extends IPSModuleStrict
         const shown = icons.slice(0, 500);
         iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
             const cls = icon === current ? ' current' : '';
-            return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}"><i class="${escapeHtml(icon)}"></i></button>`;
+            const preview = fontAwesomeSvgHtml(icon) || `<i class="${escapeHtml(icon)}"></i>`;
+            return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}">${preview}</button>`;
         }).join('') + `</div>` + (icons.length > shown.length ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>` : '');
 
         iconList.querySelectorAll('[data-symcon-icon]').forEach(button => {
