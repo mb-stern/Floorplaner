@@ -214,6 +214,7 @@ class Floorplaner extends IPSModuleStrict
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="/icons.js"></script>
     <style>
         :root {
             --fp-bg: transparent;
@@ -1333,6 +1334,73 @@ class Floorplaner extends IPSModuleStrict
             cursor: pointer !important;
         }
 
+        /* IP-Symcon / Font-Awesome Icons aus /icons.js */
+        .device-icon-html {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--fp-text);
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .device-icon-html {
+            color: #4f4f4f;
+        }
+
+        .icon-select-button {
+            width: 100%;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 6px 9px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .icon-select-button i {
+            width: 22px;
+            text-align: center;
+            font-size: 18px;
+        }
+
+        .symcon-icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+            gap: 6px;
+            padding: 8px;
+        }
+
+        .symcon-icon-grid button {
+            min-width: 0;
+            height: 46px;
+            padding: 4px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .symcon-icon-grid button:hover,
+        .symcon-icon-grid button.current {
+            outline: 2px solid var(--fp-accent);
+        }
+
+        .icon-picker-hint {
+            padding: 6px 14px 0;
+            color: var(--fp-muted);
+            font-size: 11px;
+        }
+
 </style>
 </head>
 <body>
@@ -1351,7 +1419,7 @@ class Floorplaner extends IPSModuleStrict
                 <b>Bedienung</b><br>
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: Gerätetyp wählen; das passende MDI-Symbol wird automatisch verwendet.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
+                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
                 Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
                 Verschieben: Werkzeug wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
@@ -1423,6 +1491,21 @@ class Floorplaner extends IPSModuleStrict
     </div>
 </div>
 
+<div id="iconModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+        <h3>IP-Symcon Icon auswählen</h3>
+        <div class="modal-search">
+            <input id="iconSearch" placeholder="Icon suchen … z. B. light, temperature, door">
+        </div>
+        <div class="icon-picker-hint">Es werden die von IP-Symcon über /icons.js bereitgestellten Icons verwendet.</div>
+        <div id="iconList" class="variable-list"></div>
+        <div class="modal-actions">
+            <button id="iconAutoBtn" type="button">Icon der Variable übernehmen</button>
+            <button id="iconCloseBtn" type="button">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
 <div id="controlModal" class="modal-backdrop" aria-hidden="true">
     <div class="control-modal">
         <h3 id="controlTitle">Gerät bedienen</h3>
@@ -1452,6 +1535,9 @@ class Floorplaner extends IPSModuleStrict
     const variableModal = document.getElementById('variableModal');
     const variableList = document.getElementById('variableList');
     const variableSearch = document.getElementById('variableSearch');
+    const iconModal = document.getElementById('iconModal');
+    const iconList = document.getElementById('iconList');
+    const iconSearch = document.getElementById('iconSearch');
     const controlModal = document.getElementById('controlModal');
     const controlTitle = document.getElementById('controlTitle');
     const controlBody = document.getElementById('controlBody');
@@ -1459,6 +1545,7 @@ class Floorplaner extends IPSModuleStrict
 
     let state = normalizeProject(initial);
     let variablePickerTarget = null;
+    let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
     let tool = 'select';
@@ -1489,7 +1576,7 @@ class Floorplaner extends IPSModuleStrict
     let propertiesControlActive = false;
 
     function refreshPropertiesAfterStructuralChange() {
-        // Änderungen wie Gerätetyp oder Variablenzuordnung können ganze
+        // Änderungen wie Icon oder Variablenzuordnung können ganze
         // Eigenschaftsblöcke ein-/ausblenden (z.B. Statusfarbe).
         // Nach Abschluss des aktuellen Events die Leiste deshalb gezielt
         // neu aufbauen, statt auf einen Seiten-Reload zu warten.
@@ -1620,6 +1707,14 @@ class Floorplaner extends IPSModuleStrict
             floor.items = Array.isArray(floor.items) ? floor.items : [];
             for (const item of floor.items) {
                 item.statusColor = normalizeStatusColor(item.statusColor);
+                // Migration älterer Projekte: Der frühere Gerätetyp wird nur noch
+                // verwendet, um einmalig ein passendes Standardsymbol zu übernehmen.
+                // Die Bedienlogik hängt NICHT mehr vom Gerätetyp ab.
+                if (!item.icon || String(item.icon).startsWith('mdi:')) {
+                    item.icon = defaultSymconIconForLegacyKind(item.kind);
+                    item.iconManual = false;
+                }
+                if (typeof item.iconManual !== 'boolean') item.iconManual = false;
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -2162,38 +2257,91 @@ class Floorplaner extends IPSModuleStrict
         }
     }
 
-    function iconForKind(kind) {
+    function defaultSymconIconForLegacyKind(kind) {
         const icons = {
-            light: 'mdi:lightbulb',
-            switch: 'mdi:toggle-switch',
-            socket: 'mdi:power-socket-eu',
-            shutter: 'mdi:blinds',
-            temperature: 'mdi:thermometer',
-            humidity: 'mdi:water-percent',
-            motion: 'mdi:motion-sensor',
-            window: 'mdi:window-closed',
-            door: 'mdi:door',
-            climate: 'mdi:thermostat',
-            fan: 'mdi:fan',
-            radiator: 'mdi:radiator',
-            television: 'mdi:television',
-            camera: 'mdi:camera',
-            washer: 'mdi:washing-machine',
-            dishwasher: 'mdi:dishwasher',
-            boiler: 'mdi:water-boiler',
-            car: 'mdi:car-electric',
-            vacuum: 'mdi:robot-vacuum',
-            lock: 'mdi:lock',
-            shutter: 'mdi:blinds',
-            window: 'mdi:window-closed',
-            door: 'mdi:door',
-            generic: 'mdi:circle'
+            light: 'fa-light fa-lightbulb',
+            switch: 'fa-light fa-toggle-on',
+            socket: 'fa-light fa-plug',
+            shutter: 'fa-light fa-blinds',
+            temperature: 'fa-light fa-temperature-half',
+            humidity: 'fa-light fa-droplet-percent',
+            motion: 'fa-light fa-person-walking',
+            window: 'fa-light fa-window-frame',
+            door: 'fa-light fa-door-open',
+            climate: 'fa-light fa-temperature-half',
+            fan: 'fa-light fa-fan',
+            radiator: 'fa-light fa-radiator',
+            television: 'fa-light fa-tv',
+            camera: 'fa-light fa-camera',
+            washer: 'fa-light fa-washing-machine',
+            dishwasher: 'fa-light fa-dishwasher',
+            boiler: 'fa-light fa-water',
+            car: 'fa-light fa-car',
+            vacuum: 'fa-light fa-vacuum-robot',
+            lock: 'fa-light fa-lock',
+            generic: 'fa-light fa-circle'
         };
-        return icons[kind] || icons.generic;
+        return icons[String(kind || 'generic')] || icons.generic;
     }
 
-    // Original Material Design Icons v7.4.47, lokal eingebettet.
-    // Kein CDN, kein Webfont und kein externer Modulimport nötig.
+    const legacySymconIconMap = {
+        'light': 'fa-light fa-lightbulb',
+        'bulb': 'fa-light fa-lightbulb',
+        'lamp': 'fa-light fa-lightbulb',
+        'switch': 'fa-light fa-toggle-on',
+        'power': 'fa-light fa-power-off',
+        'electricity': 'fa-light fa-bolt',
+        'energy': 'fa-light fa-bolt',
+        'temperature': 'fa-light fa-temperature-half',
+        'thermometer': 'fa-light fa-temperature-half',
+        'humidity': 'fa-light fa-droplet-percent',
+        'rainfall': 'fa-light fa-droplet',
+        'window': 'fa-light fa-window-frame',
+        'door': 'fa-light fa-door-open',
+        'lock': 'fa-light fa-lock',
+        'motion': 'fa-light fa-person-walking',
+        'presence': 'fa-light fa-person',
+        'camera': 'fa-light fa-camera',
+        'speaker': 'fa-light fa-speaker',
+        'music': 'fa-light fa-music',
+        'tv': 'fa-light fa-tv',
+        'car': 'fa-light fa-car',
+        'battery': 'fa-light fa-battery-half',
+        'clock': 'fa-light fa-clock',
+        'calendar': 'fa-light fa-calendar',
+        'information': 'fa-light fa-circle-info',
+        'warning': 'fa-light fa-triangle-exclamation',
+        'alert': 'fa-light fa-triangle-exclamation',
+        'gear': 'fa-light fa-gear',
+        'cog': 'fa-light fa-gear',
+        'home': 'fa-light fa-house',
+        'house': 'fa-light fa-house'
+    };
+
+    function normalizeSymconIcon(icon) {
+        const raw = String(icon || '').trim();
+        if (!raw) return 'fa-light fa-circle';
+        if (/\bfa-(light|brands|kit|solid|regular|thin|duotone|sharp)\b/.test(raw) && /\bfa-[a-z0-9-]+\b/.test(raw.replace(/fa-(light|brands|kit|solid|regular|thin|duotone|sharp)/g, ''))) {
+            return raw;
+        }
+        if (/^fa-[a-z0-9-]+$/i.test(raw)) return `fa-light ${raw}`;
+        const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (legacySymconIconMap[key]) return legacySymconIconMap[key];
+        // Alte Symcon-Iconnamen bestmöglich auf Font-Awesome-Namen abbilden.
+        const slug = raw.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/[_\s]+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+        return slug ? `fa-light fa-${slug}` : 'fa-light fa-circle';
+    }
+
+    function renderSymconGlyph(icon, radius) {
+        const cls = normalizeSymconIcon(icon);
+        const r = Math.max(8, Number(radius) || 18);
+        const fontSize = Math.max(12, r * 1.18);
+        return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">` +
+            `<i class="${escapeHtml(cls)}"></i></div></foreignObject>`;
+    }
+
+
     const originalMdiPaths = {
         'mdi:lightbulb': 'M12,2A7,7 0 0,0 5,9C5,11.38 6.19,13.47 8,14.74V17A1,1 0 0,0 9,18H15A1,1 0 0,0 16,17V14.74C17.81,13.47 19,11.38 19,9A7,7 0 0,0 12,2M9,21A1,1 0 0,0 10,22H14A1,1 0 0,0 15,21V20H9V21Z',
         'mdi:toggle-switch': 'M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z',
@@ -2577,30 +2725,11 @@ class Floorplaner extends IPSModuleStrict
             // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
             // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
             // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
-            const lightClass = item.kind === 'light' && isBooleanDevice
-                ? (boolActive ? ' active-light' : ' inactive-light')
-                : '';
+            const lightClass = '';
             const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = iconForKind(item.kind);
+            const icon = item.icon || defaultSymconIconForLegacyKind(item.kind);
 
             const showName = item.showName === true;
-            const legacyShowState = item.showState === true || (item.showState == null && ['temperature','humidity'].includes(item.kind));
-
-            // Bestehende Projekte bleiben kompatibel. Temperatur und Feuchte
-            // werden ohne explizite Einstellung automatisch als reiner Wert dargestellt.
-            const inferredSensorKind = inferSensorKindFromVariableNode({
-                profile: item._profile,
-                profileName: item._profileName,
-                path: item._variablePath,
-                valueText: item._valueText
-            });
-            // Nur neutrale Geräte automatisch als Temperatur/Feuchte erkennen.
-            // Ein bewusst gewähltes Klima-/Heizungs-Bedienteil darf dadurch
-            // nicht wieder auf "Temperatur" zurückspringen.
-            if (inferredSensorKind && (item.kind || 'generic') === 'generic') {
-                item.kind = inferredSensorKind;
-            }
-
             const showValue = item.showValue === true;
             const showIcon = item.showIcon !== false;
             const valueText = item._valueText !== undefined && item._valueText !== ''
@@ -2651,17 +2780,9 @@ class Floorplaner extends IPSModuleStrict
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
-                    ? (item.kind === 'climate'
-                        ? `<g class="climate-panel-symbol" transform="rotate(${Number(item.angle) || 0})">` +
-                          `<rect class="climate-panel" x="${-radius * .95}" y="${-radius * .68}" width="${radius * 1.9}" height="${radius * 1.36}" rx="${Math.max(2, radius * .16)}"/>` +
-                          `<rect class="climate-panel-display" x="${-radius * .62}" y="${-radius * .38}" width="${radius * 1.24}" height="${radius * .48}" rx="${Math.max(1.5, radius * .08)}"/>` +
-                          `<circle class="climate-panel-dot" cx="${-radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
-                          `<circle class="climate-panel-dot" cx="0" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
-                          `<circle class="climate-panel-dot" cx="${radius * .28}" cy="${radius * .34}" r="${Math.max(1.2, radius * .07)}"/>` +
-                          `</g>`
-                        : `<circle r="${radius}"/>` +
-                          (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                          `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderMdiGlyph(icon, radius * .78)}</g>`)
+                    ? `<circle r="${radius}"/>` +
+                      (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78)}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
@@ -2730,21 +2851,11 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function supportsStatusColor(item) {
-        const kind = String(item?.kind || 'generic');
-        if (['temperature', 'humidity', 'climate'].includes(kind)) {
-            return false;
-        }
-
+        // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
+        // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
         const type = Number(item?._variableType);
-        if (type === 0) {
-            return ['generic', 'light', 'switch', 'socket', 'motion'].includes(kind);
-        }
-
-        if (type === 1 || type === 2) {
-            return numericStatusLevel(item) !== null &&
-                ['generic', 'light', 'switch', 'socket', 'motion'].includes(kind);
-        }
-
+        if (type === 0) return true;
+        if (type === 1 || type === 2) return numericStatusLevel(item) !== null;
         return false;
     }
 
@@ -3084,7 +3195,7 @@ class Floorplaner extends IPSModuleStrict
     function renderProperties() {
         // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
         // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
-        // (Möbeltyp, Gerätetyp, Symbol, Profil-nahe Auswahlfelder usw.).
+        // (Möbeltyp, Icon, Profil-nahe Auswahlfelder usw.).
         //
         // document.activeElement allein reicht nicht in allen Browsern/HTML-SDK-
         // Situationen zuverlässig aus. Daher merken wir zusätzlich, ob gerade
@@ -3193,30 +3304,12 @@ class Floorplaner extends IPSModuleStrict
             properties.innerHTML = `
                 <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || '')}"></div>
                 <div class="field">
-                    <label>Gerätetyp</label>
-                    <select data-field="kind">
-                        <option value="generic"${kind === 'generic' ? ' selected' : ''}>Allgemein</option>
-                        <option value="light"${kind === 'light' ? ' selected' : ''}>Licht</option>
-                        <option value="switch"${kind === 'switch' ? ' selected' : ''}>Schalter</option>
-                        <option value="socket"${kind === 'socket' ? ' selected' : ''}>Steckdose</option>
-                        <option value="temperature"${kind === 'temperature' ? ' selected' : ''}>Temperatur</option>
-                        <option value="humidity"${kind === 'humidity' ? ' selected' : ''}>Feuchte</option>
-                        <option value="motion"${kind === 'motion' ? ' selected' : ''}>Bewegung / Präsenz</option>
-                        <option value="climate"${kind === 'climate' ? ' selected' : ''}>Klima / Thermostat</option>
-                        <option value="radiator"${kind === 'radiator' ? ' selected' : ''}>Heizung / Radiator</option>
-                        <option value="fan"${kind === 'fan' ? ' selected' : ''}>Ventilator</option>
-                        <option value="shutter"${kind === 'shutter' ? ' selected' : ''}>Rollladen / Jalousie / Markise</option>
-                        <option value="window"${kind === 'window' ? ' selected' : ''}>Fenster</option>
-                        <option value="door"${kind === 'door' ? ' selected' : ''}>Tür</option>
-                        <option value="lock"${kind === 'lock' ? ' selected' : ''}>Schloss</option>
-                        <option value="television"${kind === 'television' ? ' selected' : ''}>Fernseher</option>
-                        <option value="camera"${kind === 'camera' ? ' selected' : ''}>Kamera</option>
-                        <option value="washer"${kind === 'washer' ? ' selected' : ''}>Waschmaschine</option>
-                        <option value="dishwasher"${kind === 'dishwasher' ? ' selected' : ''}>Geschirrspüler</option>
-                        <option value="boiler"${kind === 'boiler' ? ' selected' : ''}>Boiler / Warmwasser</option>
-                        <option value="car"${kind === 'car' ? ' selected' : ''}>Elektroauto</option>
-                        <option value="vacuum"${kind === 'vacuum' ? ' selected' : ''}>Saugroboter</option>
-                    </select>
+                    <label>Icon</label>
+                    <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
+                        <i class="${escapeHtml(normalizeSymconIcon(obj.icon || defaultSymconIconForLegacyKind(obj.kind)))}"></i>
+                        <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
+                    </button>
+                    <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
                 </div>
                 <div class="field">
                     <label>IP-Symcon Variable</label>
@@ -3360,19 +3453,6 @@ class Floorplaner extends IPSModuleStrict
                     obj.displayModeManual = true;
                 }
 
-                if (selected.type === 'item' && fieldName === 'kind') {
-                    // Der Gerätetyp bestimmt das Symbol vollständig.
-                    // Einen eventuell aus älteren Versionen gespeicherten Icon-Override verwerfen.
-                    obj.icon = '';
-                    obj.displayMode = ['temperature','humidity'].includes(String(value)) ? 'value' : 'icon';
-                    obj.displayModeManual = false;
-                    if (['temperature','humidity'].includes(String(value))) {
-                        obj.showIcon = false;
-                        obj.showValue = true;
-                    }
-                    refreshPropertiesAfterStructuralChange();
-                }
-
                 if (selected.type === 'furniture' && fieldName === 'type') {
                     const oldTpl = furnitureTemplates[oldFurnitureType];
                     const newTpl = furnitureTemplates[value];
@@ -3436,6 +3516,15 @@ class Floorplaner extends IPSModuleStrict
                 render();
             });
         });
+
+        const itemIconSelect = properties.querySelector('#itemIconSelect');
+        if (itemIconSelect) {
+            itemIconSelect.addEventListener('click', () => {
+                if (!selected || selected.type !== 'item') return;
+                iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id};
+                openSymconIconPicker();
+            });
+        }
 
         properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
             field.addEventListener('click', () => {
@@ -4041,7 +4130,9 @@ class Floorplaner extends IPSModuleStrict
                 variableID: 0,
                 size: 18,
                 angle: 0,
-                kind: 'generic',
+                kind: 'generic', // nur noch für Migration älterer Projekte
+                icon: 'fa-light fa-circle',
+                iconManual: false,
                 showName: false,
                 showValue: false,
                 showIcon: true,
@@ -4501,6 +4592,117 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
+    const fallbackSymconIcons = [
+        'fa-light fa-circle','fa-light fa-house','fa-light fa-lightbulb','fa-light fa-lamp','fa-light fa-plug',
+        'fa-light fa-power-off','fa-light fa-toggle-on','fa-light fa-bolt','fa-light fa-gauge','fa-light fa-temperature-half',
+        'fa-light fa-droplet','fa-light fa-droplet-percent','fa-light fa-fan','fa-light fa-radiator','fa-light fa-fire',
+        'fa-light fa-snowflake','fa-light fa-sun','fa-light fa-cloud','fa-light fa-wind','fa-light fa-window-frame',
+        'fa-light fa-door-open','fa-light fa-lock','fa-light fa-unlock','fa-light fa-blinds','fa-light fa-camera',
+        'fa-light fa-bell','fa-light fa-person','fa-light fa-person-walking','fa-light fa-eye','fa-light fa-tv',
+        'fa-light fa-speaker','fa-light fa-music','fa-light fa-washing-machine','fa-light fa-dishwasher','fa-light fa-water',
+        'fa-light fa-car','fa-light fa-bicycle','fa-light fa-battery-half','fa-light fa-clock','fa-light fa-calendar',
+        'fa-light fa-circle-info','fa-light fa-triangle-exclamation','fa-light fa-gear','fa-light fa-wifi','fa-light fa-network-wired'
+    ];
+
+    function availableSymconIcons() {
+        const result = new Set(fallbackSymconIcons);
+        const addDefinitions = (defs) => {
+            if (!defs || typeof defs !== 'object') return;
+            const prefixClass = {
+                fal: 'fa-light', fab: 'fa-brands', fak: 'fa-kit',
+                fas: 'fa-solid', far: 'fa-regular', fat: 'fa-thin', fad: 'fa-duotone'
+            };
+            for (const [prefix, icons] of Object.entries(defs)) {
+                if (!icons || typeof icons !== 'object') continue;
+                const style = prefixClass[prefix] || (prefix.startsWith('fa-') ? prefix : '');
+                if (!style) continue;
+                for (const name of Object.keys(icons)) {
+                    if (/^[a-z0-9-]+$/i.test(name)) result.add(`${style} fa-${name}`);
+                }
+            }
+        };
+
+        try { addDefinitions(window.FontAwesome?.library?.definitions); } catch (e) {}
+        try { addDefinitions(window.___FONT_AWESOME___?.styles); } catch (e) {}
+        return Array.from(result).sort((a, b) => a.localeCompare(b));
+    }
+
+    function iconSearchText(iconClass) {
+        return String(iconClass || '')
+            .replace(/fa-(light|brands|kit|solid|regular|thin|duotone)\s*/g, '')
+            .replace(/\bfa-/g, '')
+            .replace(/-/g, ' ')
+            .trim();
+    }
+
+    function renderSymconIconPicker(filter = '') {
+        if (!iconList) return;
+        const query = String(filter || '').trim().toLowerCase();
+        const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
+        const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
+        const current = normalizeSymconIcon(item?.icon || 'fa-light fa-circle');
+        const icons = availableSymconIcons().filter(icon => !query || iconSearchText(icon).includes(query));
+        const shown = icons.slice(0, 500);
+        iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
+            const cls = icon === current ? ' current' : '';
+            return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}"><i class="${escapeHtml(icon)}"></i></button>`;
+        }).join('') + `</div>` + (icons.length > shown.length ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>` : '');
+
+        iconList.querySelectorAll('[data-symcon-icon]').forEach(button => {
+            button.addEventListener('click', () => {
+                const targetFloor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
+                const targetItem = targetFloor?.items?.find(i => i.id === iconPickerTarget?.itemId);
+                if (!targetItem) return;
+                targetItem.icon = String(button.dataset.symconIcon || 'fa-light fa-circle');
+                targetItem.iconManual = true;
+                iconModal.classList.remove('open');
+                iconModal.setAttribute('aria-hidden', 'true');
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+            });
+        });
+    }
+
+    function openSymconIconPicker() {
+        if (!iconModal || !iconList || !iconSearch) return;
+        iconSearch.value = '';
+        iconModal.classList.add('open');
+        iconModal.setAttribute('aria-hidden', 'false');
+        // icons.js initialisiert die Font-Awesome-Bibliothek synchron bzw. sehr früh.
+        // Ein kurzer Microtask erlaubt dem Register, vollständig verfügbar zu sein.
+        Promise.resolve().then(() => renderSymconIconPicker(''));
+        setTimeout(() => iconSearch.focus(), 0);
+    }
+
+    if (iconModal && iconSearch && iconList) {
+        iconSearch.addEventListener('input', () => renderSymconIconPicker(iconSearch.value));
+        document.getElementById('iconCloseBtn')?.addEventListener('click', () => {
+            iconModal.classList.remove('open');
+            iconModal.setAttribute('aria-hidden', 'true');
+        });
+        document.getElementById('iconAutoBtn')?.addEventListener('click', () => {
+            const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
+            const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
+            if (!item) return;
+            item.iconManual = false;
+            item.icon = item._objectIcon || 'fa-light fa-circle';
+            iconModal.classList.remove('open');
+            iconModal.setAttribute('aria-hidden', 'true');
+            pushHistory();
+            markDirty();
+            render();
+            renderProperties();
+        });
+        iconModal.addEventListener('click', evt => {
+            if (evt.target === iconModal) {
+                iconModal.classList.remove('open');
+                iconModal.setAttribute('aria-hidden', 'true');
+            }
+        });
+    }
+
     function assignVariable(variableID) {
         if (!variablePickerTarget) return;
 
@@ -4539,6 +4741,7 @@ class Floorplaner extends IPSModuleStrict
         const profileSummaryKey = prefix ? `_${prefix}ProfileSummary` : '_profileSummary';
         const profileKey = prefix ? `_${prefix}Profile` : '_profile';
         const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
+        const objectIconKey = prefix ? `_${prefix}ObjectIcon` : '_objectIcon';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4548,18 +4751,20 @@ class Floorplaner extends IPSModuleStrict
         entity[profileSummaryKey] = node?.profileSummary || '';
         entity[profileKey] = node?.profile || null;
         entity[canActionKey] = node?.canAction === true;
+        entity[objectIconKey] = node?.objectIcon || '';
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
 
-        // Bei der Hauptvariable eines Geräts Temperatur/Feuchte automatisch
-        // erkennen und ohne Icon direkt als Messwert anzeigen.
-        if (entityType === 'item' && field === 'variableID' && node) {
-            const inferredKind = inferSensorKindFromVariableNode(node);
-            if (inferredKind && (entity.kind || 'generic') === 'generic') {
-                entity.kind = inferredKind;
-                entity.displayMode = 'value';
-                entity.displayModeManual = false;
+        // Das Icon wird beim Zuordnen der Hauptvariable automatisch aus
+        // IPS_GetObject(...)[ObjectIcon] übernommen, solange der Benutzer
+        // im Floorplaner noch kein eigenes Icon gewählt hat.
+        if (entityType === 'item' && field === 'variableID') {
+            if (node && entity.iconManual !== true) {
+                entity.icon = node.objectIcon || 'fa-light fa-circle';
+            }
+            if (!node && entity.iconManual !== true) {
+                entity.icon = 'fa-light fa-circle';
             }
         }
 
@@ -4741,7 +4946,11 @@ class Floorplaner extends IPSModuleStrict
                 for (const floor of state.floors || []) {
                             for (const item of floor.items || []) {
                         if (Number(item.variableID || 0) === variableID) {
+                            const manualIcon = item.iconManual === true;
                             Object.assign(item, meta);
+                            if (!manualIcon && meta._objectIcon !== undefined) {
+                                item.icon = meta._objectIcon || 'fa-light fa-circle';
+                            }
                         }
                     }
 
@@ -5343,6 +5552,7 @@ HTML;
                 'path'           => $path,
                 'objectType'     => $objectType,
                 'objectTypeName' => $typeNames[$objectType] ?? ('Objekttyp ' . $objectType),
+                'objectIcon'     => (string) ($object['ObjectIcon'] ?? ''),
                 'children'       => []
             ];
 
@@ -5457,8 +5667,11 @@ HTML;
         $variableInfo = IPS_GetVariable($VariableID);
         $actionID = (int) (($variableInfo['VariableCustomAction'] ?? 0) ?: ($variableInfo['VariableAction'] ?? 0));
 
+        $objectInfo = IPS_GetObject($VariableID);
+
         return [
             '_variableType'   => $variableType,
+            '_objectIcon'     => (string) ($objectInfo['ObjectIcon'] ?? ''),
             '_variablePath'   => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
