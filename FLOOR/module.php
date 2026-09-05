@@ -1371,6 +1371,24 @@ class Floorplaner extends IPSModuleStrict
             font-size: 18px;
         }
 
+        .icon-select-preview {
+            width: 24px;
+            height: 24px;
+            flex: 0 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: currentColor;
+        }
+
+        .icon-select-preview svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+            fill: currentColor;
+            color: inherit;
+        }
+
         .symcon-icon-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
@@ -2388,6 +2406,19 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
+    function propertyIconPreviewHtml(item) {
+        const icon = normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
+        const storedSvg = String(item?.iconSvg || '').trim();
+        if (storedSvg.startsWith('<svg')) {
+            return storedSvg;
+        }
+        const generated = fontAwesomeSvgHtml(icon);
+        if (generated) {
+            return generated;
+        }
+        return `<i class="${escapeHtml(icon)}"></i>`;
+    }
+
     function renderSymconGlyph(icon, radius, storedSvg = '') {
         const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
@@ -3368,7 +3399,7 @@ class Floorplaner extends IPSModuleStrict
                 <div class="field">
                     <label>Icon</label>
                     <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
-                        <i class="${escapeHtml(normalizeSymconIcon(obj.icon || defaultSymconIconForLegacyKind(obj.kind)))}"></i>
+                        <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
                         <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
                     </button>
                     <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
