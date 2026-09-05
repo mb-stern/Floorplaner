@@ -1733,6 +1733,7 @@ class Floorplaner extends IPSModuleStrict
                     item.iconManual = false;
                 }
                 if (typeof item.iconManual !== 'boolean') item.iconManual = false;
+                if (typeof item.iconSvg !== 'string') item.iconSvg = '';
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -2387,11 +2388,14 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
-    function renderSymconGlyph(icon, radius) {
+    function renderSymconGlyph(icon, radius, storedSvg = '') {
         const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
         const fontSize = Math.max(12, r * 1.18);
-        const svgHtml = fontAwesomeSvgHtml(parsed.cls);
+        // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
+        // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
+        const persisted = String(storedSvg || '').trim();
+        const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
         const content = svgHtml !== ''
             ? svgHtml
             : `<i class="${escapeHtml(parsed.cls)}"></i>`;
@@ -2840,7 +2844,7 @@ class Floorplaner extends IPSModuleStrict
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78)}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '')}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
@@ -4191,6 +4195,7 @@ class Floorplaner extends IPSModuleStrict
                 kind: 'generic', // nur noch für Migration älterer Projekte
                 icon: 'fa-light fa-circle',
                 iconManual: false,
+                iconSvg: '',
                 showName: false,
                 showValue: false,
                 showIcon: true,
@@ -4714,6 +4719,10 @@ class Floorplaner extends IPSModuleStrict
                 if (!targetItem) return;
                 targetItem.icon = String(button.dataset.symconIcon || 'fa-light fa-circle');
                 targetItem.iconManual = true;
+                // /icons.js ersetzt die <i>-Vorschau üblicherweise durch ein echtes <svg>.
+                // Dieses konkrete SVG wird mit dem Gerät gespeichert und später direkt wiederverwendet.
+                const renderedSvg = button.querySelector('svg');
+                targetItem.iconSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(targetItem.icon) || '');
                 iconModal.classList.remove('open');
                 iconModal.setAttribute('aria-hidden', 'true');
                 pushHistory();
@@ -4746,6 +4755,7 @@ class Floorplaner extends IPSModuleStrict
             const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
             if (!item) return;
             item.iconManual = false;
+            item.iconSvg = '';
             item.icon = item._objectIcon || 'fa-light fa-circle';
             iconModal.classList.remove('open');
             iconModal.setAttribute('aria-hidden', 'true');
@@ -4821,9 +4831,11 @@ class Floorplaner extends IPSModuleStrict
         if (entityType === 'item' && field === 'variableID') {
             if (node && entity.iconManual !== true) {
                 entity.icon = node.objectIcon || 'fa-light fa-circle';
+                entity.iconSvg = '';
             }
             if (!node && entity.iconManual !== true) {
                 entity.icon = 'fa-light fa-circle';
+                entity.iconSvg = '';
             }
         }
 
@@ -5009,6 +5021,7 @@ class Floorplaner extends IPSModuleStrict
                             Object.assign(item, meta);
                             if (!manualIcon && meta._objectIcon !== undefined) {
                                 item.icon = meta._objectIcon || 'fa-light fa-circle';
+                                item.iconSvg = '';
                             }
                         }
                     }
