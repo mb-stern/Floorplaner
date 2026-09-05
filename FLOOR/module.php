@@ -2419,24 +2419,69 @@ class Floorplaner extends IPSModuleStrict
         return `<i class="${escapeHtml(icon)}"></i>`;
     }
 
+    function symconAssociationForValue(entries, raw, variableType) {
+        const list = Array.isArray(entries) ? entries : [];
+        if (!list.length) return null;
+
+        // Boolean und String sind echte Zuordnungen.
+        if (Number(variableType) === 0) {
+            return list.find(entry => Boolean(truthyVariableValue(entry?.value)) === Boolean(truthyVariableValue(raw))) || null;
+        }
+        if (Number(variableType) === 3) {
+            return list.find(entry => String(entry?.value) === String(raw)) || null;
+        }
+
+        const rv = Number(raw);
+        if (!Number.isFinite(rv)) {
+            return list.find(entry => String(entry?.value) === String(raw)) || null;
+        }
+
+        // Symcon-Assoziationen für Integer/Float gelten ab ihrem Wert bis zur
+        // nächsten Assoziation. Deshalb nicht nur auf exakte Gleichheit prüfen.
+        const numeric = list
+            .map(entry => ({entry, value: Number(entry?.value)}))
+            .filter(pair => Number.isFinite(pair.value))
+            .sort((a, b) => a.value - b.value);
+        let match = null;
+        for (const pair of numeric) {
+            if (rv >= pair.value) match = pair.entry;
+            else break;
+        }
+        return match || (numeric.length ? numeric[0].entry : null);
+    }
+
     function automaticVariableIcon(item) {
         if (item?.iconManual === true) {
             return normalizeSymconIcon(item.icon || 'fa-light fa-circle');
         }
-        const associations = Array.isArray(item?._profile?.associations) ? item._profile.associations : [];
+
         const raw = item?._rawValue;
         const variableType = Number(item?._variableType);
-        const current = associations.find(association => {
-            if (variableType === 0) {
-                return Boolean(Number(association?.value)) === Boolean(truthyVariableValue(raw));
-            }
-            const av = Number(association?.value);
-            const rv = Number(raw);
-            return Number.isFinite(av) && Number.isFinite(rv) ? av === rv : String(association?.value) === String(raw);
-        });
-        if (current && String(current.icon || '').trim() !== '') {
-            return normalizeSymconIcon(String(current.icon));
+
+        // 1) Aktuelle IP-Symcon-Darstellung (ab 8.1). OPTIONS kann pro Wert
+        // ein eigenes Icon enthalten, z. B. Aus/Ein bei Boolean.
+        const presentationOptions = Array.isArray(item?._presentation?.options) ? item._presentation.options : [];
+        const presentationEntry = symconAssociationForValue(presentationOptions, raw, variableType);
+        if (presentationEntry && presentationEntry.iconActive !== false && String(presentationEntry.icon || '').trim() !== '') {
+            return normalizeSymconIcon(String(presentationEntry.icon));
         }
+        const presentationIcon = String(item?._presentation?.icon || '').trim();
+        if (presentationIcon !== '') {
+            return normalizeSymconIcon(presentationIcon);
+        }
+
+        // 2) Klassisches Variablenprofil als Fallback.
+        const associations = Array.isArray(item?._profile?.associations) ? item._profile.associations : [];
+        const profileEntry = symconAssociationForValue(associations, raw, variableType);
+        if (profileEntry && String(profileEntry.icon || '').trim() !== '') {
+            return normalizeSymconIcon(String(profileEntry.icon));
+        }
+        const profileIcon = String(item?._profile?.icon || '').trim();
+        if (profileIcon !== '') {
+            return normalizeSymconIcon(profileIcon);
+        }
+
+        // 3) Objekt-Icon / gespeicherter Legacy-Fallback.
         const objectIcon = String(item?._objectIcon || '').trim();
         if (objectIcon !== '') {
             return normalizeSymconIcon(objectIcon);
@@ -5765,6 +5810,7 @@ HTML;
                     'step'         => $p['StepSize'] ?? null,
                     'prefix'       => (string) ($p['Prefix'] ?? ''),
                     'suffix'       => (string) ($p['Suffix'] ?? ''),
+                    'icon'         => (string) ($p['Icon'] ?? ''),
                     'associations' => $associations
                 ];
 
@@ -5797,6 +5843,48 @@ HTML;
 
         $objectInfo = IPS_GetObject($VariableID);
 
+        // Ab IP-Symcon 8.1 kann die aktuelle Darstellung eigene, wertabhängige
+        // Icons enthalten. Diese Informationen liegen nicht zwingend mehr im
+        // klassischen Variablenprofil. Deshalb lesen wir zusätzlich die
+        // effektive Variablen-Darstellung aus.
+        $presentation = null;
+        if (function_exists('IPS_GetVariablePresentation')) {
+            try {
+                $vp = IPS_GetVariablePresentation($VariableID);
+                if (is_array($vp)) {
+                    $options = [];
+                    $optionsRaw = $vp['OPTIONS'] ?? [];
+                    if (is_string($optionsRaw) && $optionsRaw !== '') {
+                        $decodedOptions = json_decode($optionsRaw, true);
+                        if (is_array($decodedOptions)) {
+                            $optionsRaw = $decodedOptions;
+                        }
+                    }
+                    if (is_array($optionsRaw)) {
+                        foreach ($optionsRaw as $option) {
+                            if (!is_array($option)) {
+                                continue;
+                            }
+                            $options[] = [
+                                'value'      => $option['Value'] ?? null,
+                                'name'       => (string) ($option['Caption'] ?? $option['Name'] ?? ''),
+                                'icon'       => (string) ($option['IconValue'] ?? $option['Icon'] ?? ''),
+                                'iconActive' => (bool) ($option['IconActive'] ?? (($option['IconValue'] ?? '') !== '')),
+                                'color'      => (int) ($option['Color'] ?? $option['ColorValue'] ?? -1)
+                            ];
+                        }
+                    }
+
+                    $presentation = [
+                        'icon'    => (string) ($vp['ICON'] ?? ''),
+                        'options' => $options
+                    ];
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('VariablePresentation', $VariableID . ': ' . $e->getMessage(), 0);
+            }
+        }
+
         return [
             '_variableType'   => $variableType,
             '_objectIcon'     => (string) ($objectInfo['ObjectIcon'] ?? ''),
@@ -5806,6 +5894,7 @@ HTML;
             '_profileName'    => $profileName,
             '_profileSummary' => $profileSummary,
             '_profile'        => $profile,
+            '_presentation'   => $presentation,
             '_canAction'      => $actionID > 0
         ];
     }
