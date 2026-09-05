@@ -508,6 +508,10 @@ Floorplaner übernimmt dieses Konzept nicht unverändert, sondern passt die Bedi
 
 ## 📋 Versionen
 
+### 1.3
+
+- Beim Anlegen eines Gerätes wird automatisch das definierte Icon übernommen. Das Icon kann aber auch überteuert werden. So stehen alle rund 4000 Icons von IP-Symcon zur Verfügung.
+
 ### 1.2
 
 - Erweiterte Auswahl an Gerätetypen
