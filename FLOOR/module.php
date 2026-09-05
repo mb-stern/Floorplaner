@@ -2406,17 +2406,39 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
+    function iconPreviewHtml(icon, storedSvg = '') {
+        const svg = String(storedSvg || '').trim();
+        if (svg.startsWith('<svg')) return svg;
+        const normalized = normalizeSymconIcon(icon || 'fa-light fa-circle');
+        const generated = fontAwesomeSvgHtml(normalized);
+        if (generated) return generated;
+        return `<i class="${escapeHtml(normalized)}"></i>`;
+    }
+
     function propertyIconPreviewHtml(item) {
         const icon = automaticVariableIcon(item);
         const storedSvg = item?.iconManual === true ? String(item?.iconSvg || '').trim() : '';
-        if (storedSvg.startsWith('<svg')) {
-            return storedSvg;
+        return iconPreviewHtml(icon, storedSvg);
+    }
+
+    function boolIconForState(item, stateValue) {
+        const isOn = Boolean(stateValue);
+        if (item?.boolIconsManual === true) {
+            const manualIcon = isOn ? item?.iconTrue : item?.iconFalse;
+            if (String(manualIcon || '').trim() !== '') return normalizeSymconIcon(manualIcon);
         }
-        const generated = fontAwesomeSvgHtml(icon);
-        if (generated) {
-            return generated;
-        }
-        return `<i class="${escapeHtml(icon)}"></i>`;
+        const autoIcon = isOn ? item?._iconTrue : item?._iconFalse;
+        if (String(autoIcon || '').trim() !== '') return normalizeSymconIcon(autoIcon);
+        return automaticVariableIcon({...item, _variableType: -1});
+    }
+
+    function boolIconPreviewHtml(item, stateValue) {
+        const isOn = Boolean(stateValue);
+        const icon = boolIconForState(item, isOn);
+        const storedSvg = item?.boolIconsManual === true
+            ? String(isOn ? (item?.iconTrueSvg || '') : (item?.iconFalseSvg || '')).trim()
+            : '';
+        return iconPreviewHtml(icon, storedSvg);
     }
 
     function symconAssociationForValue(entries, raw, variableType) {
@@ -2451,19 +2473,25 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function automaticVariableIcon(item) {
+        if (Number(item?._variableType) === 0) {
+            const raw = truthyVariableValue(item?._rawValue);
+            const stateIcon = raw ? item?._iconTrue : item?._iconFalse;
+            if (String(stateIcon || '').trim() !== '') return normalizeSymconIcon(stateIcon);
+            if (item?.boolIconsManual === true) {
+                const manualStateIcon = raw ? item?.iconTrue : item?.iconFalse;
+                if (String(manualStateIcon || '').trim() !== '') return normalizeSymconIcon(manualStateIcon);
+            }
+        }
+
         if (item?.iconManual === true) {
             return normalizeSymconIcon(item.icon || 'fa-light fa-circle');
         }
 
         const resolved = String(item?._autoIcon || '').trim();
-        if (resolved !== '') {
-            return normalizeSymconIcon(resolved);
-        }
+        if (resolved !== '') return normalizeSymconIcon(resolved);
 
         const objectIcon = String(item?._objectIcon || '').trim();
-        if (objectIcon !== '') {
-            return normalizeSymconIcon(objectIcon);
-        }
+        if (objectIcon !== '') return normalizeSymconIcon(objectIcon);
         return normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
     }
 
@@ -3444,14 +3472,38 @@ class Floorplaner extends IPSModuleStrict
             const kind = obj.kind || 'generic';
             properties.innerHTML = `
                 <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || '')}"></div>
-                <div class="field">
-                    <label>Icon</label>
-                    <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
-                        <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
-                        <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
-                    </button>
-                    <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
-                </div>
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label>Icons für Boolean-Zustände</label>
+                        <div class="row2">
+                            <div class="field">
+                                <label>Icon AUS</label>
+                                <button id="itemIconFalseSelect" class="icon-select-button" type="button" title="Icon für AUS auswählen">
+                                    <span class="icon-select-preview">${boolIconPreviewHtml(obj, false)}</span>
+                                    <span>${escapeHtml(String(obj.boolIconsManual === true ? (obj.iconFalse || 'Auswählen') : (obj._iconFalse || 'aus Variable / Standard')))}</span>
+                                </button>
+                            </div>
+                            <div class="field">
+                                <label>Icon EIN</label>
+                                <button id="itemIconTrueSelect" class="icon-select-button" type="button" title="Icon für EIN auswählen">
+                                    <span class="icon-select-preview">${boolIconPreviewHtml(obj, true)}</span>
+                                    <span>${escapeHtml(String(obj.boolIconsManual === true ? (obj.iconTrue || 'Auswählen') : (obj._iconTrue || 'aus Variable / Standard')))}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <button id="itemBoolIconsAuto" type="button">Icons aus Variable übernehmen</button>
+                        <div class="profile-hint">Automatisch erkannt: AUS ${escapeHtml(String(obj._iconFalse || '—'))} · EIN ${escapeHtml(String(obj._iconTrue || '—'))}${obj._iconSource ? ' · Quelle: ' + escapeHtml(String(obj._iconSource)) : ''}</div>
+                    </div>
+                ` : `
+                    <div class="field">
+                        <label>Icon</label>
+                        <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
+                            <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
+                            <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
+                        </button>
+                        <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
+                    </div>
+                `}
                 <div class="field">
                     <label>IP-Symcon Variable</label>
                     <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
@@ -3664,6 +3716,42 @@ class Floorplaner extends IPSModuleStrict
                 if (!selected || selected.type !== 'item') return;
                 iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id};
                 openSymconIconPicker();
+            });
+        }
+
+        const itemIconFalseSelect = properties.querySelector('#itemIconFalseSelect');
+        if (itemIconFalseSelect) {
+            itemIconFalseSelect.addEventListener('click', () => {
+                if (!selected || selected.type !== 'item') return;
+                iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id, role: 'false'};
+                openSymconIconPicker();
+            });
+        }
+
+        const itemIconTrueSelect = properties.querySelector('#itemIconTrueSelect');
+        if (itemIconTrueSelect) {
+            itemIconTrueSelect.addEventListener('click', () => {
+                if (!selected || selected.type !== 'item') return;
+                iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id, role: 'true'};
+                openSymconIconPicker();
+            });
+        }
+
+        const itemBoolIconsAuto = properties.querySelector('#itemBoolIconsAuto');
+        if (itemBoolIconsAuto) {
+            itemBoolIconsAuto.addEventListener('click', () => {
+                if (!selected || selected.type !== 'item') return;
+                const item = findEntity('item', selected.id);
+                if (!item) return;
+                item.boolIconsManual = false;
+                item.iconFalse = '';
+                item.iconTrue = '';
+                item.iconFalseSvg = '';
+                item.iconTrueSvg = '';
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
             });
         }
 
@@ -4799,10 +4887,22 @@ class Floorplaner extends IPSModuleStrict
                 const targetFloor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
                 const targetItem = targetFloor?.items?.find(i => i.id === iconPickerTarget?.itemId);
                 if (!targetItem) return;
-                targetItem.icon = String(button.dataset.symconIcon || 'fa-light fa-circle');
-                targetItem.iconManual = true;
+                const chosenIcon = String(button.dataset.symconIcon || 'fa-light fa-circle');
                 const renderedSvg = button.querySelector('svg');
-                targetItem.iconSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(targetItem.icon) || '');
+                const chosenSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(chosenIcon) || '');
+                if (iconPickerTarget?.role === 'false') {
+                    targetItem.boolIconsManual = true;
+                    targetItem.iconFalse = chosenIcon;
+                    targetItem.iconFalseSvg = chosenSvg;
+                } else if (iconPickerTarget?.role === 'true') {
+                    targetItem.boolIconsManual = true;
+                    targetItem.iconTrue = chosenIcon;
+                    targetItem.iconTrueSvg = chosenSvg;
+                } else {
+                    targetItem.icon = chosenIcon;
+                    targetItem.iconManual = true;
+                    targetItem.iconSvg = chosenSvg;
+                }
                 iconModal.classList.remove('open');
                 iconModal.setAttribute('aria-hidden', 'true');
                 pushHistory();
@@ -4818,7 +4918,11 @@ class Floorplaner extends IPSModuleStrict
         const query = String(filter || '').trim().toLowerCase();
         const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
         const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
-        const current = normalizeSymconIcon(item?.icon || 'fa-light fa-circle');
+        const current = normalizeSymconIcon(
+            iconPickerTarget?.role === 'false' ? (item?.iconFalse || item?._iconFalse || 'fa-light fa-circle') :
+            iconPickerTarget?.role === 'true' ? (item?.iconTrue || item?._iconTrue || 'fa-light fa-circle') :
+            (item?.icon || 'fa-light fa-circle')
+        );
 
         if (!query) {
             iconList.innerHTML = curatedSymconIconGroups.map(group => {
@@ -4860,9 +4964,17 @@ class Floorplaner extends IPSModuleStrict
             const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
             const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
             if (!item) return;
-            item.iconManual = false;
-            item.iconSvg = '';
-            item.icon = item._objectIcon || 'fa-light fa-circle';
+            if (iconPickerTarget?.role === 'false' || iconPickerTarget?.role === 'true') {
+                item.boolIconsManual = false;
+                item.iconFalse = '';
+                item.iconTrue = '';
+                item.iconFalseSvg = '';
+                item.iconTrueSvg = '';
+            } else {
+                item.iconManual = false;
+                item.iconSvg = '';
+                item.icon = item._objectIcon || 'fa-light fa-circle';
+            }
             iconModal.classList.remove('open');
             iconModal.setAttribute('aria-hidden', 'true');
             pushHistory();
@@ -4917,6 +5029,10 @@ class Floorplaner extends IPSModuleStrict
         const profileKey = prefix ? `_${prefix}Profile` : '_profile';
         const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
         const objectIconKey = prefix ? `_${prefix}ObjectIcon` : '_objectIcon';
+        const autoIconKey = prefix ? `_${prefix}AutoIcon` : '_autoIcon';
+        const iconFalseKey = prefix ? `_${prefix}IconFalse` : '_iconFalse';
+        const iconTrueKey = prefix ? `_${prefix}IconTrue` : '_iconTrue';
+        const iconSourceKey = prefix ? `_${prefix}IconSource` : '_iconSource';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4927,6 +5043,10 @@ class Floorplaner extends IPSModuleStrict
         entity[profileKey] = node?.profile || null;
         entity[canActionKey] = node?.canAction === true;
         entity[objectIconKey] = node?.objectIcon || '';
+        entity[autoIconKey] = node?.autoIcon || '';
+        entity[iconFalseKey] = node?.iconFalse || '';
+        entity[iconTrueKey] = node?.iconTrue || '';
+        entity[iconSourceKey] = node?.iconSource || '';
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
@@ -4935,8 +5055,14 @@ class Floorplaner extends IPSModuleStrict
         // IPS_GetObject(...)[ObjectIcon] übernommen, solange der Benutzer
         // im Floorplaner noch kein eigenes Icon gewählt hat.
         if (entityType === 'item' && field === 'variableID') {
+            if (Number(entity[typeKey]) === 0 && entity.boolIconsManual !== true) {
+                entity.iconFalse = '';
+                entity.iconTrue = '';
+                entity.iconFalseSvg = '';
+                entity.iconTrueSvg = '';
+            }
             if (node && entity.iconManual !== true) {
-                entity.icon = node.objectIcon || 'fa-light fa-circle';
+                entity.icon = node.autoIcon || node.objectIcon || 'fa-light fa-circle';
                 entity.iconSvg = '';
             }
             if (!node && entity.iconManual !== true) {
@@ -5125,8 +5251,8 @@ class Floorplaner extends IPSModuleStrict
                         if (Number(item.variableID || 0) === variableID) {
                             const manualIcon = item.iconManual === true;
                             Object.assign(item, meta);
-                            if (!manualIcon && meta._objectIcon !== undefined) {
-                                item.icon = meta._objectIcon || 'fa-light fa-circle';
+                            if (!manualIcon && meta._autoIcon !== undefined) {
+                                item.icon = meta._autoIcon || meta._objectIcon || 'fa-light fa-circle';
                                 item.iconSvg = '';
                             }
                         }
@@ -5753,6 +5879,10 @@ HTML;
                     $node['profileSummary'] = $meta['_profileSummary'] ?? '';
                     $node['profile'] = $meta['_profile'] ?? null;
                     $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
+                    $node['autoIcon'] = (string) ($meta['_autoIcon'] ?? '');
+                    $node['iconFalse'] = (string) ($meta['_iconFalse'] ?? '');
+                    $node['iconTrue'] = (string) ($meta['_iconTrue'] ?? '');
+                    $node['iconSource'] = (string) ($meta['_iconSource'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -5913,9 +6043,29 @@ HTML;
                     }
                 }
 
+                $findPresentationKey = static function (array $data, array $keys) use (&$findPresentationKey): mixed {
+                    foreach ($keys as $key) {
+                        if (array_key_exists($key, $data)) {
+                            return $data[$key];
+                        }
+                    }
+                    foreach ($data as $value) {
+                        if (is_array($value)) {
+                            $found = $findPresentationKey($value, $keys);
+                            if ($found !== null) {
+                                return $found;
+                            }
+                        }
+                    }
+                    return null;
+                };
+
                 $presentation = [
-                    'icon'    => (string) ($effectivePresentation['ICON'] ?? $effectivePresentation['Icon'] ?? ''),
-                    'options' => $options
+                    'icon'      => (string) ($effectivePresentation['ICON'] ?? $effectivePresentation['Icon'] ?? ''),
+                    'iconFalse' => (string) ($findPresentationKey($effectivePresentation, ['ICON_FALSE', 'IconFalse', 'iconFalse']) ?? ''),
+                    'iconTrue'  => (string) ($findPresentationKey($effectivePresentation, ['ICON_TRUE', 'IconTrue', 'iconTrue']) ?? ''),
+                    'useFalse'  => (bool) ($findPresentationKey($effectivePresentation, ['USE_ICON_FALSE', 'UseIconFalse', 'useIconFalse']) ?? true),
+                    'options'   => $options
                 ];
             }
         } catch (Throwable $e) {
@@ -5923,6 +6073,9 @@ HTML;
         }
 
         $autoIcon = '';
+        $iconFalse = '';
+        $iconTrue = '';
+        $iconSource = '';
 
         $matchValue = static function (array $entries, mixed $value, int $type): ?array {
             if ($entries === []) {
@@ -5971,6 +6124,61 @@ HTML;
             return null;
         };
 
+        if ($variableType === 0) {
+            if (is_array($presentation)) {
+                $pFalse = trim((string) ($presentation['iconFalse'] ?? ''));
+                $pTrue = trim((string) ($presentation['iconTrue'] ?? ''));
+                if ($pTrue !== '' || $pFalse !== '') {
+                    $iconTrue = $pTrue;
+                    $iconFalse = (($presentation['useFalse'] ?? true) ? $pFalse : '');
+                    $iconSource = 'presentation-switch';
+                }
+
+                if ($iconTrue === '' || $iconFalse === '') {
+                    $entries = $presentation['options'] ?? [];
+                    $falseMatch = $matchValue($entries, false, 0);
+                    $trueMatch = $matchValue($entries, true, 0);
+                    if ($iconFalse === '' && is_array($falseMatch) && ($falseMatch['iconActive'] ?? true)) {
+                        $iconFalse = trim((string) ($falseMatch['icon'] ?? ''));
+                    }
+                    if ($iconTrue === '' && is_array($trueMatch) && ($trueMatch['iconActive'] ?? true)) {
+                        $iconTrue = trim((string) ($trueMatch['icon'] ?? ''));
+                    }
+                    if (($iconFalse !== '' || $iconTrue !== '') && $iconSource === '') {
+                        $iconSource = 'presentation-options';
+                    }
+                }
+            }
+
+            if (is_array($profile) && ($iconFalse === '' || $iconTrue === '')) {
+                $entries = $profile['associations'] ?? [];
+                $falseMatch = $matchValue($entries, false, 0);
+                $trueMatch = $matchValue($entries, true, 0);
+                if ($iconFalse === '' && is_array($falseMatch)) {
+                    $iconFalse = trim((string) ($falseMatch['icon'] ?? ''));
+                }
+                if ($iconTrue === '' && is_array($trueMatch)) {
+                    $iconTrue = trim((string) ($trueMatch['icon'] ?? ''));
+                }
+                if (($iconFalse !== '' || $iconTrue !== '') && $iconSource === '') {
+                    $iconSource = 'legacy-profile';
+                }
+            }
+
+            $fallbackStateIcon = '';
+            if (is_array($presentation)) {
+                $fallbackStateIcon = trim((string) ($presentation['icon'] ?? ''));
+            }
+            if ($fallbackStateIcon === '' && is_array($profile)) {
+                $fallbackStateIcon = trim((string) ($profile['icon'] ?? ''));
+            }
+            if ($fallbackStateIcon === '') {
+                $fallbackStateIcon = trim((string) ($objectInfo['ObjectIcon'] ?? ''));
+            }
+            if ($iconFalse === '') $iconFalse = $fallbackStateIcon;
+            if ($iconTrue === '') $iconTrue = $fallbackStateIcon;
+        }
+
         if (is_array($presentation)) {
             $presentationMatch = $matchValue($presentation['options'] ?? [], $rawValue, $variableType);
             if (
@@ -6012,6 +6220,9 @@ HTML;
             '_profile'        => $profile,
             '_presentation'   => $presentation,
             '_autoIcon'       => $autoIcon,
+            '_iconFalse'      => $iconFalse,
+            '_iconTrue'       => $iconTrue,
+            '_iconSource'     => $iconSource,
             '_canAction'      => $actionID > 0
         ];
     }
