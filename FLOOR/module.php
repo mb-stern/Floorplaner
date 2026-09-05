@@ -1352,11 +1352,11 @@ class Floorplaner extends IPSModuleStrict
 
         .icon-select-button {
             width: 100%;
-            min-height: 36px;
+            min-height: 30px;
             display: flex;
             align-items: center;
-            gap: 9px;
-            padding: 6px 9px;
+            gap: 6px;
+            padding: 4px 7px;
             border: 1px solid var(--fp-border);
             border-radius: 6px;
             background: var(--fp-panel-2);
@@ -1366,15 +1366,15 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .icon-select-button i {
-            width: 22px;
+            width: 16px;
             text-align: center;
-            font-size: 18px;
+            font-size: 14px;
         }
 
         .icon-select-preview {
-            width: 24px;
-            height: 24px;
-            flex: 0 0 24px;
+            width: 18px;
+            height: 18px;
+            flex: 0 0 18px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1382,8 +1382,8 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .icon-select-preview svg {
-            width: 20px;
-            height: 20px;
+            width: 15px;
+            height: 15px;
             display: block;
             fill: currentColor;
             color: inherit;
@@ -2406,10 +2406,44 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
+    function refreshFontAwesome(root = document) {
+        try {
+            if (window.FontAwesome?.dom && typeof window.FontAwesome.dom.i2svg === 'function') {
+                window.FontAwesome.dom.i2svg({ node: root });
+            }
+        } catch (e) {
+            // Vorschau bleibt notfalls als <i>-Element stehen.
+        }
+    }
+
+    function resolveLoadedSymconIcon(icon) {
+        const raw = String(icon || '').trim();
+        const normalized = normalizeSymconIcon(raw);
+        const available = new Set(availableSymconIcons());
+        if (available.has(normalized)) return normalized;
+
+        const rawSlug = raw
+            .replace(/^fa-(light|brands|kit|solid|regular|thin|duotone|sharp)\s+/i, '')
+            .replace(/^fa-/i, '')
+            .replace(/([a-z])([A-Z])/g, '$1-$2')
+            .replace(/[_\s]+/g, '-')
+            .replace(/[^a-zA-Z0-9-]/g, '')
+            .toLowerCase();
+        const candidates = [
+            `fa-light fa-${rawSlug}`,
+            `fa-kit fa-${rawSlug}`
+        ];
+        for (const candidate of candidates) if (available.has(candidate)) return candidate;
+
+        const compact = rawSlug.replace(/-/g, '');
+        const fuzzy = Array.from(available).find(entry => iconSearchText(entry).replace(/\s+/g, '') === compact);
+        return fuzzy || normalized;
+    }
+
     function iconPreviewHtml(icon, storedSvg = '') {
         const svg = String(storedSvg || '').trim();
         if (svg.startsWith('<svg')) return svg;
-        const normalized = normalizeSymconIcon(icon || 'fa-light fa-circle');
+        const normalized = resolveLoadedSymconIcon(icon || 'fa-light fa-circle');
         const generated = fontAwesomeSvgHtml(normalized);
         if (generated) return generated;
         return `<i class="${escapeHtml(normalized)}"></i>`;
@@ -3401,6 +3435,7 @@ class Floorplaner extends IPSModuleStrict
                 </div>
             `;
             bindPropertyInputs();
+            refreshFontAwesome(properties);
             return;
         }
 
@@ -3620,6 +3655,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         bindPropertyInputs();
+        refreshFontAwesome(properties);
     }
 
     function bindPropertyInputs() {
@@ -4931,6 +4967,7 @@ class Floorplaner extends IPSModuleStrict
             }).join('') +
             `<div class="profile-hint" style="padding:10px 14px">Weitere Symcon-Icons findest du über die Suche oben.</div>`;
             bindIconPickerButtons();
+            refreshFontAwesome(iconList);
             return;
         }
 
@@ -4941,6 +4978,7 @@ class Floorplaner extends IPSModuleStrict
                 ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>`
                 : '');
         bindIconPickerButtons();
+        refreshFontAwesome(iconList);
     }
 
     function openSymconIconPicker() {
