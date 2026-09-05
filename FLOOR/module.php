@@ -2395,6 +2395,8 @@ class Floorplaner extends IPSModuleStrict
 
     function fontAwesomeSvgHtml(icon) {
         const parsed = parseSymconIcon(icon);
+
+        // 1) Offizielle Font-Awesome-API verwenden, wenn verfügbar.
         try {
             if (window.FontAwesome && typeof window.FontAwesome.icon === 'function') {
                 const rendered = window.FontAwesome.icon({ prefix: parsed.prefix, iconName: parsed.iconName });
@@ -2402,9 +2404,47 @@ class Floorplaner extends IPSModuleStrict
                     return rendered.html.join('');
                 }
             }
-        } catch (e) {
-            // Fallback weiter unten.
+        } catch (e) {}
+
+        // 2) Robuster HTML-SDK-Fallback: SVG direkt aus den durch /icons.js
+        // geladenen Definitionen bauen. Das funktioniert auch innerhalb des
+        // SVG-Editors, ohne dass i2svg ein <i>-Element nachträglich finden muss.
+        const definitionSources = [];
+        try { definitionSources.push(window.FontAwesome?.library?.definitions); } catch (e) {}
+        try { definitionSources.push(window.___FONT_AWESOME___?.styles); } catch (e) {}
+
+        for (const defs of definitionSources) {
+            if (!defs || typeof defs !== 'object') continue;
+            const style = defs?.[parsed.prefix];
+            if (!style || typeof style !== 'object') continue;
+            const def = style?.[parsed.iconName];
+            if (!def) continue;
+
+            let width = 512, height = 512, pathData = '';
+            if (Array.isArray(def)) {
+                width = Number(def[0]) || 512;
+                height = Number(def[1]) || 512;
+                pathData = def[4] ?? '';
+            } else if (Array.isArray(def.icon)) {
+                width = Number(def.icon[0]) || 512;
+                height = Number(def.icon[1]) || 512;
+                pathData = def.icon[4] ?? '';
+            } else if (def.icon && typeof def.icon === 'object') {
+                width = Number(def.icon.width) || 512;
+                height = Number(def.icon.height) || 512;
+                pathData = def.icon.svgPathData ?? '';
+            } else {
+                width = Number(def.width) || 512;
+                height = Number(def.height) || 512;
+                pathData = def.svgPathData ?? '';
+            }
+
+            const paths = Array.isArray(pathData) ? pathData : [pathData];
+            if (!paths.length || paths.every(p => !String(p || '').trim())) continue;
+            const body = paths.map(p => `<path fill="currentColor" d="${escapeHtml(String(p || ''))}"></path>`).join('');
+            return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" aria-hidden="true" focusable="false">${body}</svg>`;
         }
+
         return '';
     }
 
@@ -2577,7 +2617,7 @@ class Floorplaner extends IPSModuleStrict
         const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
         const content = svgHtml !== ''
             ? svgHtml
-            : `<i class="${escapeHtml(parsed.cls)}"></i>`;
+            : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
             `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
@@ -6208,7 +6248,9 @@ HTML;
                 $pTrue = trim((string) ($presentation['iconTrue'] ?? ''));
                 if ($pTrue !== '' || $pFalse !== '') {
                     $iconTrue = $pTrue;
-                    $iconFalse = (($presentation['useFalse'] ?? true) ? $pFalse : '');
+                    // Symcon-Schalter: Wenn USE_ICON_FALSE deaktiviert ist,
+                    // gilt ICON_TRUE ausdrücklich auch für false.
+                    $iconFalse = (($presentation['useFalse'] ?? true) ? $pFalse : $pTrue);
                     $iconSource = 'presentation-switch';
                 }
 
