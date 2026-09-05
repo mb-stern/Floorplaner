@@ -2566,7 +2566,9 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function renderSymconGlyph(icon, radius, storedSvg = '') {
-        const parsed = parseSymconIcon(icon);
+        // Immer zuerst gegen die tatsächlich durch /icons.js geladenen Icons auflösen.
+        // Das ist wichtig für aus Variablen übernommene neue Icons und Legacy-Mappings.
+        const parsed = parseSymconIcon(resolveLoadedSymconIcon(icon));
         const r = Math.max(8, Number(radius) || 18);
         const fontSize = Math.max(12, r * 1.18);
         // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
@@ -3074,6 +3076,12 @@ class Floorplaner extends IPSModuleStrict
         parts.push(...shutterControlParts);
 
         scene.innerHTML = parts.join('');
+
+        // Die Geräte-Icons werden dynamisch per scene.innerHTML erzeugt. Font Awesome
+        // hat diesen neuen DOM-Inhalt beim initialen Laden von /icons.js noch nicht gesehen.
+        // Deshalb nach JEDEM Rendern explizit in SVG umwandeln.
+        refreshFontAwesome(scene);
+        requestAnimationFrame(() => refreshFontAwesome(scene));
         setTransform();
         renderProperties();
         renderFloorSelect();
