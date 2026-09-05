@@ -1351,12 +1351,14 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .icon-select-button {
-            width: 100%;
+            width: 38px;
+            min-width: 38px;
             min-height: 30px;
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 4px 7px;
+            gap: 0;
+            padding: 4px;
+            justify-content: center;
             border: 1px solid var(--fp-border);
             border-radius: 6px;
             background: var(--fp-panel-2);
@@ -1387,6 +1389,20 @@ class Floorplaner extends IPSModuleStrict
             display: block;
             fill: currentColor;
             color: inherit;
+        }
+
+        .icon-select-preview img.legacy-symcon-icon-preview {
+            width: 15px;
+            height: 15px;
+            display: block;
+            object-fit: contain;
+        }
+
+        .legacy-symcon-icon-wrap img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
         }
 
         .symcon-icon-grid {
@@ -2355,6 +2371,21 @@ class Floorplaner extends IPSModuleStrict
         'house': 'fa-light fa-house'
     };
 
+    function isLegacySymconIcon(icon) {
+        const raw = String(icon || '').trim();
+        if (!raw) return false;
+        if (/^mdi:/i.test(raw)) return false;
+        if (/\bfa-(light|brands|kit|solid|regular|thin|duotone|sharp)\b/i.test(raw)) return false;
+        if (/^fa-[a-z0-9-]+$/i.test(raw)) return false;
+        return true;
+    }
+
+    function legacySymconIconUrl(icon) {
+        const raw = String(icon || '').trim();
+        if (!raw) return '';
+        return `/img/icons/${encodeURIComponent(raw)}.svg`;
+    }
+
     function normalizeSymconIcon(icon) {
         const raw = String(icon || '').trim();
         if (!raw) return 'fa-light fa-circle';
@@ -2443,7 +2474,11 @@ class Floorplaner extends IPSModuleStrict
     function iconPreviewHtml(icon, storedSvg = '') {
         const svg = String(storedSvg || '').trim();
         if (svg.startsWith('<svg')) return svg;
-        const normalized = resolveLoadedSymconIcon(icon || 'fa-light fa-circle');
+        const raw = String(icon || '').trim();
+        if (isLegacySymconIcon(raw)) {
+            return `<img class="legacy-symcon-icon-preview" src="${escapeHtml(legacySymconIconUrl(raw))}" alt="">`;
+        }
+        const normalized = resolveLoadedSymconIcon(raw || 'fa-light fa-circle');
         const generated = fontAwesomeSvgHtml(normalized);
         if (generated) return generated;
         return `<i class="${escapeHtml(normalized)}"></i>`;
@@ -2459,10 +2494,10 @@ class Floorplaner extends IPSModuleStrict
         const isOn = Boolean(stateValue);
         if (item?.boolIconsManual === true) {
             const manualIcon = isOn ? item?.iconTrue : item?.iconFalse;
-            if (String(manualIcon || '').trim() !== '') return normalizeSymconIcon(manualIcon);
+            if (String(manualIcon || '').trim() !== '') return String(manualIcon).trim();
         }
         const autoIcon = isOn ? item?._iconTrue : item?._iconFalse;
-        if (String(autoIcon || '').trim() !== '') return normalizeSymconIcon(autoIcon);
+        if (String(autoIcon || '').trim() !== '') return String(autoIcon).trim();
         return automaticVariableIcon({...item, _variableType: -1});
     }
 
@@ -2510,10 +2545,10 @@ class Floorplaner extends IPSModuleStrict
         if (Number(item?._variableType) === 0) {
             const raw = truthyVariableValue(item?._rawValue);
             const stateIcon = raw ? item?._iconTrue : item?._iconFalse;
-            if (String(stateIcon || '').trim() !== '') return normalizeSymconIcon(stateIcon);
+            if (String(stateIcon || '').trim() !== '') return String(stateIcon).trim();
             if (item?.boolIconsManual === true) {
                 const manualStateIcon = raw ? item?.iconTrue : item?.iconFalse;
-                if (String(manualStateIcon || '').trim() !== '') return normalizeSymconIcon(manualStateIcon);
+                if (String(manualStateIcon || '').trim() !== '') return String(manualStateIcon).trim();
             }
         }
 
@@ -2530,8 +2565,13 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function renderSymconGlyph(icon, radius, storedSvg = '') {
-        const parsed = parseSymconIcon(icon);
+        const rawIcon = String(icon || '').trim();
         const r = Math.max(8, Number(radius) || 18);
+        if (isLegacySymconIcon(rawIcon)) {
+            return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
+                `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html legacy-symcon-icon-wrap"><img src="${escapeHtml(legacySymconIconUrl(rawIcon))}" alt=""></div></foreignObject>`;
+        }
+        const parsed = parseSymconIcon(rawIcon);
         const fontSize = Math.max(12, r * 1.18);
         // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
         // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
@@ -3515,14 +3555,12 @@ class Floorplaner extends IPSModuleStrict
                                 <label>Icon AUS</label>
                                 <button id="itemIconFalseSelect" class="icon-select-button" type="button" title="Icon für AUS auswählen">
                                     <span class="icon-select-preview">${boolIconPreviewHtml(obj, false)}</span>
-                                    <span>${escapeHtml(String(obj.boolIconsManual === true ? (obj.iconFalse || 'Auswählen') : (obj._iconFalse || 'aus Variable / Standard')))}</span>
                                 </button>
                             </div>
                             <div class="field">
                                 <label>Icon EIN</label>
                                 <button id="itemIconTrueSelect" class="icon-select-button" type="button" title="Icon für EIN auswählen">
                                     <span class="icon-select-preview">${boolIconPreviewHtml(obj, true)}</span>
-                                    <span>${escapeHtml(String(obj.boolIconsManual === true ? (obj.iconTrue || 'Auswählen') : (obj._iconTrue || 'aus Variable / Standard')))}</span>
                                 </button>
                             </div>
                         </div>
