@@ -325,6 +325,12 @@ class Floorplaner extends IPSModuleStrict
             min-height: 0;
             overflow: hidden;
             background: transparent;
+
+            /* IP-Symcon HTML-SDK:
+               Die obere Kopfzone kann Pointer-Ereignisse abfangen.
+               Deshalb beginnt die interaktive SVG-Fläche physisch 40 px tiefer
+               – im Editor und im Live-Modus. */
+            padding-top: 40px;
         }
 
         #viewport {
@@ -1943,24 +1949,18 @@ class Floorplaner extends IPSModuleStrict
         const box = svg.getBoundingClientRect();
 
         /*
-         * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
-         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
-         * interaktive Grundriss dort nicht hineinragen.
-         *
-         * 40 px + 24 px Innenabstand werden für die Kopfzone verwendet.
-         * Der Abstand gilt sowohl im Editor- als auch im Bedienmodus.
+         * Die 40-px-Kopfzone wird jetzt physisch über padding-top der
+         * .canvas-wrap freigehalten. Innerhalb des SVG brauchen wir daher
+         * nur noch den normalen Innenabstand.
          */
-        const headerTop = 40;
-
-        // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 40 : 0;
         const padding = 24;
 
         return {
             left: padding,
             right: Math.max(padding, box.width - padding),
-            top: padding + headerTop,
-            bottom: Math.max(padding + headerTop, box.height - padding - footerBottom)
+            top: padding,
+            bottom: Math.max(padding, box.height - padding - footerBottom)
         };
     }
 
