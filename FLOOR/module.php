@@ -5306,20 +5306,44 @@ class Floorplaner extends IPSModuleStrict
         const id = Number(mediaID) || 0;
         if (id <= 0) return '';
 
-        // Gleicher Symcon-Host wie die HTML-SDK-Darstellung.
-        // Eine evtl. vorhandene authorization aus der aktuellen Visualisierung
-        // an den Stream-Proxy weiterreichen.
-        const url = new URL(`/proxy/${id}`, window.location.origin);
-
         try {
             const current = new URL(window.location.href);
+            let pathname = current.pathname || '/';
+
+            /*
+             * Symcon liefert Medienstreams innerhalb des jeweiligen
+             * Visualisierungspfads aus. Deshalb NICHT /proxy/<ID> am
+             * Server-Root verwenden.
+             *
+             * Beispiele:
+             *   /wfc/<WebFront-ID>/...  -> /wfc/<WebFront-ID>/proxy/<Media-ID>
+             *   /hook/... bzw. HTML-SDK -> relativer Proxy-Pfad der aktuellen
+             *                              Visualisierung
+             */
+            const wfc = pathname.match(/^(\/wfc\/[^/]+)\//i);
+            let proxyPath;
+
+            if (wfc) {
+                proxyPath = `${wfc[1]}/proxy/${id}`;
+            } else {
+                // Für die neue Visualisierung zuerst relativ zum aktuellen
+                // HTML-SDK-Kontext auflösen, statt den Server-Root zu erzwingen.
+                const base = new URL('.', current);
+                proxyPath = new URL(`proxy/${id}`, base).pathname;
+            }
+
+            const url = new URL(proxyPath, current.origin);
+
+            // Vorhandene Query-Authentifizierung der Visualisierung beibehalten.
             const authorization = current.searchParams.get('authorization');
             if (authorization) {
                 url.searchParams.set('authorization', authorization);
             }
-        } catch (e) {}
 
-        return url.toString();
+            return url.toString();
+        } catch (e) {
+            return '';
+        }
     }
 
     function streamElementHtml(item) {
@@ -5329,7 +5353,7 @@ class Floorplaner extends IPSModuleStrict
         const proxyUrl = symconStreamProxyUrl(mediaID);
 
         if (!proxyUrl) {
-            return `<div class="profile-hint">Stream konnte nicht geöffnet werden.</div>`;
+            return `<div class="profile-hint">Stream-Proxy konnte nicht bestimmt werden.</div>`;
         }
 
         // Symcon ist der Proxy für die Medienstreams.
@@ -5381,9 +5405,13 @@ class Floorplaner extends IPSModuleStrict
             streamElement.addEventListener('error', () => {
                 const view = controlBody.querySelector('.stream-view');
                 if (view) {
+                    const attemptedUrl = streamElement.currentSrc || streamElement.src || '';
                     view.innerHTML = `
                         <div class="profile-hint" style="padding:16px;text-align:center">
                             Stream konnte über den Symcon-Proxy nicht geladen werden.
+                            <div style="margin-top:8px;font-size:10px;opacity:.7;word-break:break-all">
+                                ${escapeHtml(attemptedUrl)}
+                            </div>
                         </div>
                     `;
                 }
