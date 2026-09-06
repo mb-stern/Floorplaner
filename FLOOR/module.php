@@ -3490,7 +3490,9 @@ class Floorplaner extends IPSModuleStrict
                     <label>IP-Symcon Variable</label>
                     <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
                         value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
-                    ${obj._profileName ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>` : ''}
+                    ${obj._profileName && obj._hasNewPresentation !== true
+                        ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
+                        : ''}
                 </div>
                 ${supportsStatusColor(obj) ? `
                     <div class="field">
