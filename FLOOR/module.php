@@ -5312,51 +5312,22 @@ class Floorplaner extends IPSModuleStrict
 
         const url = new URL(`/hook/floorplaner-stream-${instanceID}`, window.location.origin);
         url.searchParams.set('media', String(id));
-
-        // Falls die Visualisierung eine authorization im URL-Kontext führt,
-        // an unseren Hook weitergeben. Der Hook reicht sie an Symcons Stream-Proxy weiter.
-        try {
-            const current = new URL(window.location.href);
-            const authorization = current.searchParams.get('authorization');
-            if (authorization) {
-                url.searchParams.set('authorization', authorization);
-            }
-        } catch (e) {}
-
         return url.toString();
     }
 
     function streamElementHtml(item) {
         const mediaID = Number(item?.variableID) || 0;
-        const source = String(item?._streamSource || '').trim();
-        const lower = source.toLowerCase();
-        const proxyUrl = floorplanerStreamHookUrl(mediaID);
+        const streamUrl = floorplanerStreamHookUrl(mediaID);
 
-        if (!proxyUrl) {
+        if (!streamUrl) {
             return `<div class="profile-hint">Stream konnte nicht geöffnet werden.</div>`;
         }
 
-        // Symcon ist der Proxy für die Medienstreams.
-        // RTSP/H.264 wird über VIDEO angefordert.
-        if (lower.startsWith('rtsp://') || lower.startsWith('rtsps://')) {
-            return `
-                <video
-                    autoplay
-                    muted
-                    playsinline
-                    controls
-                    preload="none"
-                    src="${escapeHtml(proxyUrl)}"
-                    data-stream-element
-                ></video>
-            `;
-        }
-
-        // MJPEG wird vom Browser nicht als VIDEO unterstützt.
-        // Deshalb denselben Symcon-Proxy als IMG verwenden.
+        // Der WebHook liefert MJPEG. <img> beendet die Verbindung automatisch,
+        // sobald das Popup geschlossen und das Element aus dem DOM entfernt wird.
         return `
             <img
-                src="${escapeHtml(proxyUrl)}"
+                src="${escapeHtml(streamUrl)}"
                 alt="Stream"
                 data-stream-element
             >
@@ -5387,7 +5358,7 @@ class Floorplaner extends IPSModuleStrict
                 if (view) {
                     view.innerHTML = `
                         <div class="profile-hint" style="padding:16px;text-align:center">
-                            Stream konnte über den Floorplaner-WebHook nicht geladen werden.
+                            Stream konnte über den Floorplaner-WebHook / FFmpeg nicht geladen werden.
                         </div>
                     `;
                 }
@@ -5884,18 +5855,9 @@ HTML;
             return;
         }
 
-        $media = IPS_GetMedia($mediaID);
-        if ((int) ($media['MediaType'] ?? -1) !== 3) {
-            http_response_code(400);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Das ausgewählte Medienobjekt ist kein Stream.';
-            return;
-        }
-
-        // Nur Streams zulassen, die wirklich im Floorplan dieser Instanz verwendet werden.
+        // Nur Medienobjekte zulassen, die in genau diesem Floorplan verwendet werden.
         $allowed = false;
-        $project = $this->GetProject();
-        foreach (($project['floors'] ?? []) as $floor) {
+        foreach (($this->GetProject()['floors'] ?? []) as $floor) {
             foreach (($floor['items'] ?? []) as $item) {
                 if ((int) ($item['variableID'] ?? 0) === $mediaID) {
                     $allowed = true;
@@ -5911,24 +5873,127 @@ HTML;
             return;
         }
 
-        /*
-         * Der Hook selbst ist nur der instanzbezogene Einstiegspunkt.
-         * Die eigentliche RTSP/MJPEG-Aufbereitung übernimmt weiterhin Symcons
-         * eigener Stream-Proxy. Dadurch kein Transcoding im Floorplaner.
-         *
-         * Der dokumentierte/seit Jahren verwendete Proxy-Endpunkt liegt am
-         * Symcon-WebServer unter /proxy/<MediaID>. Eine evtl. vorhandene
-         * authorization wird unverändert weitergereicht.
-         */
-        $target = '/proxy/' . $mediaID;
-        $authorization = isset($_GET['authorization']) ? trim((string) $_GET['authorization']) : '';
-        if ($authorization !== '') {
-            $target .= '?authorization=' . rawurlencode($authorization);
+        $media = IPS_GetMedia($mediaID);
+        if ((int) ($media['MediaType'] ?? -1) !== 3) {
+            http_response_code(400);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Das Medienobjekt ist kein Stream.';
+            return;
         }
 
-        header('Cache-Control: no-store, no-cache, must-revalidate');
+        $source = trim((string) ($media['MediaFile'] ?? ''));
+        if ($source === '') {
+            http_response_code(404);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Das Stream-Medienobjekt besitzt keine Quelle.';
+            return;
+        }
+
+        if (!function_exists('proc_open')) {
+            http_response_code(501);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'proc_open ist auf diesem IP-Symcon-System nicht verfügbar.';
+            return;
+        }
+
+        /*
+         * Browser können RTSP nicht direkt darstellen.
+         * FFmpeg wird NUR solange gestartet, wie dieses Popup verbunden ist.
+         *
+         * Testprofil:
+         * - RTSP über TCP
+         * - kein Audio
+         * - 8 fps
+         * - max. 640 px Breite
+         * - MJPEG als multipart/x-mixed-replace
+         */
+        $command = implode(
+            ' ',
+            [
+                'ffmpeg',
+                '-hide_banner',
+                '-loglevel', 'error',
+                '-rtsp_transport', 'tcp',
+                '-i', escapeshellarg($source),
+                '-an',
+                '-vf', escapeshellarg('fps=8,scale=640:-2:force_original_aspect_ratio=decrease'),
+                '-q:v', '7',
+                '-f', 'mpjpeg',
+                '-boundary_tag', 'floorplanerframe',
+                'pipe:1'
+            ]
+        );
+
+        $descriptorSpec = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w']
+        ];
+
+        $process = @proc_open($command, $descriptorSpec, $pipes);
+        if (!is_resource($process)) {
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'FFmpeg konnte nicht gestartet werden.';
+            return;
+        }
+
+        fclose($pipes[0]);
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+
+        ignore_user_abort(false);
+        @set_time_limit(0);
+
+        header('Content-Type: multipart/x-mixed-replace; boundary=floorplanerframe');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
         header('Pragma: no-cache');
-        header('Location: ' . $target, true, 302);
+        header('X-Accel-Buffering: no');
+
+        try {
+            while (true) {
+                if (connection_aborted()) {
+                    break;
+                }
+
+                $status = proc_get_status($process);
+
+                $chunk = fread($pipes[1], 65536);
+                if ($chunk !== false && $chunk !== '') {
+                    echo $chunk;
+                    @ob_flush();
+                    flush();
+                }
+
+                if (!$status['running']) {
+                    // Bei einem Startfehler die FFmpeg-Meldung wenigstens ins Debug schreiben.
+                    $error = stream_get_contents($pipes[2]);
+                    if (is_string($error) && trim($error) !== '') {
+                        $this->SendDebug('Stream.FFmpeg', trim($error), 0);
+                    }
+                    break;
+                }
+
+                usleep(10000);
+            }
+        } finally {
+            if (isset($pipes[1]) && is_resource($pipes[1])) {
+                fclose($pipes[1]);
+            }
+            if (isset($pipes[2]) && is_resource($pipes[2])) {
+                $error = stream_get_contents($pipes[2]);
+                if (is_string($error) && trim($error) !== '') {
+                    $this->SendDebug('Stream.FFmpeg', trim($error), 0);
+                }
+                fclose($pipes[2]);
+            }
+
+            $status = proc_get_status($process);
+            if ($status['running']) {
+                @proc_terminate($process);
+            }
+            @proc_close($process);
+        }
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
