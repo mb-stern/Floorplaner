@@ -4872,25 +4872,16 @@ class Floorplaner extends IPSModuleStrict
         document.getElementById('iconAutoBtn')?.addEventListener('click', () => {
             const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
             const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
-            if (!item) return;
-            const slot = iconPickerTarget?.slot || 'single';
-            if (slot === 'off') {
-                item.iconOffManual = false;
-                item.iconOff = item._presentationIconOff || item._objectIcon || item.icon || 'fa-light fa-circle';
-            } else if (slot === 'on') {
-                item.iconOnManual = false;
-                item.iconOn = item._presentationIconOn || item._objectIcon || item.icon || 'fa-light fa-circle';
-            } else {
-                item.iconManual = false;
-                item.iconSvg = '';
-                item.icon = item._objectIcon || 'fa-light fa-circle';
-            }
-            iconModal.classList.remove('open');
-            iconModal.setAttribute('aria-hidden', 'true');
-            pushHistory();
-            markDirty();
-            render();
-            renderProperties();
+            if (!item || Number(item.variableID || 0) <= 0) return;
+
+            // Nicht mit eventuell veralteten Browserdaten arbeiten:
+            // das aktuell in Symcon hinterlegte Icon nochmals frisch abfragen.
+            requestAction('refreshItemIcon', JSON.stringify({
+                floorId: state.activeFloor,
+                itemId: item.id,
+                variableID: Number(item.variableID),
+                slot: iconPickerTarget?.slot || 'single'
+            }));
         });
         iconModal.addEventListener('click', evt => {
             if (evt.target === iconModal) {
@@ -5169,6 +5160,42 @@ class Floorplaner extends IPSModuleStrict
                 window.location.reload();
                 return;
             }
+            if (data?.type === 'refreshedItemIcon' && data.itemId && data.meta) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const item = floor?.items?.find(i => i.id === data.itemId);
+                if (!item) return;
+
+                const meta = data.meta || {};
+                Object.assign(item, meta);
+
+                const slot = data.slot || 'single';
+
+                if (slot === 'off') {
+                    item.iconOffManual = false;
+                    item.iconOff = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
+                        : (meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || item.icon || 'fa-light fa-circle');
+                } else if (slot === 'on') {
+                    item.iconOnManual = false;
+                    item.iconOn = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
+                        : (meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || item.icon || 'fa-light fa-circle');
+                } else {
+                    item.iconManual = false;
+                    item.iconSvg = '';
+                    item.icon = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || 'fa-light fa-circle')
+                        : (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle');
+                }
+
+                iconModal.classList.remove('open');
+                iconModal.setAttribute('aria-hidden', 'true');
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+                return;
+            }
             if (data?.type === 'variableUpdate' && data.variableID && data.meta) {
                 const variableID = Number(data.variableID);
                 const meta = data.meta || {};
@@ -5371,6 +5398,37 @@ HTML;
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'refreshItemIcon':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Icon-Aktualisierung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Icon-Aktualisierung.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'    => 'refreshedItemIcon',
+                        'floorId' => (string) ($request['floorId'] ?? ''),
+                        'itemId'  => (string) ($request['itemId'] ?? ''),
+                        'slot'    => (string) ($request['slot'] ?? 'single'),
+                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
                 if ($message !== false) {
                     $this->UpdateVisualizationValue($message);
                 }
