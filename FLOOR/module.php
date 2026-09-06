@@ -3480,13 +3480,7 @@ class Floorplaner extends IPSModuleStrict
                         ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
                     </div>
                 ` : ''}
-                ${Number(obj.variableID || 0) > 0 ? `
-                    <div class="field">
-                        <button id="refreshVariableSettings" type="button" title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
-                            Variableneinstellungen aktualisieren
-                        </button>
-                    </div>
-                ` : ''}
+
                 ${Number(obj._variableType) === 0 ? `
                     <div class="field">
                         <label>Icons</label>
@@ -3518,6 +3512,13 @@ class Floorplaner extends IPSModuleStrict
                         <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
                     </div>
                 `}
+                ${Number(obj.variableID || 0) > 0 ? `
+                    <div class="field">
+                        <button id="refreshVariableSettings" type="button" title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                            Variableneinstellungen aktualisieren
+                        </button>
+                    </div>
+                ` : ''}
 
                 <div class="row2">
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
