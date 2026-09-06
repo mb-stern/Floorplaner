@@ -5343,7 +5343,17 @@ class Floorplaner extends IPSModuleStrict
                 renderProperties();
                 return;
             }
-            if (data?.type === 'refreshedVariableSettings' && data.itemId && data.meta) {
+            if (data?.type === 'refreshedVariableSettings') {
+                if (data.error) {
+                    statusEl.textContent = `Aktualisierung fehlgeschlagen: ${String(data.error)}`;
+                    return;
+                }
+
+                if (!data.itemId || !data.meta) {
+                    statusEl.textContent = 'Variableneinstellungen konnten nicht aktualisiert werden';
+                    return;
+                }
+
                 const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
                 const item = floor?.items?.find(i => i.id === data.itemId);
                 if (!item) return;
@@ -5606,27 +5616,40 @@ HTML;
                 break;
 
             case 'refreshVariableSettings':
-                if (!is_string($Value)) {
-                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
-                }
+                $response = [
+                    'type'    => 'refreshedVariableSettings',
+                    'floorId' => '',
+                    'itemId'  => '',
+                    'meta'    => null,
+                    'error'   => ''
+                ];
 
-                $request = json_decode($Value, true);
-                if (!is_array($request)) {
-                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
-                }
+                try {
+                    if (!is_string($Value)) {
+                        throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                    }
 
-                $variableID = (int) ($request['variableID'] ?? 0);
-                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
-                    break;
+                    $request = json_decode($Value, true);
+                    if (!is_array($request)) {
+                        throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                    }
+
+                    $response['floorId'] = (string) ($request['floorId'] ?? '');
+                    $response['itemId'] = (string) ($request['itemId'] ?? '');
+
+                    $variableID = (int) ($request['variableID'] ?? 0);
+                    if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                        throw new RuntimeException('Variable nicht gefunden.');
+                    }
+
+                    $response['meta'] = $this->GetVariableRuntimeMeta($variableID);
+                } catch (Throwable $e) {
+                    $response['error'] = $e->getMessage();
+                    $this->SendDebug('RefreshVariableSettings', $e->getMessage(), 0);
                 }
 
                 $message = json_encode(
-                    [
-                        'type'    => 'refreshedVariableSettings',
-                        'floorId' => (string) ($request['floorId'] ?? ''),
-                        'itemId'  => (string) ($request['itemId'] ?? ''),
-                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
-                    ],
+                    $response,
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
 
@@ -6229,18 +6252,41 @@ HTML;
         return $result;
     }
 
-    private function LegacyProfileColorToCss(mixed $Color): string
+    private function GetLegacyBoolOnColor(int $VariableID): string
     {
-        if (!is_int($Color) && !is_numeric($Color)) {
-            return '';
+        try {
+            $variable = IPS_GetVariable($VariableID);
+            if ((int) ($variable['VariableType'] ?? -1) !== 0) {
+                return '';
+            }
+
+            $profileName = (string) (
+                ($variable['VariableCustomProfile'] ?? '')
+                ?: ($variable['VariableProfile'] ?? '')
+            );
+
+            if ($profileName === '' || !IPS_VariableProfileExists($profileName)) {
+                return '';
+            }
+
+            $profile = IPS_GetVariableProfile($profileName);
+            foreach (($profile['Associations'] ?? []) as $association) {
+                if ((float) ($association['Value'] ?? 0) !== 1.0) {
+                    continue;
+                }
+
+                $color = (int) ($association['Color'] ?? -1);
+                if ($color < 0) {
+                    return '';
+                }
+
+                return sprintf('#%06X', $color & 0xFFFFFF);
+            }
+        } catch (Throwable $e) {
+            $this->SendDebug('LegacyProfileColor', $e->getMessage(), 0);
         }
 
-        $color = (int) $Color;
-        if ($color < 0) {
-            return '';
-        }
-
-        return sprintf('#%06X', $color & 0xFFFFFF);
+        return '';
     }
 
     private function GetVariableRuntimeMeta(int $VariableID): array
@@ -6257,7 +6303,9 @@ HTML;
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
-        $legacyColorOn = '';
+        $legacyColorOn = $hasLegacyProfile
+            ? $this->GetLegacyBoolOnColor($VariableID)
+            : '';
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -6265,21 +6313,12 @@ HTML;
                 $associations = [];
 
                 foreach (($p['Associations'] ?? []) as $association) {
-                    $associationValue = $association['Value'] ?? 0;
-                    $associationColor = (int) ($association['Color'] ?? -1);
-
                     $associations[] = [
-                        'value' => $associationValue,
+                        'value' => $association['Value'] ?? 0,
                         'name'  => (string) ($association['Name'] ?? ''),
                         'icon'  => (string) ($association['Icon'] ?? ''),
-                        'color' => $associationColor
+                        'color' => (int) ($association['Color'] ?? -1)
                     ];
-
-                    // Legacy-Bool: Die Farbe der true/1-Association ist unsere
-                    // Statusfarbe EIN. Die bestehende Legacy-Iconlogik bleibt unberührt.
-                    if ($variableType === 0 && (float) $associationValue === 1.0) {
-                        $legacyColorOn = $this->LegacyProfileColorToCss($associationColor);
-                    }
                 }
 
                 $profile = [
