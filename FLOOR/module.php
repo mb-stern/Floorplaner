@@ -1782,6 +1782,8 @@ class Floorplaner extends IPSModuleStrict
                 }
                 if (typeof item.iconManual !== 'boolean') item.iconManual = false;
                 if (typeof item.iconSvg !== 'string') item.iconSvg = '';
+                if (typeof item.iconOffSvg !== 'string') item.iconOffSvg = '';
+                if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -2449,7 +2451,26 @@ class Floorplaner extends IPSModuleStrict
             : (item?.iconOff || fallback);
     }
 
+    function effectiveItemIconSvg(item, forcedState = null) {
+        if (Number(item?._variableType) !== 0) {
+            return String(item?.iconSvg || '');
+        }
+
+        const active = forcedState === null
+            ? (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true')
+            : forcedState === true;
+
+        return active
+            ? String(item?.iconOnSvg || '')
+            : String(item?.iconOffSvg || '');
+    }
+
     function propertySpecificIconPreviewHtml(item, state = null) {
+        const persisted = effectiveItemIconSvg(item, state);
+        if (persisted.startsWith('<svg')) {
+            return persisted;
+        }
+
         const icon = normalizeSymconIcon(effectiveItemIcon(item, state));
         const generated = fontAwesomeSvgHtml(icon);
         if (generated) return generated;
@@ -2946,7 +2967,7 @@ class Floorplaner extends IPSModuleStrict
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '')}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
@@ -4890,18 +4911,27 @@ class Floorplaner extends IPSModuleStrict
                 if (!targetItem) return;
                 const chosen = String(button.dataset.symconIcon || 'fa-light fa-circle');
                 const slot = iconPickerTarget?.slot || 'single';
+
+                // Das tatsächlich von /icons.js gerenderte SVG mit dem gewählten
+                // Icon speichern. So muss das Icon später weder im Editor noch
+                // in Live erneut anhand des Namens aufgelöst werden.
+                const renderedSvg = button.querySelector('svg');
+                const persistedSvg = renderedSvg
+                    ? renderedSvg.outerHTML
+                    : (fontAwesomeSvgHtml(chosen) || '');
+
                 if (slot === 'off') {
                     targetItem.iconOff = chosen;
                     targetItem.iconOffManual = true;
+                    targetItem.iconOffSvg = persistedSvg;
                 } else if (slot === 'on') {
                     targetItem.iconOn = chosen;
                     targetItem.iconOnManual = true;
+                    targetItem.iconOnSvg = persistedSvg;
                 } else {
                     targetItem.icon = chosen;
                     targetItem.iconManual = true;
-                    // Nur das Einzelicon speichert wie bisher optional sein gerendertes SVG.
-                    const renderedSvg = button.querySelector('svg');
-                    targetItem.iconSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(targetItem.icon) || '');
+                    targetItem.iconSvg = persistedSvg;
                 }
                 iconModal.classList.remove('open');
                 iconModal.setAttribute('aria-hidden', 'true');
@@ -5044,15 +5074,27 @@ class Floorplaner extends IPSModuleStrict
                     // Für Bool immer zwei wählbare Zustände anbieten, ohne den
                     // funktionierenden Legacy-Autoweg zu verändern.
                     if (Number(node.variableType) === 0) {
-                        if (entity.iconOffManual !== true) entity.iconOff = node.objectIcon || entity.icon || 'fa-light fa-circle';
-                        if (entity.iconOnManual !== true) entity.iconOn = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        if (entity.iconOffManual !== true) {
+                            entity.iconOffSvg = '';
+                            entity.iconOff = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        }
+                        if (entity.iconOnManual !== true) {
+                            entity.iconOnSvg = '';
+                            entity.iconOn = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        }
                     }
                 } else {
                     if (Number(node.variableType) === 0) {
                         const offIcon = node.presentationIconOff || node.presentationIconOn || node.objectIcon || 'fa-light fa-circle';
                         const onIcon = node.presentationIconOn || node.presentationIconOff || node.objectIcon || 'fa-light fa-circle';
-                        if (entity.iconOffManual !== true) entity.iconOff = offIcon;
-                        if (entity.iconOnManual !== true) entity.iconOn = onIcon;
+                        if (entity.iconOffManual !== true) {
+                            entity.iconOffSvg = '';
+                            entity.iconOff = offIcon;
+                        }
+                        if (entity.iconOnManual !== true) {
+                            entity.iconOnSvg = '';
+                            entity.iconOn = onIcon;
+                        }
                         if (entity.iconManual !== true) {
                             entity.icon = node.objectIcon || offIcon;
                             entity.iconSvg = '';
@@ -5251,11 +5293,13 @@ class Floorplaner extends IPSModuleStrict
 
                 if (slot === 'off') {
                     item.iconOffManual = false;
+                    item.iconOffSvg = '';
                     item.iconOff = meta._hasLegacyProfile === true
                         ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
                         : (meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || item.icon || 'fa-light fa-circle');
                 } else if (slot === 'on') {
                     item.iconOnManual = false;
+                    item.iconOnSvg = '';
                     item.iconOn = meta._hasLegacyProfile === true
                         ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
                         : (meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || item.icon || 'fa-light fa-circle');
