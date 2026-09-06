@@ -5020,12 +5020,12 @@ class Floorplaner extends IPSModuleStrict
         const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
         const objectIconKey = prefix ? `_${prefix}ObjectIcon` : '_objectIcon';
         const legacyKey = prefix ? `_${prefix}HasLegacyProfile` : '_hasLegacyProfile';
+        const newPresentationKey = prefix ? `_${prefix}HasNewPresentation` : '_hasNewPresentation';
         const presentationOffKey = prefix ? `_${prefix}PresentationIconOff` : '_presentationIconOff';
         const presentationOnKey = prefix ? `_${prefix}PresentationIconOn` : '_presentationIconOn';
         const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
         const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
         const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
-        const visualSignatureKey = prefix ? `_${prefix}VisualSignature` : '_visualSignature';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -5037,24 +5037,12 @@ class Floorplaner extends IPSModuleStrict
         entity[canActionKey] = node?.canAction === true;
         entity[objectIconKey] = node?.objectIcon || '';
         entity[legacyKey] = node?.hasLegacyProfile === true;
+        entity[newPresentationKey] = node?.hasNewPresentation === true;
         entity[presentationOffKey] = node?.presentationIconOff || '';
         entity[presentationOnKey] = node?.presentationIconOn || '';
         entity[presentationSingleKey] = node?.presentationIcon || '';
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
-        entity[visualSignatureKey] = node?.visualSignature || '';
-
-        // Beim bewussten Auswählen/Neuauswählen einer Gerätevariable
-        // werden die aktuellen Symcon-Vorgaben erzwungen. Alte manuelle
-        // Overrides dürfen hier nicht wie ein Cache weiterleben.
-        if (entityType === 'item' && field === 'variableID' && node) {
-            entity.iconManual = false;
-            entity.iconOffManual = false;
-            entity.iconOnManual = false;
-            entity.iconSvg = '';
-            entity.iconOffSvg = '';
-            entity.iconOnSvg = '';
-        }
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
         // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
@@ -5073,12 +5061,32 @@ class Floorplaner extends IPSModuleStrict
             entity.showDirectSlider = false;
         }
 
-        // Legacy bleibt exakt beim bisherigen Weg: ObjectIcon aus
-        // „Weitere visuelle Einstellungen“. Nur wenn KEIN Legacy-Profil
-        // vorhanden ist, werden Icons der neuen Variablendarstellung benutzt.
+        // Beim bewussten Auswählen/Neuauswählen der Gerätevariable die
+        // aktuellen Symcon-Vorgaben vollständig übernehmen.
         if (entityType === 'item' && field === 'variableID') {
             if (node) {
-                if (node.hasLegacyProfile === true) {
+                entity.iconManual = false;
+                entity.iconOffManual = false;
+                entity.iconOnManual = false;
+                entity.iconSvg = '';
+                entity.iconOffSvg = '';
+                entity.iconOnSvg = '';
+
+                if (node.hasNewPresentation === true) {
+                    if (Number(node.variableType) === 0) {
+                        const offIcon = node.presentationIconOff || node.presentationIconOn || node.objectIcon || 'fa-light fa-circle';
+                        const onIcon = node.presentationIconOn || node.presentationIconOff || node.objectIcon || 'fa-light fa-circle';
+                        entity.iconOff = offIcon;
+                        entity.iconOn = onIcon;
+                        entity.icon = node.objectIcon || offIcon;
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(node.glowColor || ''))) {
+                            entity.statusColor = String(node.glowColor);
+                        }
+                    } else {
+                        entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
+                    }
+                } else if (node.hasLegacyProfile === true) {
                     if (entity.iconManual !== true) {
                         entity.icon = node.objectIcon || 'fa-light fa-circle';
                         entity.iconSvg = '';
@@ -5096,24 +5104,10 @@ class Floorplaner extends IPSModuleStrict
                         }
                     }
                 } else {
+                    entity.icon = node.objectIcon || 'fa-light fa-circle';
                     if (Number(node.variableType) === 0) {
-                        const offIcon = node.presentationIconOff || node.presentationIconOn || node.objectIcon || 'fa-light fa-circle';
-                        const onIcon = node.presentationIconOn || node.presentationIconOff || node.objectIcon || 'fa-light fa-circle';
-                        if (entity.iconOffManual !== true) {
-                            entity.iconOffSvg = '';
-                            entity.iconOff = offIcon;
-                        }
-                        if (entity.iconOnManual !== true) {
-                            entity.iconOnSvg = '';
-                            entity.iconOn = onIcon;
-                        }
-                        if (entity.iconManual !== true) {
-                            entity.icon = node.objectIcon || offIcon;
-                            entity.iconSvg = '';
-                        }
-                    } else if (entity.iconManual !== true) {
-                        entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
-                        entity.iconSvg = '';
+                        entity.iconOff = entity.icon;
+                        entity.iconOn = entity.icon;
                     }
                 }
             } else if (entity.iconManual !== true) {
@@ -5351,9 +5345,8 @@ class Floorplaner extends IPSModuleStrict
 
                 const meta = data.meta || {};
 
-                // Dieser Button bedeutet bewusst: Symcon ist die Wahrheit.
-                // Alle alten manuellen Icon-Overrides und gespeicherten SVGs
-                // verwerfen und die aktuell wirksame Darstellung neu übernehmen.
+                // Explizites Aktualisieren bedeutet: aktuelle Symcon-Einstellungen
+                // vollständig übernehmen, keine alten manuellen Icon-Overrides behalten.
                 item.iconManual = false;
                 item.iconOffManual = false;
                 item.iconOnManual = false;
@@ -5363,23 +5356,31 @@ class Floorplaner extends IPSModuleStrict
 
                 Object.assign(item, meta);
 
-                if (meta._hasLegacyProfile === true) {
+                if (meta._hasNewPresentation === true) {
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
+                        item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+                        item.icon = meta._objectIcon || item.iconOff || 'fa-light fa-circle';
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
+                            item.statusColor = String(meta._glowColor);
+                        }
+                    } else {
+                        item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                    }
+                } else if (meta._hasLegacyProfile === true) {
                     item.icon = meta._objectIcon || 'fa-light fa-circle';
 
                     if (Number(meta._variableType) === 0) {
                         item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                         item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
                     }
-                } else if (Number(meta._variableType) === 0) {
-                    item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
-                    item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
-                    item.icon = meta._objectIcon || item.iconOff || 'fa-light fa-circle';
-
-                    if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
-                        item.statusColor = String(meta._glowColor);
-                    }
                 } else {
-                    item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = item.icon;
+                        item.iconOn = item.icon;
+                    }
                 }
 
                 pushHistory();
@@ -5397,47 +5398,9 @@ class Floorplaner extends IPSModuleStrict
                 for (const floor of state.floors || []) {
                             for (const item of floor.items || []) {
                         if (Number(item.variableID || 0) === variableID) {
-                            const previousSignature = String(item._visualSignature || '');
-                            const newSignature = String(meta._visualSignature || '');
-                            const visualSettingsChanged =
-                                previousSignature !== '' &&
-                                newSignature !== '' &&
-                                previousSignature !== newSignature;
-
                             const manualIcon = item.iconManual === true;
-
-                            // Ändert sich Profil/Darstellung der Variable, werden
-                            // veraltete manuelle Overrides nicht beibehalten.
-                            if (visualSettingsChanged) {
-                                item.iconManual = false;
-                                item.iconOffManual = false;
-                                item.iconOnManual = false;
-                                item.iconSvg = '';
-                                item.iconOffSvg = '';
-                                item.iconOnSvg = '';
-                            }
-
                             Object.assign(item, meta);
-
-                            if (visualSettingsChanged) {
-                                if (meta._hasLegacyProfile === true) {
-                                    item.icon = meta._objectIcon || 'fa-light fa-circle';
-                                    if (Number(meta._variableType) === 0) {
-                                        item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
-                                        item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
-                                    }
-                                } else if (Number(meta._variableType) === 0) {
-                                    item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
-                                    item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
-                                    item.icon = meta._objectIcon || item.iconOff || 'fa-light fa-circle';
-
-                                    if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
-                                        item.statusColor = String(meta._glowColor);
-                                    }
-                                } else {
-                                    item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
-                                }
-                            } else if (meta._hasLegacyProfile === true) {
+                            if (meta._hasLegacyProfile === true) {
                                 // Funktionierenden Legacy-Weg nicht verändern.
                                 if (!manualIcon && meta._objectIcon !== undefined) {
                                     item.icon = meta._objectIcon || 'fa-light fa-circle';
@@ -6145,12 +6108,12 @@ HTML;
                     $node['profile'] = $meta['_profile'] ?? null;
                     $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
                     $node['hasLegacyProfile'] = (bool) ($meta['_hasLegacyProfile'] ?? false);
+                    $node['hasNewPresentation'] = (bool) ($meta['_hasNewPresentation'] ?? false);
                     $node['presentationIcon'] = (string) ($meta['_presentationIcon'] ?? '');
                     $node['presentationIconOff'] = (string) ($meta['_presentationIconOff'] ?? '');
                     $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
-                    $node['visualSignature'] = (string) ($meta['_visualSignature'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -6271,10 +6234,23 @@ HTML;
         $rawValue = GetValue($VariableID);
 
         $profileName = (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
-        $hasLegacyProfile = $profileName !== '' && IPS_VariableProfileExists($profileName);
-        $presentationIcons = $hasLegacyProfile
-            ? ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0]
-            : $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable);
+
+        // Neue Variablendarstellung hat Vorrang.
+        // Beim Wechsel von Legacy auf die neue Darstellung kann Symcon weiterhin
+        // einen alten Profilnamen an der Variable führen. Dieser darf die neue
+        // Darstellung nicht mehr blockieren.
+        $hasNewPresentation =
+            !empty($variable['VariableCustomPresentation'] ?? []) ||
+            !empty($variable['VariablePresentation'] ?? []);
+
+        $hasLegacyProfile =
+            !$hasNewPresentation &&
+            $profileName !== '' &&
+            IPS_VariableProfileExists($profileName);
+
+        $presentationIcons = $hasNewPresentation
+            ? $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable)
+            : ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
@@ -6332,41 +6308,16 @@ HTML;
 
         $objectInfo = IPS_GetObject($VariableID);
 
-        // Signatur der aktuell wirksamen Darstellungs-/Profilinformationen.
-        // Damit erkennt der Browser auch einen Wechsel Legacy <-> neue Darstellung
-        // oder Änderungen an den Icon-/Glow-Einstellungen.
-        $visualSignatureData = [
-            'profileName'             => $profileName,
-            'hasLegacyProfile'        => $hasLegacyProfile,
-            'objectIcon'              => (string) ($objectInfo['ObjectIcon'] ?? ''),
-            'variableProfile'         => (string) ($variable['VariableProfile'] ?? ''),
-            'variableCustomProfile'   => (string) ($variable['VariableCustomProfile'] ?? ''),
-            'variablePresentation'    => $variable['VariablePresentation'] ?? [],
-            'customPresentation'      => $variable['VariableCustomPresentation'] ?? [],
-            'presentationIcon'        => (string) ($presentationIcons['icon'] ?? ''),
-            'presentationIconOff'     => (string) ($presentationIcons['off'] ?? ''),
-            'presentationIconOn'      => (string) ($presentationIcons['on'] ?? ''),
-            'glowColor'               => (string) ($presentationIcons['glowColor'] ?? ''),
-            'glowIntensity'           => (int) ($presentationIcons['glowIntensity'] ?? 0)
-        ];
-        $visualSignatureJson = json_encode(
-            $visualSignatureData,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-        $visualSignature = $visualSignatureJson !== false
-            ? sha1($visualSignatureJson)
-            : '';
-
         return [
             '_variableType'         => $variableType,
             '_objectIcon'           => (string) ($objectInfo['ObjectIcon'] ?? ''),
             '_hasLegacyProfile'     => $hasLegacyProfile,
+            '_hasNewPresentation'   => $hasNewPresentation,
             '_presentationIcon'     => (string) ($presentationIcons['icon'] ?? ''),
             '_presentationIconOff'  => (string) ($presentationIcons['off'] ?? ''),
             '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
-            '_visualSignature'      => $visualSignature,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
