@@ -5025,6 +5025,7 @@ class Floorplaner extends IPSModuleStrict
         const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
         const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
         const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
+        const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -5041,6 +5042,18 @@ class Floorplaner extends IPSModuleStrict
         entity[presentationSingleKey] = node?.presentationIcon || '';
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
+        entity[legacyColorOnKey] = node?.legacyColorOn || '';
+
+        // Legacy-Bool: Farbe der true/1-Association als Statusfarbe EIN übernehmen.
+        if (
+            entityType === 'item' &&
+            field === 'variableID' &&
+            Number(node?.variableType) === 0 &&
+            node?.hasLegacyProfile === true &&
+            /^#[0-9a-f]{6}$/i.test(String(node?.legacyColorOn || ''))
+        ) {
+            entity.statusColor = String(node.legacyColorOn);
+        }
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
         // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
@@ -5351,6 +5364,10 @@ class Floorplaner extends IPSModuleStrict
                     if (Number(meta._variableType) === 0) {
                         if (!manualOff) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                         if (!manualOn) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(meta._legacyColorOn || ''))) {
+                            item.statusColor = String(meta._legacyColorOn);
+                        }
                     }
                 } else if (Number(meta._variableType) === 0) {
                     if (!manualOff) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
@@ -5390,6 +5407,10 @@ class Floorplaner extends IPSModuleStrict
                                 if (Number(meta._variableType) === 0) {
                                     if (item.iconOffManual !== true) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                                     if (item.iconOnManual !== true) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                                    if (/^#[0-9a-f]{6}$/i.test(String(meta._legacyColorOn || ''))) {
+                                        item.statusColor = String(meta._legacyColorOn);
+                                    }
                                 }
                             } else if (Number(meta._variableType) === 0) {
                                 if (item.iconOffManual !== true) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
@@ -6094,6 +6115,7 @@ HTML;
                     $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
+                    $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -6207,6 +6229,20 @@ HTML;
         return $result;
     }
 
+    private function LegacyProfileColorToCss(mixed $Color): string
+    {
+        if (!is_int($Color) && !is_numeric($Color)) {
+            return '';
+        }
+
+        $color = (int) $Color;
+        if ($color < 0) {
+            return '';
+        }
+
+        return sprintf('#%06X', $color & 0xFFFFFF);
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -6221,6 +6257,7 @@ HTML;
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
+        $legacyColorOn = '';
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -6228,12 +6265,21 @@ HTML;
                 $associations = [];
 
                 foreach (($p['Associations'] ?? []) as $association) {
+                    $associationValue = $association['Value'] ?? 0;
+                    $associationColor = (int) ($association['Color'] ?? -1);
+
                     $associations[] = [
-                        'value' => $association['Value'] ?? 0,
+                        'value' => $associationValue,
                         'name'  => (string) ($association['Name'] ?? ''),
                         'icon'  => (string) ($association['Icon'] ?? ''),
-                        'color' => (int) ($association['Color'] ?? -1)
+                        'color' => $associationColor
                     ];
+
+                    // Legacy-Bool: Die Farbe der true/1-Association ist unsere
+                    // Statusfarbe EIN. Die bestehende Legacy-Iconlogik bleibt unberührt.
+                    if ($variableType === 0 && (float) $associationValue === 1.0) {
+                        $legacyColorOn = $this->LegacyProfileColorToCss($associationColor);
+                    }
                 }
 
                 $profile = [
@@ -6284,6 +6330,7 @@ HTML;
             '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
+            '_legacyColorOn'        => $legacyColorOn,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
