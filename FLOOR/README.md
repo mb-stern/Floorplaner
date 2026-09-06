@@ -75,8 +75,6 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ### 1.4
 
-### 1.4
-
 - Icons werden nun sowohl aus den neuen IP-Symcon-Variablendarstellungen als auch aus Legacy-Profilen automatisch übernommen.
 - Bei Boolean-Variablen können zwei unterschiedliche Icons für AUS und EIN aus der Variablendarstellung übernommen und verwendet werden.
 - Die übernommenen Icons können weiterhin manuell geändert oder über Variableneinstellungen aktualisieren neu aus IP-Symcon eingelesen werden.
