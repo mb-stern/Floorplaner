@@ -1371,6 +1371,36 @@ class Floorplaner extends IPSModuleStrict
             font-size: 18px;
         }
 
+        .bool-icon-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .bool-icon-field {
+            display: grid;
+            gap: 4px;
+        }
+
+        .bool-icon-field > label {
+            color: var(--fp-muted);
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .bool-icon-button {
+            width: 100%;
+            min-height: 38px;
+            padding: 4px;
+            justify-content: center;
+        }
+
+        .bool-icon-button .icon-select-preview {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+        }
+
         .icon-select-preview {
             width: 24px;
             height: 24px;
@@ -2406,6 +2436,26 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
+    function effectiveItemIcon(item, forcedState = null) {
+        const fallback = item?.icon || item?._objectIcon || defaultSymconIconForLegacyKind(item?.kind);
+        if (Number(item?._variableType) !== 0) return fallback;
+
+        const active = forcedState === null
+            ? (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true')
+            : forcedState === true;
+
+        return active
+            ? (item?.iconOn || fallback)
+            : (item?.iconOff || fallback);
+    }
+
+    function propertySpecificIconPreviewHtml(item, state = null) {
+        const icon = normalizeSymconIcon(effectiveItemIcon(item, state));
+        const generated = fontAwesomeSvgHtml(icon);
+        if (generated) return generated;
+        return `<i class="${escapeHtml(icon)}"></i>`;
+    }
+
     function propertyIconPreviewHtml(item) {
         const icon = normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
         const storedSvg = String(item?.iconSvg || '').trim();
@@ -2820,7 +2870,7 @@ class Floorplaner extends IPSModuleStrict
             // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
             const lightClass = '';
             const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = item.icon || defaultSymconIconForLegacyKind(item.kind);
+            const icon = effectiveItemIcon(item);
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3396,14 +3446,37 @@ class Floorplaner extends IPSModuleStrict
             const kind = obj.kind || 'generic';
             properties.innerHTML = `
                 <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || '')}"></div>
-                <div class="field">
-                    <label>Icon</label>
-                    <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
-                        <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
-                        <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
-                    </button>
-                    <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
-                </div>
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label>Icons</label>
+                        <div class="bool-icon-row">
+                            <div class="bool-icon-field">
+                                <label>AUS</label>
+                                <button id="itemIconOffSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für AUS auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, false)}</span>
+                                </button>
+                            </div>
+                            <div class="bool-icon-field">
+                                <label>EIN</label>
+                                <button id="itemIconOnSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für EIN auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, true)}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="profile-hint">${obj._hasLegacyProfile === true
+                            ? 'Legacy: Basis-Icon weiterhin aus „Weitere visuelle Einstellungen“. AUS/EIN können hier optional getrennt überschrieben werden.'
+                            : 'Neue Variablendarstellung: AUS/EIN werden automatisch übernommen und können hier getrennt geändert werden.'}</div>
+                    </div>
+                ` : `
+                    <div class="field">
+                        <label>Icon</label>
+                        <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
+                            <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
+                            <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
+                        </button>
+                        <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
+                    </div>
+                `}
                 <div class="field">
                     <label>IP-Symcon Variable</label>
                     <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
@@ -3610,14 +3683,15 @@ class Floorplaner extends IPSModuleStrict
             });
         });
 
-        const itemIconSelect = properties.querySelector('#itemIconSelect');
-        if (itemIconSelect) {
-            itemIconSelect.addEventListener('click', () => {
-                if (!selected || selected.type !== 'item') return;
-                iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id};
-                openSymconIconPicker();
-            });
-        }
+        const openItemIconPicker = slot => {
+            if (!selected || selected.type !== 'item') return;
+            iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id, slot};
+            openSymconIconPicker();
+        };
+
+        properties.querySelector('#itemIconSelect')?.addEventListener('click', () => openItemIconPicker('single'));
+        properties.querySelector('#itemIconOffSelect')?.addEventListener('click', () => openItemIconPicker('off'));
+        properties.querySelector('#itemIconOnSelect')?.addEventListener('click', () => openItemIconPicker('on'));
 
         properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
             field.addEventListener('click', () => {
@@ -4734,9 +4808,14 @@ class Floorplaner extends IPSModuleStrict
         const query = String(filter || '').trim().toLowerCase();
         const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
         const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
-        const current = normalizeSymconIcon(item?.icon || 'fa-light fa-circle');
+        const slot = iconPickerTarget?.slot || 'single';
+        const currentRaw = slot === 'off'
+            ? effectiveItemIcon(item, false)
+            : (slot === 'on' ? effectiveItemIcon(item, true) : (item?.icon || 'fa-light fa-circle'));
+        const current = normalizeSymconIcon(currentRaw);
         const icons = availableSymconIcons().filter(icon => !query || iconSearchText(icon).includes(query));
-        const shown = icons.slice(0, 500);
+        // Ohne Suche bewusst kompakt; bei Suche stehen weiterhin alle Treffer zur Verfügung.
+        const shown = icons.slice(0, query ? 500 : 80);
         iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
             const cls = icon === current ? ' current' : '';
             const preview = fontAwesomeSvgHtml(icon) || `<i class="${escapeHtml(icon)}"></i>`;
@@ -4748,12 +4827,21 @@ class Floorplaner extends IPSModuleStrict
                 const targetFloor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
                 const targetItem = targetFloor?.items?.find(i => i.id === iconPickerTarget?.itemId);
                 if (!targetItem) return;
-                targetItem.icon = String(button.dataset.symconIcon || 'fa-light fa-circle');
-                targetItem.iconManual = true;
-                // /icons.js ersetzt die <i>-Vorschau üblicherweise durch ein echtes <svg>.
-                // Dieses konkrete SVG wird mit dem Gerät gespeichert und später direkt wiederverwendet.
-                const renderedSvg = button.querySelector('svg');
-                targetItem.iconSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(targetItem.icon) || '');
+                const chosen = String(button.dataset.symconIcon || 'fa-light fa-circle');
+                const slot = iconPickerTarget?.slot || 'single';
+                if (slot === 'off') {
+                    targetItem.iconOff = chosen;
+                    targetItem.iconOffManual = true;
+                } else if (slot === 'on') {
+                    targetItem.iconOn = chosen;
+                    targetItem.iconOnManual = true;
+                } else {
+                    targetItem.icon = chosen;
+                    targetItem.iconManual = true;
+                    // Nur das Einzelicon speichert wie bisher optional sein gerendertes SVG.
+                    const renderedSvg = button.querySelector('svg');
+                    targetItem.iconSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(targetItem.icon) || '');
+                }
                 iconModal.classList.remove('open');
                 iconModal.setAttribute('aria-hidden', 'true');
                 pushHistory();
@@ -4785,9 +4873,18 @@ class Floorplaner extends IPSModuleStrict
             const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
             const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
             if (!item) return;
-            item.iconManual = false;
-            item.iconSvg = '';
-            item.icon = item._objectIcon || 'fa-light fa-circle';
+            const slot = iconPickerTarget?.slot || 'single';
+            if (slot === 'off') {
+                item.iconOffManual = false;
+                item.iconOff = item._presentationIconOff || item._objectIcon || item.icon || 'fa-light fa-circle';
+            } else if (slot === 'on') {
+                item.iconOnManual = false;
+                item.iconOn = item._presentationIconOn || item._objectIcon || item.icon || 'fa-light fa-circle';
+            } else {
+                item.iconManual = false;
+                item.iconSvg = '';
+                item.icon = item._objectIcon || 'fa-light fa-circle';
+            }
             iconModal.classList.remove('open');
             iconModal.setAttribute('aria-hidden', 'true');
             pushHistory();
@@ -4842,6 +4939,10 @@ class Floorplaner extends IPSModuleStrict
         const profileKey = prefix ? `_${prefix}Profile` : '_profile';
         const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
         const objectIconKey = prefix ? `_${prefix}ObjectIcon` : '_objectIcon';
+        const legacyKey = prefix ? `_${prefix}HasLegacyProfile` : '_hasLegacyProfile';
+        const presentationOffKey = prefix ? `_${prefix}PresentationIconOff` : '_presentationIconOff';
+        const presentationOnKey = prefix ? `_${prefix}PresentationIconOn` : '_presentationIconOn';
+        const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4852,19 +4953,46 @@ class Floorplaner extends IPSModuleStrict
         entity[profileKey] = node?.profile || null;
         entity[canActionKey] = node?.canAction === true;
         entity[objectIconKey] = node?.objectIcon || '';
+        entity[legacyKey] = node?.hasLegacyProfile === true;
+        entity[presentationOffKey] = node?.presentationIconOff || '';
+        entity[presentationOnKey] = node?.presentationIconOn || '';
+        entity[presentationSingleKey] = node?.presentationIcon || '';
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
 
-        // Das Icon wird beim Zuordnen der Hauptvariable automatisch aus
-        // IPS_GetObject(...)[ObjectIcon] übernommen, solange der Benutzer
-        // im Floorplaner noch kein eigenes Icon gewählt hat.
+        // Legacy bleibt exakt beim bisherigen Weg: ObjectIcon aus
+        // „Weitere visuelle Einstellungen“. Nur wenn KEIN Legacy-Profil
+        // vorhanden ist, werden Icons der neuen Variablendarstellung benutzt.
         if (entityType === 'item' && field === 'variableID') {
-            if (node && entity.iconManual !== true) {
-                entity.icon = node.objectIcon || 'fa-light fa-circle';
-                entity.iconSvg = '';
-            }
-            if (!node && entity.iconManual !== true) {
+            if (node) {
+                if (node.hasLegacyProfile === true) {
+                    if (entity.iconManual !== true) {
+                        entity.icon = node.objectIcon || 'fa-light fa-circle';
+                        entity.iconSvg = '';
+                    }
+                    // Für Bool immer zwei wählbare Zustände anbieten, ohne den
+                    // funktionierenden Legacy-Autoweg zu verändern.
+                    if (Number(node.variableType) === 0) {
+                        if (entity.iconOffManual !== true) entity.iconOff = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        if (entity.iconOnManual !== true) entity.iconOn = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                    }
+                } else {
+                    if (Number(node.variableType) === 0) {
+                        const offIcon = node.presentationIconOff || node.presentationIconOn || node.objectIcon || 'fa-light fa-circle';
+                        const onIcon = node.presentationIconOn || node.presentationIconOff || node.objectIcon || 'fa-light fa-circle';
+                        if (entity.iconOffManual !== true) entity.iconOff = offIcon;
+                        if (entity.iconOnManual !== true) entity.iconOn = onIcon;
+                        if (entity.iconManual !== true) {
+                            entity.icon = node.objectIcon || offIcon;
+                            entity.iconSvg = '';
+                        }
+                    } else if (entity.iconManual !== true) {
+                        entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
+                        entity.iconSvg = '';
+                    }
+                }
+            } else if (entity.iconManual !== true) {
                 entity.icon = 'fa-light fa-circle';
                 entity.iconSvg = '';
             }
@@ -5050,8 +5178,21 @@ class Floorplaner extends IPSModuleStrict
                         if (Number(item.variableID || 0) === variableID) {
                             const manualIcon = item.iconManual === true;
                             Object.assign(item, meta);
-                            if (!manualIcon && meta._objectIcon !== undefined) {
-                                item.icon = meta._objectIcon || 'fa-light fa-circle';
+                            if (meta._hasLegacyProfile === true) {
+                                // Funktionierenden Legacy-Weg nicht verändern.
+                                if (!manualIcon && meta._objectIcon !== undefined) {
+                                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                                    item.iconSvg = '';
+                                }
+                                if (Number(meta._variableType) === 0) {
+                                    if (item.iconOffManual !== true) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                                    if (item.iconOnManual !== true) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                                }
+                            } else if (Number(meta._variableType) === 0) {
+                                if (item.iconOffManual !== true) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
+                                if (item.iconOnManual !== true) item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+                            } else if (!manualIcon) {
+                                item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
                                 item.iconSvg = '';
                             }
                         }
@@ -5678,6 +5819,10 @@ HTML;
                     $node['profileSummary'] = $meta['_profileSummary'] ?? '';
                     $node['profile'] = $meta['_profile'] ?? null;
                     $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
+                    $node['hasLegacyProfile'] = (bool) ($meta['_hasLegacyProfile'] ?? false);
+                    $node['presentationIcon'] = (string) ($meta['_presentationIcon'] ?? '');
+                    $node['presentationIconOff'] = (string) ($meta['_presentationIconOff'] ?? '');
+                    $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -5708,6 +5853,73 @@ HTML;
         return $result;
     }
 
+    private function FindPresentationValue(array $Data, string $WantedKey): mixed
+    {
+        foreach ($Data as $key => $value) {
+            if (strcasecmp((string) $key, $WantedKey) === 0) {
+                return $value;
+            }
+            if (is_array($value)) {
+                $found = $this->FindPresentationValue($value, $WantedKey);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function GetNewPresentationIcons(int $VariableID, int $VariableType, mixed $RawValue, array $Variable): array
+    {
+        $result = ['icon' => '', 'off' => '', 'on' => ''];
+
+        // Neue Darstellung nur verwenden, wenn wirklich eine neue Darstellung
+        // an der Variable hinterlegt ist. Legacy-Profile werden hier bewusst ignoriert.
+        $hasNewPresentation =
+            !empty($Variable['VariableCustomPresentation'] ?? []) ||
+            !empty($Variable['VariablePresentation'] ?? []);
+
+        if (!$hasNewPresentation) {
+            return $result;
+        }
+
+        $presentation = [];
+        if (function_exists('IPS_GetVariablePresentation')) {
+            try {
+                $candidate = IPS_GetVariablePresentation($VariableID);
+                if (is_array($candidate)) {
+                    $presentation = $candidate;
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('VariablePresentation', $e->getMessage(), 0);
+            }
+        }
+
+        if ($presentation === []) {
+            $presentation = !empty($Variable['VariableCustomPresentation'] ?? [])
+                ? (array) $Variable['VariableCustomPresentation']
+                : (array) ($Variable['VariablePresentation'] ?? []);
+        }
+
+        $iconTrue = trim((string) ($this->FindPresentationValue($presentation, 'ICON_TRUE') ?? ''));
+        $iconFalse = trim((string) ($this->FindPresentationValue($presentation, 'ICON_FALSE') ?? ''));
+        $useIconFalseRaw = $this->FindPresentationValue($presentation, 'USE_ICON_FALSE');
+        $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
+
+        if ($VariableType === 0 && $iconTrue !== '') {
+            $result['on'] = $iconTrue;
+            $result['off'] = ($useIconFalse && $iconFalse !== '') ? $iconFalse : $iconTrue;
+            return $result;
+        }
+
+        $icon = trim((string) ($this->FindPresentationValue($presentation, 'ICON') ?? ''));
+        if ($icon !== '') {
+            $result['icon'] = $icon;
+        }
+
+        return $result;
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -5715,6 +5927,10 @@ HTML;
         $rawValue = GetValue($VariableID);
 
         $profileName = (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
+        $hasLegacyProfile = $profileName !== '' && IPS_VariableProfileExists($profileName);
+        $presentationIcons = $hasLegacyProfile
+            ? ['icon' => '', 'off' => '', 'on' => '']
+            : $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable);
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
@@ -5773,9 +5989,13 @@ HTML;
         $objectInfo = IPS_GetObject($VariableID);
 
         return [
-            '_variableType'   => $variableType,
-            '_objectIcon'     => (string) ($objectInfo['ObjectIcon'] ?? ''),
-            '_variablePath'   => $this->GetObjectPath($VariableID),
+            '_variableType'         => $variableType,
+            '_objectIcon'           => (string) ($objectInfo['ObjectIcon'] ?? ''),
+            '_hasLegacyProfile'     => $hasLegacyProfile,
+            '_presentationIcon'     => (string) ($presentationIcons['icon'] ?? ''),
+            '_presentationIconOff'  => (string) ($presentationIcons['off'] ?? ''),
+            '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
+            '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
             '_profileName'    => $profileName,
