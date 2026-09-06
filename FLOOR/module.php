@@ -2867,9 +2867,13 @@ class Floorplaner extends IPSModuleStrict
             const isBooleanDevice = Number(item._variableType) === 0;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
             const statusRingEnabled = supportsStatusColor(item);
+            const symconGlowEnabled = isBooleanDevice && !!item._stateColor;
             const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
             const numericClass = numericLevel !== null ? ' numeric-status' : '';
-            const boolClass = isBooleanDevice && statusRingEnabled
+            // Eine von Symcon konfigurierte GLOW_COLOR ist eine Darstellungseigenschaft
+            // der Variable und darf nicht von der optionalen Floorplaner-Statusfarbe
+            // abhängen. Daher aktiviert sie den Bool-Glow eigenständig.
+            const boolClass = isBooleanDevice && (statusRingEnabled || symconGlowEnabled)
                 ? (boolActive ? ' boolean-active' : ' boolean-inactive')
                 : '';
             // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
