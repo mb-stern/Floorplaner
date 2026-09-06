@@ -1306,6 +1306,51 @@ class Floorplaner extends IPSModuleStrict
         }
 
 
+        /* Stream-Popup: klein starten, bei Bedarf vergrößern. */
+        .stream-popup-body {
+            display: grid;
+            gap: 8px;
+            min-width: 280px;
+        }
+
+        .stream-view {
+            width: 320px;
+            height: 180px;
+            max-width: min(70vw, 640px);
+            max-height: min(60vh, 360px);
+            overflow: hidden;
+            border-radius: 7px;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stream-view img,
+        .stream-view video {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            background: #000;
+        }
+
+        #controlModal.stream-expanded .stream-view {
+            width: min(78vw, 960px);
+            height: min(68vh, 540px);
+            max-width: none;
+            max-height: none;
+        }
+
+        .stream-popup-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .stream-popup-actions button {
+            min-width: 110px;
+        }
+
         /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
         #controlModal {
             background: transparent;
@@ -4300,17 +4345,14 @@ class Floorplaner extends IPSModuleStrict
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
 
-                // Stream-Medienobjekte werden von Symcon selbst dargestellt.
-                // openObject öffnet das Medienobjekt als maximierte Kachel,
-                // dadurch bleiben Stream-Aufbereitung und Zugangsdaten bei Symcon.
+                // Stream: kleines Popup direkt am Gerät öffnen.
+                // Erst auf Wunsch innerhalb des Popups vergrößern.
                 if (
                     item?._objectKind === 'stream' &&
                     Number(item._mediaType) === 3 &&
                     Number(item.variableID) > 0
                 ) {
-                    if (typeof openObject === 'function') {
-                        openObject(Number(item.variableID));
-                    }
+                    openStreamControl(item, evt.clientX, evt.clientY);
                     return;
                 }
 
@@ -5076,13 +5118,17 @@ class Floorplaner extends IPSModuleStrict
             entity._hasLegacyProfile = false;
             entity._hasNewPresentation = false;
             entity._objectIcon = node.objectIcon || '';
+            entity._streamSource = node.streamSource || '';
             entity.iconManual = false;
             entity.iconOffManual = false;
             entity.iconOnManual = false;
             entity.iconSvg = '';
             entity.iconOffSvg = '';
             entity.iconOnSvg = '';
-            entity.icon = 'fa-light fa-camera';
+
+            // Wie bei Variablen: das am ausgewählten Symcon-Objekt
+            // konfigurierte Icon übernehmen. Kein Kamera-Icon erzwingen.
+            entity.icon = node.objectIcon || 'fa-light fa-circle';
 
             variableModal.classList.remove('open');
             variableModal.setAttribute('aria-hidden', 'true');
@@ -5256,6 +5302,102 @@ class Floorplaner extends IPSModuleStrict
         }));
     }
 
+    function streamElementHtml(item) {
+        const mediaID = Number(item?.variableID) || 0;
+        const source = String(item?._streamSource || '').trim();
+        const lower = source.toLowerCase();
+
+        // RTSP kann der Browser nicht direkt lesen; dafür den internen
+        // Symcon-Proxy verwenden. Relative URL behält die aktuelle Session.
+        if (lower.startsWith('rtsp://') || lower.startsWith('rtsps://')) {
+            return `<video autoplay muted playsinline controls src="/proxy/${mediaID}"></video>`;
+        }
+
+        // MJPEG/HTTP-Streams werden als Bild eingebettet.
+        if (source !== '') {
+            return `<img src="${escapeHtml(source)}" alt="Stream">`;
+        }
+
+        // Fallback: ebenfalls über den Symcon-Proxy versuchen.
+        return `<video autoplay muted playsinline controls src="/proxy/${mediaID}"></video>`;
+    }
+
+    function openStreamControl(item, clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || !item) return;
+
+        controlModal.classList.remove('stream-expanded');
+        controlTitle.textContent = item.name || 'Stream';
+
+        controlBody.innerHTML = `
+            <div class="stream-popup-body">
+                <div class="stream-view">
+                    ${streamElementHtml(item)}
+                </div>
+                <div class="stream-popup-actions">
+                    <button type="button" data-stream-expand>Vergrößern</button>
+                </div>
+            </div>
+        `;
+
+        const expandBtn = controlBody.querySelector('[data-stream-expand]');
+        expandBtn?.addEventListener('click', () => {
+            const expanded = controlModal.classList.toggle('stream-expanded');
+            expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
+
+            // Nach Größenänderung das Fenster innerhalb des sichtbaren Bereichs halten.
+            requestAnimationFrame(() => {
+                const dialog = controlModal.querySelector('.control-modal');
+                if (!dialog) return;
+
+                const margin = 8;
+                const rect = dialog.getBoundingClientRect();
+                let left = parseFloat(dialog.style.left) || margin;
+                let top = parseFloat(dialog.style.top) || margin;
+
+                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+            });
+        });
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            dialog.style.left = '';
+            dialog.style.top = '';
+            dialog.style.right = '';
+            dialog.style.bottom = '';
+
+            requestAnimationFrame(() => {
+                const x = Number(clientX);
+                const y = Number(clientY);
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = Number.isFinite(x) ? x + offset : margin;
+                let top = Number.isFinite(y) ? y + offset : margin;
+
+                if (left + rect.width > window.innerWidth - margin && Number.isFinite(x)) {
+                    left = x - rect.width - offset;
+                }
+                if (top + rect.height > window.innerHeight - margin && Number.isFinite(y)) {
+                    top = y - rect.height - offset;
+                }
+
+                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+            });
+        }
+    }
+
     function openItemControl(item, clientX = null, clientY = null) {
         if (!controlModal || !controlBody || item?._canAction !== true) return;
 
@@ -5377,7 +5519,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     controlCloseBtn?.addEventListener('click', () => {
-        controlModal.classList.remove('open');
+        controlModal.classList.remove('open', 'stream-expanded');
         controlModal.setAttribute('aria-hidden', 'true');
     });
     controlModal?.addEventListener('click', evt => {
@@ -5396,7 +5538,7 @@ class Floorplaner extends IPSModuleStrict
         const dialog = controlModal.querySelector('.control-modal');
         if (dialog && dialog.contains(evt.target)) return;
 
-        controlModal.classList.remove('open');
+        controlModal.classList.remove('open', 'stream-expanded');
         controlModal.setAttribute('aria-hidden', 'true');
     }, true);
 
@@ -6213,6 +6355,7 @@ HTML;
                     $node['isStream'] = $mediaType === 3;
                     if ($mediaType === 3) {
                         $node['objectTypeName'] = 'Stream';
+                        $node['streamSource'] = (string) ($media['MediaFile'] ?? '');
                     }
                 } catch (Throwable $e) {
                     $node['mediaType'] = -1;
