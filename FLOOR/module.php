@@ -6296,18 +6296,57 @@ HTML;
         foreach ($Project['floors'] as $floorIndex => $floor) {
             if (isset($floor['items']) && is_array($floor['items'])) {
                 foreach ($floor['items'] as $itemIndex => $item) {
-                    $variableID = (int) ($item['variableID'] ?? 0);
-                    if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    $objectID = (int) ($item['variableID'] ?? 0);
+                    if ($objectID <= 0) {
                         continue;
                     }
 
-                    try {
-                        $meta = $this->GetVariableRuntimeMeta($variableID);
-                        foreach ($meta as $key => $value) {
-                            $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                    // Normale IP-Symcon-Variable: bisheriger Laufzeitpfad.
+                    if (IPS_VariableExists($objectID)) {
+                        try {
+                            $meta = $this->GetVariableRuntimeMeta($objectID);
+                            foreach ($meta as $key => $value) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
                         }
-                    } catch (Throwable $e) {
-                        $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
+                        continue;
+                    }
+
+                    // Stream-Medienobjekt:
+                    // Die mit "_" beginnenden Laufzeitfelder werden beim Speichern
+                    // absichtlich entfernt. Deshalb hier bei JEDEM Laden frisch
+                    // aus dem realen Symcon-Medienobjekt rekonstruieren.
+                    if (IPS_MediaExists($objectID)) {
+                        try {
+                            $media = IPS_GetMedia($objectID);
+                            $mediaType = (int) ($media['MediaType'] ?? -1);
+
+                            if ($mediaType === 3) {
+                                $object = IPS_GetObject($objectID);
+
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectKind'] = 'stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_mediaType'] = 3;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_streamSource'] =
+                                    (string) ($media['MediaFile'] ?? '');
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variablePath'] =
+                                    $this->GetObjectPath($objectID);
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_valueText'] = 'Stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_rawValue'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variableType'] = -1;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileName'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileSummary'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profile'] = null;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_canAction'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasLegacyProfile'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasNewPresentation'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectIcon'] =
+                                    (string) ($object['ObjectIcon'] ?? '');
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeStream', $e->getMessage(), 0);
+                        }
                     }
                 }
             }
