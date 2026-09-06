@@ -4948,6 +4948,7 @@ class Floorplaner extends IPSModuleStrict
         const presentationOffKey = prefix ? `_${prefix}PresentationIconOff` : '_presentationIconOff';
         const presentationOnKey = prefix ? `_${prefix}PresentationIconOn` : '_presentationIconOn';
         const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
+        const stateColorKey = prefix ? `_${prefix}StateColor` : '_stateColor';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4962,6 +4963,7 @@ class Floorplaner extends IPSModuleStrict
         entity[presentationOffKey] = node?.presentationIconOff || '';
         entity[presentationOnKey] = node?.presentationIconOn || '';
         entity[presentationSingleKey] = node?.presentationIcon || '';
+        entity[stateColorKey] = node?.stateColor || '';
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
@@ -5816,7 +5818,8 @@ HTML;
                                         'valueText'      => 'ValueText',
                                         'profileName'    => 'ProfileName',
                                         'profileSummary' => 'ProfileSummary',
-                                        'profile'        => 'Profile'
+                                        'profile'        => 'Profile',
+                                        'stateColor'     => 'StateColor'
                                     ];
                                     $targetKey = '_' . $prefix . ($mapSuffix[$suffix] ?? ucfirst($suffix));
                                 }
@@ -5895,6 +5898,7 @@ HTML;
                     $node['presentationIcon'] = (string) ($meta['_presentationIcon'] ?? '');
                     $node['presentationIconOff'] = (string) ($meta['_presentationIconOff'] ?? '');
                     $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
+                    $node['stateColor'] = (string) ($meta['_stateColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
