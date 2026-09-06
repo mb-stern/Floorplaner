@@ -2869,8 +2869,16 @@ class Floorplaner extends IPSModuleStrict
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
-            const boolClass = isBooleanDevice && (statusRingEnabled || symconGlowEnabled)
-                ? (boolActive ? ' boolean-active' : ' boolean-inactive')
+            const boolClass = isBooleanDevice
+                ? (
+                    boolActive && (statusRingEnabled || symconGlowEnabled)
+                        ? ' boolean-active'
+                        : (
+                            !symconGlowEnabled && statusRingEnabled
+                                ? ' boolean-inactive'
+                                : ''
+                        )
+                )
                 : '';
 
             // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
@@ -4978,6 +4986,20 @@ class Floorplaner extends IPSModuleStrict
         entity[presentationSingleKey] = node?.presentationIcon || '';
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
+
+        // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
+        // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
+        // AUS erhält bewusst keine eigene Farbe.
+        if (
+            entityType === 'item' &&
+            field === 'variableID' &&
+            Number(node?.variableType) === 0 &&
+            node?.hasLegacyProfile !== true &&
+            /^#[0-9a-f]{6}$/i.test(String(node?.glowColor || ''))
+        ) {
+            entity.statusColor = String(node.glowColor);
+        }
+
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
@@ -5248,6 +5270,11 @@ class Floorplaner extends IPSModuleStrict
                             } else if (Number(meta._variableType) === 0) {
                                 if (item.iconOffManual !== true) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
                                 if (item.iconOnManual !== true) item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+
+                                // GLOW_COLOR ist ausschließlich die EIN-Farbe.
+                                if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
+                                    item.statusColor = String(meta._glowColor);
+                                }
                             } else if (!manualIcon) {
                                 item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
                                 item.iconSvg = '';
