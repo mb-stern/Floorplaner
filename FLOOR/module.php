@@ -1944,13 +1944,16 @@ class Floorplaner extends IPSModuleStrict
 
         /*
          * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
-         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
-         * interaktive Grundriss dort nicht hineinragen.
+         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen.
          *
-         * 40 px + 24 px Innenabstand werden für die Kopfzone verwendet.
-         * Der Abstand gilt sowohl im Editor- als auch im Bedienmodus.
+         * Wichtig: SVG und Gitternetz bleiben unverändert über die komplette
+         * Fläche sichtbar. Nur Einpassen/Start/Zoom behandeln den oberen
+         * Bereich als Sicherheitszone für interaktive Grundrisselemente.
+         *
+         * Auf der Symcon-WebConsole reicht 40 px nicht zuverlässig aus.
+         * Deshalb verwenden wir hier 72 px Kopf-Sicherheitszone.
          */
-        const headerTop = 40;
+        const headerTop = 72;
 
         // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 40 : 0;
