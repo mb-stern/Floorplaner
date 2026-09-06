@@ -3033,6 +3033,26 @@ class Floorplaner extends IPSModuleStrict
         return /^#[0-9a-f]{6}$/i.test(color) ? color : '#ffe66d';
     }
 
+    function symconAssociationColorToCss(value) {
+        const color = Number(value);
+        if (!Number.isFinite(color) || color < 0) return '';
+        return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function legacyBoolOnColorFromProfile(profile) {
+        const associations = Array.isArray(profile?.associations)
+            ? profile.associations
+            : [];
+
+        const onAssociation = associations.find(
+            association => Number(association?.value) === 1
+        );
+
+        return onAssociation
+            ? symconAssociationColorToCss(onAssociation.color)
+            : '';
+    }
+
     function supportsStatusColor(item) {
         // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
         // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
@@ -5091,11 +5111,11 @@ class Floorplaner extends IPSModuleStrict
                         entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
                     }
                 } else if (node.hasLegacyProfile === true) {
-                    if (
-                        Number(node.variableType) === 0 &&
-                        /^#[0-9a-f]{6}$/i.test(String(node.legacyColorOn || ''))
-                    ) {
-                        entity.statusColor = String(node.legacyColorOn);
+                    if (Number(node.variableType) === 0) {
+                        const legacyOnColor = legacyBoolOnColorFromProfile(node.profile);
+                        if (legacyOnColor) {
+                            entity.statusColor = legacyOnColor;
+                        }
                     }
 
                     if (entity.iconManual !== true) {
@@ -5386,8 +5406,9 @@ class Floorplaner extends IPSModuleStrict
                         item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                         item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
 
-                        if (/^#[0-9a-f]{6}$/i.test(String(meta._legacyColorOn || ''))) {
-                            item.statusColor = String(meta._legacyColorOn);
+                        const legacyOnColor = legacyBoolOnColorFromProfile(meta._profile);
+                        if (legacyOnColor) {
+                            item.statusColor = legacyOnColor;
                         }
                     }
                 } else {
@@ -5425,8 +5446,9 @@ class Floorplaner extends IPSModuleStrict
                                     if (item.iconOffManual !== true) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                                     if (item.iconOnManual !== true) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
 
-                                    if (/^#[0-9a-f]{6}$/i.test(String(meta._legacyColorOn || ''))) {
-                                        item.statusColor = String(meta._legacyColorOn);
+                                    const legacyOnColor = legacyBoolOnColorFromProfile(meta._profile);
+                                    if (legacyOnColor) {
+                                        item.statusColor = legacyOnColor;
                                     }
                                 }
                             } else if (Number(meta._variableType) === 0) {
