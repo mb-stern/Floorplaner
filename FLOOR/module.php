@@ -591,7 +591,7 @@ class Floorplaner extends IPSModuleStrict
 
         .device.boolean-active circle {
             stroke: var(--device-status-color, #ffe66d);
-            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d));
+            filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
         }
 
         /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
@@ -1371,6 +1371,36 @@ class Floorplaner extends IPSModuleStrict
             font-size: 18px;
         }
 
+        .bool-icon-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .bool-icon-field {
+            display: grid;
+            gap: 4px;
+        }
+
+        .bool-icon-field > label {
+            color: var(--fp-muted);
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .bool-icon-button {
+            width: 100%;
+            min-height: 38px;
+            padding: 4px;
+            justify-content: center;
+        }
+
+        .bool-icon-button .icon-select-preview {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+        }
+
         .icon-select-preview {
             width: 24px;
             height: 24px;
@@ -1546,9 +1576,7 @@ class Floorplaner extends IPSModuleStrict
     <div class="control-modal">
         <h3 id="controlTitle">Gerät bedienen</h3>
         <div id="controlBody" class="control-body"></div>
-        <div class="control-actions">
-            <button id="controlCloseBtn" type="button">Schließen</button>
-        </div>
+
     </div>
 </div>
 
@@ -1752,6 +1780,8 @@ class Floorplaner extends IPSModuleStrict
                 }
                 if (typeof item.iconManual !== 'boolean') item.iconManual = false;
                 if (typeof item.iconSvg !== 'string') item.iconSvg = '';
+                if (typeof item.iconOffSvg !== 'string') item.iconOffSvg = '';
+                if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -1914,13 +1944,16 @@ class Floorplaner extends IPSModuleStrict
 
         /*
          * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
-         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
-         * interaktive Grundriss dort nicht hineinragen.
+         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen.
          *
-         * 40 px + 24 px Innenabstand werden für die Kopfzone verwendet.
-         * Der Abstand gilt sowohl im Editor- als auch im Bedienmodus.
+         * Wichtig: SVG und Gitternetz bleiben unverändert über die komplette
+         * Fläche sichtbar. Nur Einpassen/Start/Zoom behandeln den oberen
+         * Bereich als Sicherheitszone für interaktive Grundrisselemente.
+         *
+         * Auf der Symcon-WebConsole reicht 40 px nicht zuverlässig aus.
+         * Deshalb verwenden wir hier 72 px Kopf-Sicherheitszone.
          */
-        const headerTop = 40;
+        const headerTop = 72;
 
         // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 40 : 0;
@@ -2406,6 +2439,45 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
+    function effectiveItemIcon(item, forcedState = null) {
+        const fallback = item?.icon || item?._objectIcon || defaultSymconIconForLegacyKind(item?.kind);
+        if (Number(item?._variableType) !== 0) return fallback;
+
+        const active = forcedState === null
+            ? (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true')
+            : forcedState === true;
+
+        return active
+            ? (item?.iconOn || fallback)
+            : (item?.iconOff || fallback);
+    }
+
+    function effectiveItemIconSvg(item, forcedState = null) {
+        if (Number(item?._variableType) !== 0) {
+            return String(item?.iconSvg || '');
+        }
+
+        const active = forcedState === null
+            ? (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true')
+            : forcedState === true;
+
+        return active
+            ? String(item?.iconOnSvg || '')
+            : String(item?.iconOffSvg || '');
+    }
+
+    function propertySpecificIconPreviewHtml(item, state = null) {
+        const persisted = effectiveItemIconSvg(item, state);
+        if (persisted.startsWith('<svg')) {
+            return persisted;
+        }
+
+        const icon = normalizeSymconIcon(effectiveItemIcon(item, state));
+        const generated = fontAwesomeSvgHtml(icon);
+        if (generated) return generated;
+        return `<i class="${escapeHtml(icon)}"></i>`;
+    }
+
     function propertyIconPreviewHtml(item) {
         const icon = normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
         const storedSvg = String(item?.iconSvg || '').trim();
@@ -2810,17 +2882,38 @@ class Floorplaner extends IPSModuleStrict
             const isBooleanDevice = Number(item._variableType) === 0;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
             const statusRingEnabled = supportsStatusColor(item);
+            const symconGlowColor = String(item._glowColor || '').trim();
+            const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
+            const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
+
             const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
             const numericClass = numericLevel !== null ? ' numeric-status' : '';
-            const boolClass = isBooleanDevice && statusRingEnabled
-                ? (boolActive ? ' boolean-active' : ' boolean-inactive')
+
+            // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
+            // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
+            const boolClass = isBooleanDevice
+                ? (
+                    boolActive && (statusRingEnabled || symconGlowEnabled)
+                        ? ' boolean-active'
+                        : (
+                            !symconGlowEnabled && statusRingEnabled
+                                ? ' boolean-inactive'
+                                : ''
+                        )
+                )
                 : '';
+
             // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
             // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
             // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
             const lightClass = '';
-            const statusColor = normalizeStatusColor(item.statusColor);
-            const icon = item.icon || defaultSymconIconForLegacyKind(item.kind);
+            const statusColor = (boolActive && symconGlowEnabled)
+                ? symconGlowColor
+                : normalizeStatusColor(item.statusColor);
+            const boolGlowPx = (boolActive && symconGlowEnabled)
+                ? Math.max(1, symconGlowIntensity * 0.14)
+                : 7;
+            const icon = effectiveItemIcon(item);
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -2871,11 +2964,11 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '')}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
@@ -2941,6 +3034,26 @@ class Floorplaner extends IPSModuleStrict
     function normalizeStatusColor(value) {
         const color = String(value || '').trim();
         return /^#[0-9a-f]{6}$/i.test(color) ? color : '#ffe66d';
+    }
+
+    function symconAssociationColorToCss(value) {
+        const color = Number(value);
+        if (!Number.isFinite(color) || color < 0) return '';
+        return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function legacyBoolOnColorFromProfile(profile) {
+        const associations = Array.isArray(profile?.associations)
+            ? profile.associations
+            : [];
+
+        const onAssociation = associations.find(
+            association => Number(association?.value) === 1
+        );
+
+        return onAssociation
+            ? symconAssociationColorToCss(onAssociation.color)
+            : '';
     }
 
     function supportsStatusColor(item) {
@@ -3397,19 +3510,60 @@ class Floorplaner extends IPSModuleStrict
             properties.innerHTML = `
                 <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || '')}"></div>
                 <div class="field">
-                    <label>Icon</label>
-                    <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
-                        <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
-                        <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
-                    </button>
-                    <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
-                </div>
-                <div class="field">
                     <label>IP-Symcon Variable</label>
                     <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
                         value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
-                    ${obj._profileName ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>` : ''}
+                    ${obj._profileName && obj._hasNewPresentation !== true
+                        ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
+                        : ''}
                 </div>
+                ${supportsStatusColor(obj) ? `
+                    <div class="field">
+                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
+                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
+                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
+                    </div>
+                ` : ''}
+
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label>Icons</label>
+                        <div class="bool-icon-row">
+                            <div class="bool-icon-field">
+                                <label>AUS</label>
+                                <button id="itemIconOffSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für AUS auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, false)}</span>
+                                </button>
+                            </div>
+                            <div class="bool-icon-field">
+                                <label>EIN</label>
+                                <button id="itemIconOnSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für EIN auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, true)}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="profile-hint">${obj._hasLegacyProfile === true
+                            ? 'Legacy: Basis-Icon weiterhin aus „Weitere visuelle Einstellungen“. AUS/EIN können hier optional getrennt überschrieben werden.'
+                            : 'Neue Variablendarstellung: AUS/EIN werden automatisch übernommen und können hier getrennt geändert werden.'}</div>
+                    </div>
+                ` : `
+                    <div class="field">
+                        <label>Icon</label>
+                        <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
+                            <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
+                            <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
+                        </button>
+                        <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
+                    </div>
+                `}
+                ${Number(obj.variableID || 0) > 0 ? `
+                    <div class="field">
+                        <button id="refreshVariableSettings" type="button" title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                            Variableneinstellungen aktualisieren
+                        </button>
+                    </div>
+                ` : ''}
+
                 <div class="row2">
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
@@ -3425,13 +3579,7 @@ class Floorplaner extends IPSModuleStrict
                         <div class="profile-hint">Nur für echte Zahlenbereiche ohne Profil-Assoziationen.</div>
                     </div>
                 ` : ''}
-                ${supportsStatusColor(obj) ? `
-                    <div class="field">
-                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
-                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
-                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
-                    </div>
-                ` : ''}
+
                 <div class="row2">
                     <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
                     <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
@@ -3610,14 +3758,28 @@ class Floorplaner extends IPSModuleStrict
             });
         });
 
-        const itemIconSelect = properties.querySelector('#itemIconSelect');
-        if (itemIconSelect) {
-            itemIconSelect.addEventListener('click', () => {
-                if (!selected || selected.type !== 'item') return;
-                iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id};
-                openSymconIconPicker();
+        const openItemIconPicker = slot => {
+            if (!selected || selected.type !== 'item') return;
+            iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id, slot};
+            openSymconIconPicker();
+        };
+
+        // pointerdown statt click: Die Icon-Auswahl öffnet sofort beim ersten
+        // Antippen/Anklicken und ist nicht davon abhängig, ob zuvor ein anderes
+        // Eingabefeld den Fokus hatte.
+        const bindItemIconPicker = (selector, slot) => {
+            const button = properties.querySelector(selector);
+            if (!button) return;
+            button.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                openItemIconPicker(slot);
             });
-        }
+        };
+
+        bindItemIconPicker('#itemIconSelect', 'single');
+        bindItemIconPicker('#itemIconOffSelect', 'off');
+        bindItemIconPicker('#itemIconOnSelect', 'on');
 
         properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
             field.addEventListener('click', () => {
@@ -3631,6 +3793,23 @@ class Floorplaner extends IPSModuleStrict
                 statusEl.textContent = 'Objektbaum wird geladen …';
                 requestAction('getObjectTree', '');
             });
+        });
+
+        properties.querySelector('#refreshVariableSettings')?.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (!selected || selected.type !== 'item') return;
+            const floor = currentFloor();
+            const item = floor?.items?.find(i => i.id === selected.id);
+            if (!item || Number(item.variableID || 0) <= 0) return;
+
+            statusEl.textContent = 'Variableneinstellungen werden aktualisiert …';
+            requestAction('refreshVariableSettings', JSON.stringify({
+                floorId: state.activeFloor,
+                itemId: item.id,
+                variableID: Number(item.variableID)
+            }));
         });
 
         properties.querySelectorAll('[data-project]').forEach(input => {
@@ -4734,9 +4913,14 @@ class Floorplaner extends IPSModuleStrict
         const query = String(filter || '').trim().toLowerCase();
         const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
         const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
-        const current = normalizeSymconIcon(item?.icon || 'fa-light fa-circle');
+        const slot = iconPickerTarget?.slot || 'single';
+        const currentRaw = slot === 'off'
+            ? effectiveItemIcon(item, false)
+            : (slot === 'on' ? effectiveItemIcon(item, true) : (item?.icon || 'fa-light fa-circle'));
+        const current = normalizeSymconIcon(currentRaw);
         const icons = availableSymconIcons().filter(icon => !query || iconSearchText(icon).includes(query));
-        const shown = icons.slice(0, 500);
+        // Ohne Suche bewusst kompakt; bei Suche stehen weiterhin alle Treffer zur Verfügung.
+        const shown = icons.slice(0, query ? 500 : 80);
         iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
             const cls = icon === current ? ' current' : '';
             const preview = fontAwesomeSvgHtml(icon) || `<i class="${escapeHtml(icon)}"></i>`;
@@ -4748,12 +4932,30 @@ class Floorplaner extends IPSModuleStrict
                 const targetFloor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
                 const targetItem = targetFloor?.items?.find(i => i.id === iconPickerTarget?.itemId);
                 if (!targetItem) return;
-                targetItem.icon = String(button.dataset.symconIcon || 'fa-light fa-circle');
-                targetItem.iconManual = true;
-                // /icons.js ersetzt die <i>-Vorschau üblicherweise durch ein echtes <svg>.
-                // Dieses konkrete SVG wird mit dem Gerät gespeichert und später direkt wiederverwendet.
+                const chosen = String(button.dataset.symconIcon || 'fa-light fa-circle');
+                const slot = iconPickerTarget?.slot || 'single';
+
+                // Das tatsächlich von /icons.js gerenderte SVG mit dem gewählten
+                // Icon speichern. So muss das Icon später weder im Editor noch
+                // in Live erneut anhand des Namens aufgelöst werden.
                 const renderedSvg = button.querySelector('svg');
-                targetItem.iconSvg = renderedSvg ? renderedSvg.outerHTML : (fontAwesomeSvgHtml(targetItem.icon) || '');
+                const persistedSvg = renderedSvg
+                    ? renderedSvg.outerHTML
+                    : (fontAwesomeSvgHtml(chosen) || '');
+
+                if (slot === 'off') {
+                    targetItem.iconOff = chosen;
+                    targetItem.iconOffManual = true;
+                    targetItem.iconOffSvg = persistedSvg;
+                } else if (slot === 'on') {
+                    targetItem.iconOn = chosen;
+                    targetItem.iconOnManual = true;
+                    targetItem.iconOnSvg = persistedSvg;
+                } else {
+                    targetItem.icon = chosen;
+                    targetItem.iconManual = true;
+                    targetItem.iconSvg = persistedSvg;
+                }
                 iconModal.classList.remove('open');
                 iconModal.setAttribute('aria-hidden', 'true');
                 pushHistory();
@@ -4784,16 +4986,16 @@ class Floorplaner extends IPSModuleStrict
         document.getElementById('iconAutoBtn')?.addEventListener('click', () => {
             const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
             const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
-            if (!item) return;
-            item.iconManual = false;
-            item.iconSvg = '';
-            item.icon = item._objectIcon || 'fa-light fa-circle';
-            iconModal.classList.remove('open');
-            iconModal.setAttribute('aria-hidden', 'true');
-            pushHistory();
-            markDirty();
-            render();
-            renderProperties();
+            if (!item || Number(item.variableID || 0) <= 0) return;
+
+            // Nicht mit eventuell veralteten Browserdaten arbeiten:
+            // das aktuell in Symcon hinterlegte Icon nochmals frisch abfragen.
+            requestAction('refreshItemIcon', JSON.stringify({
+                floorId: state.activeFloor,
+                itemId: item.id,
+                variableID: Number(item.variableID),
+                slot: iconPickerTarget?.slot || 'single'
+            }));
         });
         iconModal.addEventListener('click', evt => {
             if (evt.target === iconModal) {
@@ -4842,6 +5044,14 @@ class Floorplaner extends IPSModuleStrict
         const profileKey = prefix ? `_${prefix}Profile` : '_profile';
         const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
         const objectIconKey = prefix ? `_${prefix}ObjectIcon` : '_objectIcon';
+        const legacyKey = prefix ? `_${prefix}HasLegacyProfile` : '_hasLegacyProfile';
+        const newPresentationKey = prefix ? `_${prefix}HasNewPresentation` : '_hasNewPresentation';
+        const presentationOffKey = prefix ? `_${prefix}PresentationIconOff` : '_presentationIconOff';
+        const presentationOnKey = prefix ? `_${prefix}PresentationIconOn` : '_presentationIconOn';
+        const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
+        const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
+        const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
+        const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4852,19 +5062,89 @@ class Floorplaner extends IPSModuleStrict
         entity[profileKey] = node?.profile || null;
         entity[canActionKey] = node?.canAction === true;
         entity[objectIconKey] = node?.objectIcon || '';
+        entity[legacyKey] = node?.hasLegacyProfile === true;
+        entity[newPresentationKey] = node?.hasNewPresentation === true;
+        entity[presentationOffKey] = node?.presentationIconOff || '';
+        entity[presentationOnKey] = node?.presentationIconOn || '';
+        entity[presentationSingleKey] = node?.presentationIcon || '';
+        entity[glowColorKey] = node?.glowColor || '';
+        entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
+        entity[legacyColorOnKey] = node?.legacyColorOn || '';
+
+        // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
+        // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
+        // AUS erhält bewusst keine eigene Farbe.
+        if (
+            entityType === 'item' &&
+            field === 'variableID' &&
+            Number(node?.variableType) === 0 &&
+            node?.hasLegacyProfile !== true &&
+            /^#[0-9a-f]{6}$/i.test(String(node?.glowColor || ''))
+        ) {
+            entity.statusColor = String(node.glowColor);
+        }
+
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
 
-        // Das Icon wird beim Zuordnen der Hauptvariable automatisch aus
-        // IPS_GetObject(...)[ObjectIcon] übernommen, solange der Benutzer
-        // im Floorplaner noch kein eigenes Icon gewählt hat.
+        // Beim bewussten Auswählen/Neuauswählen der Gerätevariable die
+        // aktuellen Symcon-Vorgaben vollständig übernehmen.
         if (entityType === 'item' && field === 'variableID') {
-            if (node && entity.iconManual !== true) {
-                entity.icon = node.objectIcon || 'fa-light fa-circle';
+            if (node) {
+                entity.iconManual = false;
+                entity.iconOffManual = false;
+                entity.iconOnManual = false;
                 entity.iconSvg = '';
-            }
-            if (!node && entity.iconManual !== true) {
+                entity.iconOffSvg = '';
+                entity.iconOnSvg = '';
+
+                if (node.hasNewPresentation === true) {
+                    if (Number(node.variableType) === 0) {
+                        const offIcon = node.presentationIconOff || node.presentationIconOn || node.objectIcon || 'fa-light fa-circle';
+                        const onIcon = node.presentationIconOn || node.presentationIconOff || node.objectIcon || 'fa-light fa-circle';
+                        entity.iconOff = offIcon;
+                        entity.iconOn = onIcon;
+                        entity.icon = node.objectIcon || offIcon;
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(node.glowColor || ''))) {
+                            entity.statusColor = String(node.glowColor);
+                        }
+                    } else {
+                        entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
+                    }
+                } else if (node.hasLegacyProfile === true) {
+                    if (Number(node.variableType) === 0) {
+                        const legacyOnColor = legacyBoolOnColorFromProfile(node.profile);
+                        if (legacyOnColor) {
+                            entity.statusColor = legacyOnColor;
+                        }
+                    }
+
+                    if (entity.iconManual !== true) {
+                        entity.icon = node.objectIcon || 'fa-light fa-circle';
+                        entity.iconSvg = '';
+                    }
+                    // Für Bool immer zwei wählbare Zustände anbieten, ohne den
+                    // funktionierenden Legacy-Autoweg zu verändern.
+                    if (Number(node.variableType) === 0) {
+                        if (entity.iconOffManual !== true) {
+                            entity.iconOffSvg = '';
+                            entity.iconOff = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        }
+                        if (entity.iconOnManual !== true) {
+                            entity.iconOnSvg = '';
+                            entity.iconOn = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        }
+                    }
+                } else {
+                    entity.icon = node.objectIcon || 'fa-light fa-circle';
+                    if (Number(node.variableType) === 0) {
+                        entity.iconOff = entity.icon;
+                        entity.iconOn = entity.icon;
+                    }
+                }
+            } else if (entity.iconManual !== true) {
                 entity.icon = 'fa-light fa-circle';
                 entity.iconSvg = '';
             }
@@ -5034,6 +5314,19 @@ class Floorplaner extends IPSModuleStrict
         }
     });
 
+    // Geräte-Popup auch schließen, wenn außerhalb des eigentlichen Dialogs
+    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplaner absichtlich
+    // pointer-events:none, deshalb muss dies auf Dokumentebene geprüft werden.
+    document.addEventListener('pointerdown', evt => {
+        if (!controlModal?.classList.contains('open')) return;
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog && dialog.contains(evt.target)) return;
+
+        controlModal.classList.remove('open');
+        controlModal.setAttribute('aria-hidden', 'true');
+    }, true);
+
     window.handleMessage = message => {
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
@@ -5041,6 +5334,102 @@ class Floorplaner extends IPSModuleStrict
                 window.location.reload();
                 return;
             }
+            if (data?.type === 'refreshedItemIcon' && data.itemId && data.meta) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const item = floor?.items?.find(i => i.id === data.itemId);
+                if (!item) return;
+
+                const meta = data.meta || {};
+                Object.assign(item, meta);
+
+                const slot = data.slot || 'single';
+
+                if (slot === 'off') {
+                    item.iconOffManual = false;
+                    item.iconOffSvg = '';
+                    item.iconOff = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
+                        : (meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || item.icon || 'fa-light fa-circle');
+                } else if (slot === 'on') {
+                    item.iconOnManual = false;
+                    item.iconOnSvg = '';
+                    item.iconOn = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
+                        : (meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || item.icon || 'fa-light fa-circle');
+                } else {
+                    item.iconManual = false;
+                    item.iconSvg = '';
+                    item.icon = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || 'fa-light fa-circle')
+                        : (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle');
+                }
+
+                iconModal.classList.remove('open');
+                iconModal.setAttribute('aria-hidden', 'true');
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+                return;
+            }
+            if (data?.type === 'refreshedVariableSettings' && data.itemId && data.meta) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const item = floor?.items?.find(i => i.id === data.itemId);
+                if (!item) return;
+
+                const meta = data.meta || {};
+
+                // Explizites Aktualisieren bedeutet: aktuelle Symcon-Einstellungen
+                // vollständig übernehmen, keine alten manuellen Icon-Overrides behalten.
+                item.iconManual = false;
+                item.iconOffManual = false;
+                item.iconOnManual = false;
+                item.iconSvg = '';
+                item.iconOffSvg = '';
+                item.iconOnSvg = '';
+
+                Object.assign(item, meta);
+
+                if (meta._hasNewPresentation === true) {
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
+                        item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+                        item.icon = meta._objectIcon || item.iconOff || 'fa-light fa-circle';
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
+                            item.statusColor = String(meta._glowColor);
+                        }
+                    } else {
+                        item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                    }
+                } else if (meta._hasLegacyProfile === true) {
+                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                        item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                        const legacyOnColor = legacyBoolOnColorFromProfile(meta._profile);
+                        if (legacyOnColor) {
+                            item.statusColor = legacyOnColor;
+                        }
+                    }
+                } else {
+                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = item.icon;
+                        item.iconOn = item.icon;
+                    }
+                }
+
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+                statusEl.textContent = 'Variableneinstellungen aktualisiert';
+                return;
+            }
+
             if (data?.type === 'variableUpdate' && data.variableID && data.meta) {
                 const variableID = Number(data.variableID);
                 const meta = data.meta || {};
@@ -5050,8 +5439,31 @@ class Floorplaner extends IPSModuleStrict
                         if (Number(item.variableID || 0) === variableID) {
                             const manualIcon = item.iconManual === true;
                             Object.assign(item, meta);
-                            if (!manualIcon && meta._objectIcon !== undefined) {
-                                item.icon = meta._objectIcon || 'fa-light fa-circle';
+                            if (meta._hasLegacyProfile === true) {
+                                // Funktionierenden Legacy-Weg nicht verändern.
+                                if (!manualIcon && meta._objectIcon !== undefined) {
+                                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                                    item.iconSvg = '';
+                                }
+                                if (Number(meta._variableType) === 0) {
+                                    if (item.iconOffManual !== true) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                                    if (item.iconOnManual !== true) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                                    const legacyOnColor = legacyBoolOnColorFromProfile(meta._profile);
+                                    if (legacyOnColor) {
+                                        item.statusColor = legacyOnColor;
+                                    }
+                                }
+                            } else if (Number(meta._variableType) === 0) {
+                                if (item.iconOffManual !== true) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
+                                if (item.iconOnManual !== true) item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+
+                                // GLOW_COLOR ist ausschließlich die EIN-Farbe.
+                                if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
+                                    item.statusColor = String(meta._glowColor);
+                                }
+                            } else if (!manualIcon) {
+                                item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
                                 item.iconSvg = '';
                             }
                         }
@@ -5230,6 +5642,67 @@ HTML;
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'refreshVariableSettings':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'    => 'refreshedVariableSettings',
+                        'floorId' => (string) ($request['floorId'] ?? ''),
+                        'itemId'  => (string) ($request['itemId'] ?? ''),
+                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'refreshItemIcon':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Icon-Aktualisierung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Icon-Aktualisierung.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'    => 'refreshedItemIcon',
+                        'floorId' => (string) ($request['floorId'] ?? ''),
+                        'itemId'  => (string) ($request['itemId'] ?? ''),
+                        'slot'    => (string) ($request['slot'] ?? 'single'),
+                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
                 if ($message !== false) {
                     $this->UpdateVisualizationValue($message);
                 }
@@ -5678,6 +6151,14 @@ HTML;
                     $node['profileSummary'] = $meta['_profileSummary'] ?? '';
                     $node['profile'] = $meta['_profile'] ?? null;
                     $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
+                    $node['hasLegacyProfile'] = (bool) ($meta['_hasLegacyProfile'] ?? false);
+                    $node['hasNewPresentation'] = (bool) ($meta['_hasNewPresentation'] ?? false);
+                    $node['presentationIcon'] = (string) ($meta['_presentationIcon'] ?? '');
+                    $node['presentationIconOff'] = (string) ($meta['_presentationIconOff'] ?? '');
+                    $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
+                    $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
+                    $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
+                    $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -5708,16 +6189,185 @@ HTML;
         return $result;
     }
 
+    private function FindPresentationValue(array $Data, string $WantedKey): mixed
+    {
+        foreach ($Data as $key => $value) {
+            if (strcasecmp((string) $key, $WantedKey) === 0) {
+                return $value;
+            }
+            if (is_array($value)) {
+                $found = $this->FindPresentationValue($value, $WantedKey);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function GetNewPresentationIcons(int $VariableID, int $VariableType, mixed $RawValue, array $Variable): array
+    {
+        $result = ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
+
+        // Neue Darstellung nur verwenden, wenn wirklich eine neue Darstellung
+        // an der Variable hinterlegt ist. Legacy-Profile werden hier bewusst ignoriert.
+        $hasNewPresentation =
+            !empty($Variable['VariableCustomPresentation'] ?? []) ||
+            !empty($Variable['VariablePresentation'] ?? []);
+
+        if (!$hasNewPresentation) {
+            return $result;
+        }
+
+        $presentation = [];
+        if (function_exists('IPS_GetVariablePresentation')) {
+            try {
+                $candidate = IPS_GetVariablePresentation($VariableID);
+                if (is_array($candidate)) {
+                    $presentation = $candidate;
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('VariablePresentation', $e->getMessage(), 0);
+            }
+        }
+
+        if ($presentation === []) {
+            $presentation = !empty($Variable['VariableCustomPresentation'] ?? [])
+                ? (array) $Variable['VariableCustomPresentation']
+                : (array) ($Variable['VariablePresentation'] ?? []);
+        }
+
+        $iconTrue = trim((string) ($this->FindPresentationValue($presentation, 'ICON_TRUE') ?? ''));
+        $iconFalse = trim((string) ($this->FindPresentationValue($presentation, 'ICON_FALSE') ?? ''));
+        $useIconFalseRaw = $this->FindPresentationValue($presentation, 'USE_ICON_FALSE');
+        $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
+
+        // Neue Bool-Schalterdarstellung:
+        // GLOW_COLOR ist ein Symcon-Farbwert als Integer (z. B. 4041727 = #3DABFF).
+        // GLOW_INTENSITY liegt als Prozentwert 0..100 vor.
+        $glowColorRaw = $this->FindPresentationValue($presentation, 'GLOW_COLOR');
+        if ($glowColorRaw !== null && is_numeric($glowColorRaw)) {
+            $glowColor = (int) $glowColorRaw;
+            if ($glowColor >= 0) {
+                $result['glowColor'] = sprintf('#%06X', $glowColor & 0xFFFFFF);
+            }
+        }
+
+        $glowIntensityRaw = $this->FindPresentationValue($presentation, 'GLOW_INTENSITY');
+        if ($glowIntensityRaw !== null && is_numeric($glowIntensityRaw)) {
+            $result['glowIntensity'] = max(0, min(100, (int) $glowIntensityRaw));
+        }
+
+        if ($VariableType === 0 && $iconTrue !== '') {
+            $result['on'] = $iconTrue;
+            $result['off'] = ($useIconFalse && $iconFalse !== '') ? $iconFalse : $iconTrue;
+            return $result;
+        }
+
+        $icon = trim((string) ($this->FindPresentationValue($presentation, 'ICON') ?? ''));
+        if ($icon !== '') {
+            $result['icon'] = $icon;
+        }
+
+        return $result;
+    }
+
+    private function GetActiveVariablePresentationInfo(int $VariableID): array
+    {
+        $result = [
+            'parameters'      => [],
+            'presentationID'  => '',
+            'isLegacyProfile' => false,
+            'legacyProfile'   => ''
+        ];
+
+        if (!function_exists('IPS_GetVariablePresentation')) {
+            return $result;
+        }
+
+        try {
+            $parameters = IPS_GetVariablePresentation($VariableID);
+            if (!is_array($parameters)) {
+                return $result;
+            }
+
+            $result['parameters'] = $parameters;
+            $result['presentationID'] = (string) ($parameters['PRESENTATION'] ?? '');
+
+            /*
+             * Entscheidend ist die tatsächlich aktive Darstellung:
+             *
+             * Legacy Profile:
+             *   PROFILE      => ~Switch
+             *   PRESENTATION => {4153A8D4-...}
+             *
+             * Neue Darstellung:
+             *   ICON_TRUE / ICON_FALSE / GLOW_COLOR / ...
+             *   PRESENTATION => {...}
+             *
+             * Damit ist PROFILE das eindeutige Kennzeichen der aktuell
+             * wirksamen Legacy-Profil-Darstellung. Alte VariableProfile-
+             * Felder werden für diese Entscheidung bewusst ignoriert.
+             */
+            $legacyProfile = trim((string) ($parameters['PROFILE'] ?? ''));
+            $result['isLegacyProfile'] = $legacyProfile !== '';
+            $result['legacyProfile'] = $legacyProfile;
+        } catch (Throwable $e) {
+            $this->SendDebug('GetVariablePresentation', $e->getMessage(), 0);
+        }
+
+        return $result;
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
         $variableType = (int) ($variable['VariableType'] ?? -1);
         $rawValue = GetValue($VariableID);
 
-        $profileName = (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
+        $activePresentation = $this->GetActiveVariablePresentationInfo($VariableID);
+
+        // Ab Symcon 8.1 ist IPS_GetVariablePresentation() die maßgebliche Quelle:
+        // Es liefert die Parameter der AKTUELL genutzten Darstellung.
+        $activePresentationID = (string) ($activePresentation['presentationID'] ?? '');
+        $activeIsLegacy = (bool) ($activePresentation['isLegacyProfile'] ?? false);
+
+        $legacyProfileFromPresentation = (string) ($activePresentation['legacyProfile'] ?? '');
+        $profileName = $legacyProfileFromPresentation !== ''
+            ? $legacyProfileFromPresentation
+            : (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
+
+        $hasLegacyProfile =
+            $activeIsLegacy &&
+            $profileName !== '' &&
+            IPS_VariableProfileExists($profileName);
+
+        $hasNewPresentation =
+            $activePresentationID !== '' &&
+            !$activeIsLegacy;
+
+        // Nur als Fallback für Systeme/Variablen, bei denen die aktive Darstellung
+        // nicht geliefert werden kann, verwenden wir die alten Felder.
+        if ($activePresentationID === '') {
+            $fallbackHasPresentation =
+                !empty($variable['VariableCustomPresentation'] ?? []) ||
+                !empty($variable['VariablePresentation'] ?? []);
+
+            $hasLegacyProfile =
+                !$fallbackHasPresentation &&
+                $profileName !== '' &&
+                IPS_VariableProfileExists($profileName);
+
+            $hasNewPresentation = $fallbackHasPresentation;
+        }
+
+        $presentationIcons = $hasNewPresentation
+            ? $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable)
+            : ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
+        $legacyColorOn = '';
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -5742,6 +6392,19 @@ HTML;
                     'suffix'       => (string) ($p['Suffix'] ?? ''),
                     'associations' => $associations
                 ];
+
+                if ($hasLegacyProfile && $variableType === 0) {
+                    foreach ($associations as $association) {
+                        if ((float) ($association['value'] ?? 0) !== 1.0) {
+                            continue;
+                        }
+                        $color = (int) ($association['color'] ?? -1);
+                        if ($color >= 0) {
+                            $legacyColorOn = sprintf('#%06X', $color & 0xFFFFFF);
+                        }
+                        break;
+                    }
+                }
 
                 $parts = [];
                 if ($associations !== []) {
@@ -5773,9 +6436,18 @@ HTML;
         $objectInfo = IPS_GetObject($VariableID);
 
         return [
-            '_variableType'   => $variableType,
-            '_objectIcon'     => (string) ($objectInfo['ObjectIcon'] ?? ''),
-            '_variablePath'   => $this->GetObjectPath($VariableID),
+            '_variableType'         => $variableType,
+            '_objectIcon'           => (string) ($objectInfo['ObjectIcon'] ?? ''),
+            '_hasLegacyProfile'     => $hasLegacyProfile,
+            '_hasNewPresentation'   => $hasNewPresentation,
+            '_activePresentationID' => $activePresentationID,
+            '_presentationIcon'     => (string) ($presentationIcons['icon'] ?? ''),
+            '_presentationIconOff'  => (string) ($presentationIcons['off'] ?? ''),
+            '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
+            '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
+            '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
+            '_legacyColorOn'        => $legacyColorOn,
+            '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
             '_profileName'    => $profileName,
