@@ -5302,24 +5302,61 @@ class Floorplaner extends IPSModuleStrict
         }));
     }
 
+    function symconStreamProxyUrl(mediaID) {
+        const id = Number(mediaID) || 0;
+        if (id <= 0) return '';
+
+        // Gleicher Symcon-Host wie die HTML-SDK-Darstellung.
+        // Eine evtl. vorhandene authorization aus der aktuellen Visualisierung
+        // an den Stream-Proxy weiterreichen.
+        const url = new URL(`/proxy/${id}`, window.location.origin);
+
+        try {
+            const current = new URL(window.location.href);
+            const authorization = current.searchParams.get('authorization');
+            if (authorization) {
+                url.searchParams.set('authorization', authorization);
+            }
+        } catch (e) {}
+
+        return url.toString();
+    }
+
     function streamElementHtml(item) {
         const mediaID = Number(item?.variableID) || 0;
         const source = String(item?._streamSource || '').trim();
         const lower = source.toLowerCase();
+        const proxyUrl = symconStreamProxyUrl(mediaID);
 
-        // RTSP kann der Browser nicht direkt lesen; dafür den internen
-        // Symcon-Proxy verwenden. Relative URL behält die aktuelle Session.
+        if (!proxyUrl) {
+            return `<div class="profile-hint">Stream konnte nicht geöffnet werden.</div>`;
+        }
+
+        // Symcon ist der Proxy für die Medienstreams.
+        // RTSP/H.264 wird über VIDEO angefordert.
         if (lower.startsWith('rtsp://') || lower.startsWith('rtsps://')) {
-            return `<video autoplay muted playsinline controls src="/proxy/${mediaID}"></video>`;
+            return `
+                <video
+                    autoplay
+                    muted
+                    playsinline
+                    controls
+                    preload="none"
+                    src="${escapeHtml(proxyUrl)}"
+                    data-stream-element
+                ></video>
+            `;
         }
 
-        // MJPEG/HTTP-Streams werden als Bild eingebettet.
-        if (source !== '') {
-            return `<img src="${escapeHtml(source)}" alt="Stream">`;
-        }
-
-        // Fallback: ebenfalls über den Symcon-Proxy versuchen.
-        return `<video autoplay muted playsinline controls src="/proxy/${mediaID}"></video>`;
+        // MJPEG wird vom Browser nicht als VIDEO unterstützt.
+        // Deshalb denselben Symcon-Proxy als IMG verwenden.
+        return `
+            <img
+                src="${escapeHtml(proxyUrl)}"
+                alt="Stream"
+                data-stream-element
+            >
+        `;
     }
 
     function openStreamControl(item, clientX = null, clientY = null) {
@@ -5338,6 +5375,20 @@ class Floorplaner extends IPSModuleStrict
                 </div>
             </div>
         `;
+
+        const streamElement = controlBody.querySelector('[data-stream-element]');
+        if (streamElement) {
+            streamElement.addEventListener('error', () => {
+                const view = controlBody.querySelector('.stream-view');
+                if (view) {
+                    view.innerHTML = `
+                        <div class="profile-hint" style="padding:16px;text-align:center">
+                            Stream konnte über den Symcon-Proxy nicht geladen werden.
+                        </div>
+                    `;
+                }
+            }, {once: true});
+        }
 
         const expandBtn = controlBody.querySelector('[data-stream-expand]');
         expandBtn?.addEventListener('click', () => {
