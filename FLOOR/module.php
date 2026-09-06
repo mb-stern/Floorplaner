@@ -590,8 +590,8 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .device.boolean-active circle {
-            stroke: var(--device-status-color, #ffe66d) !important;
-            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d)) !important;
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
         }
 
         /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
@@ -1249,13 +1249,6 @@ class Floorplaner extends IPSModuleStrict
         html[data-theme="light"] .device circle {
             fill: rgba(255,255,255,.72);
             stroke: #777777;
-        }
-
-        /* Aktiver Bool-Zustand muss auch im hellen Theme Vorrang vor der
-           allgemeinen grauen Geräte-Kontur haben. */
-        html[data-theme="light"] .device.boolean-active circle {
-            stroke: var(--device-status-color, #ffe66d) !important;
-            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d)) !important;
         }
 
         html[data-theme="light"] .device .climate-panel {
@@ -2867,24 +2860,29 @@ class Floorplaner extends IPSModuleStrict
             const isBooleanDevice = Number(item._variableType) === 0;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
             const statusRingEnabled = supportsStatusColor(item);
-            const symconGlowEnabled = isBooleanDevice && !!item._stateColor;
+            const symconGlowColor = String(item._glowColor || '').trim();
+            const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
+            const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
+
             const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
             const numericClass = numericLevel !== null ? ' numeric-status' : '';
-            // Eine von Symcon konfigurierte GLOW_COLOR ist eine Darstellungseigenschaft
-            // der Variable und darf nicht von der optionalen Floorplaner-Statusfarbe
-            // abhängen. Daher aktiviert sie den Bool-Glow eigenständig.
+
+            // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
+            // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
             const boolClass = isBooleanDevice && (statusRingEnabled || symconGlowEnabled)
                 ? (boolActive ? ' boolean-active' : ' boolean-inactive')
                 : '';
+
             // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
             // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
             // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
             const lightClass = '';
-            const statusColor = (Number(item?._variableType) === 0 &&
-                (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true') &&
-                item._stateColor)
-                ? String(item._stateColor)
-                : (item.statusColor || '#ffe66d');
+            const statusColor = (boolActive && symconGlowEnabled)
+                ? symconGlowColor
+                : normalizeStatusColor(item.statusColor);
+            const boolGlowPx = (boolActive && symconGlowEnabled)
+                ? Math.max(1, symconGlowIntensity * 0.14)
+                : 7;
             const icon = effectiveItemIcon(item);
 
             const showName = item.showName === true;
@@ -2936,7 +2934,7 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : 0}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
@@ -4962,7 +4960,8 @@ class Floorplaner extends IPSModuleStrict
         const presentationOffKey = prefix ? `_${prefix}PresentationIconOff` : '_presentationIconOff';
         const presentationOnKey = prefix ? `_${prefix}PresentationIconOn` : '_presentationIconOn';
         const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
-        const stateColorKey = prefix ? `_${prefix}StateColor` : '_stateColor';
+        const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
+        const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -4977,7 +4976,8 @@ class Floorplaner extends IPSModuleStrict
         entity[presentationOffKey] = node?.presentationIconOff || '';
         entity[presentationOnKey] = node?.presentationIconOn || '';
         entity[presentationSingleKey] = node?.presentationIcon || '';
-        entity[stateColorKey] = node?.stateColor || '';
+        entity[glowColorKey] = node?.glowColor || '';
+        entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
@@ -5832,8 +5832,7 @@ HTML;
                                         'valueText'      => 'ValueText',
                                         'profileName'    => 'ProfileName',
                                         'profileSummary' => 'ProfileSummary',
-                                        'profile'        => 'Profile',
-                                        'stateColor'     => 'StateColor'
+                                        'profile'        => 'Profile'
                                     ];
                                     $targetKey = '_' . $prefix . ($mapSuffix[$suffix] ?? ucfirst($suffix));
                                 }
@@ -5912,7 +5911,8 @@ HTML;
                     $node['presentationIcon'] = (string) ($meta['_presentationIcon'] ?? '');
                     $node['presentationIconOff'] = (string) ($meta['_presentationIconOff'] ?? '');
                     $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
-                    $node['stateColor'] = (string) ($meta['_stateColor'] ?? '');
+                    $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
+                    $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -5961,7 +5961,7 @@ HTML;
 
     private function GetNewPresentationIcons(int $VariableID, int $VariableType, mixed $RawValue, array $Variable): array
     {
-        $result = ['icon' => '', 'off' => '', 'on' => ''];
+        $result = ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
 
         // Neue Darstellung nur verwenden, wenn wirklich eine neue Darstellung
         // an der Variable hinterlegt ist. Legacy-Profile werden hier bewusst ignoriert.
@@ -5996,6 +5996,22 @@ HTML;
         $useIconFalseRaw = $this->FindPresentationValue($presentation, 'USE_ICON_FALSE');
         $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
 
+        // Neue Bool-Schalterdarstellung:
+        // GLOW_COLOR ist ein Symcon-Farbwert als Integer (z. B. 4041727 = #3DABFF).
+        // GLOW_INTENSITY liegt als Prozentwert 0..100 vor.
+        $glowColorRaw = $this->FindPresentationValue($presentation, 'GLOW_COLOR');
+        if ($glowColorRaw !== null && is_numeric($glowColorRaw)) {
+            $glowColor = (int) $glowColorRaw;
+            if ($glowColor >= 0) {
+                $result['glowColor'] = sprintf('#%06X', $glowColor & 0xFFFFFF);
+            }
+        }
+
+        $glowIntensityRaw = $this->FindPresentationValue($presentation, 'GLOW_INTENSITY');
+        if ($glowIntensityRaw !== null && is_numeric($glowIntensityRaw)) {
+            $result['glowIntensity'] = max(0, min(100, (int) $glowIntensityRaw));
+        }
+
         if ($VariableType === 0 && $iconTrue !== '') {
             $result['on'] = $iconTrue;
             $result['off'] = ($useIconFalse && $iconFalse !== '') ? $iconFalse : $iconTrue;
@@ -6010,20 +6026,6 @@ HTML;
         return $result;
     }
 
-    private function SymconColorToCss(mixed $Color): string
-    {
-        if (!is_int($Color) && !is_numeric($Color)) {
-            return '';
-        }
-
-        $color = (int) $Color;
-        if ($color < 0) {
-            return '';
-        }
-
-        return sprintf('#%06X', $color & 0xFFFFFF);
-    }
-
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -6033,34 +6035,8 @@ HTML;
         $profileName = (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
         $hasLegacyProfile = $profileName !== '' && IPS_VariableProfileExists($profileName);
         $presentationIcons = $hasLegacyProfile
-            ? ['icon' => '', 'off' => '', 'on' => '']
+            ? ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0]
             : $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable);
-
-        // Farbe getrennt von der funktionierenden Icon-Logik ermitteln.
-        // Legacy: Association Color für den aktuellen Wert.
-        // Neue Schalter-Darstellung: GLOW_COLOR nur im aktiven (true) Zustand.
-        $stateColor = '';
-        if (!$hasLegacyProfile && $variableType === 0 && (bool) $rawValue) {
-            $presentation = [];
-            if (function_exists('IPS_GetVariablePresentation')) {
-                try {
-                    $candidate = IPS_GetVariablePresentation($VariableID);
-                    if (is_array($candidate)) {
-                        $presentation = $candidate;
-                    }
-                } catch (Throwable $e) {
-                    $this->SendDebug('VariablePresentationColor', $e->getMessage(), 0);
-                }
-            }
-            if ($presentation === []) {
-                $presentation = !empty($variable['VariableCustomPresentation'] ?? [])
-                    ? (array) $variable['VariableCustomPresentation']
-                    : (array) ($variable['VariablePresentation'] ?? []);
-            }
-            $glowColor = $this->FindPresentationValue($presentation, 'GLOW_COLOR');
-            $stateColor = $this->SymconColorToCss($glowColor);
-        }
-
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
@@ -6099,13 +6075,8 @@ HTML;
                 $profileSummary = implode(' · ', $parts);
 
                 foreach ($associations as $association) {
-                    if ((float) $association['value'] === (float) $rawValue) {
-                        if ($association['name'] !== '') {
-                            $valueText = $association['name'];
-                        }
-                        if ($variableType === 0) {
-                            $stateColor = $this->SymconColorToCss($association['color'] ?? -1);
-                        }
+                    if ((float) $association['value'] === (float) $rawValue && $association['name'] !== '') {
+                        $valueText = $association['name'];
                         break;
                     }
                 }
@@ -6130,7 +6101,8 @@ HTML;
             '_presentationIcon'     => (string) ($presentationIcons['icon'] ?? ''),
             '_presentationIconOff'  => (string) ($presentationIcons['off'] ?? ''),
             '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
-            '_stateColor'           => $stateColor,
+            '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
+            '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
