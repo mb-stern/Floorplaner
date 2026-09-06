@@ -3504,6 +3504,13 @@ class Floorplaner extends IPSModuleStrict
                         value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
                     ${obj._profileName ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>` : ''}
                 </div>
+                ${supportsStatusColor(obj) ? `
+                    <div class="field">
+                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
+                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
+                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
+                    </div>
+                ` : ''}
                 ${Number(obj.variableID || 0) > 0 ? `
                     <div class="field">
                         <button id="refreshVariableSettings" type="button" title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
@@ -3526,13 +3533,7 @@ class Floorplaner extends IPSModuleStrict
                         <div class="profile-hint">Nur für echte Zahlenbereiche ohne Profil-Assoziationen.</div>
                     </div>
                 ` : ''}
-                ${supportsStatusColor(obj) ? `
-                    <div class="field">
-                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
-                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
-                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
-                    </div>
-                ` : ''}
+
                 <div class="row2">
                     <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
                     <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
