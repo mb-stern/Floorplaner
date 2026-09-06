@@ -5274,6 +5274,19 @@ class Floorplaner extends IPSModuleStrict
         }
     });
 
+    // Geräte-Popup auch schließen, wenn außerhalb des eigentlichen Dialogs
+    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplaner absichtlich
+    // pointer-events:none, deshalb muss dies auf Dokumentebene geprüft werden.
+    document.addEventListener('pointerdown', evt => {
+        if (!controlModal?.classList.contains('open')) return;
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog && dialog.contains(evt.target)) return;
+
+        controlModal.classList.remove('open');
+        controlModal.setAttribute('aria-hidden', 'true');
+    }, true);
+
     window.handleMessage = message => {
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
