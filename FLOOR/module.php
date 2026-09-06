@@ -28,8 +28,6 @@ class Floorplaner extends IPSModuleStrict
 
         $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
 
-        $this->RegisterHook('floorplaner-stream-' . $this->InstanceID);
-
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
 
@@ -38,7 +36,6 @@ class Floorplaner extends IPSModuleStrict
         parent::ApplyChanges();
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
-        $this->RegisterHook('floorplaner-stream-' . $this->InstanceID);
 
         if ($this->ReadAttributeString(self::ATTRIBUTE_DATA) === '') {
             $this->WriteAttributeString(
@@ -1309,51 +1306,6 @@ class Floorplaner extends IPSModuleStrict
         }
 
 
-        /* Stream-Popup: klein starten, bei Bedarf vergrößern. */
-        .stream-popup-body {
-            display: grid;
-            gap: 8px;
-            min-width: 280px;
-        }
-
-        .stream-view {
-            width: 320px;
-            height: 180px;
-            max-width: min(70vw, 640px);
-            max-height: min(60vh, 360px);
-            overflow: hidden;
-            border-radius: 7px;
-            background: #000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .stream-view img,
-        .stream-view video {
-            width: 100%;
-            height: 100%;
-            display: block;
-            object-fit: contain;
-            background: #000;
-        }
-
-        #controlModal.stream-expanded .stream-view {
-            width: min(78vw, 960px);
-            height: min(68vh, 540px);
-            max-width: none;
-            max-height: none;
-        }
-
-        .stream-popup-actions {
-            display: flex;
-            justify-content: flex-end;
-        }
-
-        .stream-popup-actions button {
-            min-width: 110px;
-        }
-
         /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
         #controlModal {
             background: transparent;
@@ -1631,7 +1583,6 @@ class Floorplaner extends IPSModuleStrict
 <script>
 (() => {
     const initial = __INITIAL_PROJECT__;
-    const instanceID = Number('__INSTANCE_ID__');
     const lastViewFloorStorageKey = 'floorplaner:lastViewFloor:__INSTANCE_ID__';
     const svg = document.getElementById('viewport');
     const scene = document.getElementById('scene');
@@ -1993,13 +1944,16 @@ class Floorplaner extends IPSModuleStrict
 
         /*
          * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
-         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen. Deshalb darf der
-         * interaktive Grundriss dort nicht hineinragen.
+         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen.
          *
-         * 40 px + 24 px Innenabstand werden für die Kopfzone verwendet.
-         * Der Abstand gilt sowohl im Editor- als auch im Bedienmodus.
+         * Wichtig: SVG und Gitternetz bleiben unverändert über die komplette
+         * Fläche sichtbar. Nur Einpassen/Start/Zoom behandeln den oberen
+         * Bereich als Sicherheitszone für interaktive Grundrisselemente.
+         *
+         * Auf der Symcon-WebConsole reicht 40 px nicht zuverlässig aus.
+         * Deshalb verwenden wir hier 72 px Kopf-Sicherheitszone.
          */
-        const headerTop = 40;
+        const headerTop = 72;
 
         // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
         const footerBottom = state.mode === 'view' ? 40 : 0;
@@ -3557,7 +3511,7 @@ class Floorplaner extends IPSModuleStrict
                 <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || '')}"></div>
                 <div class="field">
                     <label>IP-Symcon Variable</label>
-                    <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable / Stream auswählen"
+                    <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
                         value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
                     ${obj._profileName && obj._hasNewPresentation !== true
                         ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
@@ -4349,17 +4303,6 @@ class Floorplaner extends IPSModuleStrict
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
 
-                // Stream: kleines Popup direkt am Gerät öffnen.
-                // Erst auf Wunsch innerhalb des Popups vergrößern.
-                if (
-                    item?._objectKind === 'stream' &&
-                    Number(item._mediaType) === 3 &&
-                    Number(item.variableID) > 0
-                ) {
-                    openStreamControl(item, evt.clientX, evt.clientY);
-                    return;
-                }
-
                 if (!item || item._canAction !== true) {
                     // Reine Istwerte/Messwerte besitzen keine Bedienaktion.
                     return;
@@ -4818,17 +4761,15 @@ class Floorplaner extends IPSModuleStrict
         const children = Array.isArray(node.children) ? node.children : [];
         const hasChildren = children.length > 0;
         const isVariable = Number(node.objectType) === 2;
-        const isStream = Number(node.objectType) === 5 && node.isStream === true;
-        const isSelectable = isVariable || isStream;
         const forceOpen = !!needle;
         const isOpen = forceOpen || expandedObjectIDs.has(Number(node.id));
-        const selectedClass = isSelectable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
-        const rowClass = isSelectable ? ' variable' : '';
+        const selectedClass = isVariable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
+        const rowClass = isVariable ? ' variable' : '';
         const toggle = hasChildren ? (isOpen ? '▾' : '▸') : '';
-        const value = isVariable ? escapeHtml(node.valueText || '') : (isStream ? 'Stream' : '');
+        const value = isVariable ? escapeHtml(node.valueText || '') : '';
         const typeTitle = isVariable
             ? escapeHtml([node.variableTypeName || '', node.profileName || ''].filter(Boolean).join(' · '))
-            : escapeHtml(isStream ? 'Kamera / Stream' : (node.objectTypeName || ''));
+            : escapeHtml(node.objectTypeName || '');
 
         let html = `
             <div class="tree-node">
@@ -4870,23 +4811,7 @@ class Floorplaner extends IPSModuleStrict
         });
 
         variableList.querySelectorAll('.tree-row.variable').forEach(row => {
-            row.addEventListener('click', () => {
-                const node = findTreeNode(objectTree, Number(row.dataset.objectId));
-                const isStream = Number(node?.objectType) === 5 && node?.isStream === true;
-
-                // Streams sind nur als Hauptobjekt eines Gerätes sinnvoll.
-                if (
-                    isStream &&
-                    !(
-                        (variablePickerTarget?.entityType || 'item') === 'item' &&
-                        (variablePickerTarget?.field || 'variableID') === 'variableID'
-                    )
-                ) {
-                    return;
-                }
-
-                assignVariable(Number(row.dataset.objectId));
-            });
+            row.addEventListener('click', () => assignVariable(Number(row.dataset.objectId)));
         });
 
         variableList.querySelectorAll('.tree-row:not(.variable)').forEach(row => {
@@ -5101,54 +5026,6 @@ class Floorplaner extends IPSModuleStrict
         entity[field] = Number(variableID) || 0;
         const node = entity[field] ? findTreeNode(objectTree, entity[field]) : null;
 
-        // Medienobjekt Typ 3 = Stream. Automatisch als Kamera behandeln.
-        // Es ist keine zusätzliche Geräteart oder Checkbox nötig.
-        if (
-            entityType === 'item' &&
-            field === 'variableID' &&
-            Number(node?.objectType) === 5 &&
-            node?.isStream === true
-        ) {
-            entity._objectKind = 'stream';
-            entity._mediaType = 3;
-            entity._variablePath = node.path || '';
-            entity._valueText = 'Stream';
-            entity._rawValue = '';
-            entity._variableType = -1;
-            entity._profileName = '';
-            entity._profileSummary = '';
-            entity._profile = null;
-            entity._canAction = false;
-            entity._hasLegacyProfile = false;
-            entity._hasNewPresentation = false;
-            entity._objectIcon = node.objectIcon || '';
-            entity._streamSource = node.streamSource || '';
-            entity.iconManual = false;
-            entity.iconOffManual = false;
-            entity.iconOnManual = false;
-            entity.iconSvg = '';
-            entity.iconOffSvg = '';
-            entity.iconOnSvg = '';
-
-            // Wie bei Variablen: das am ausgewählten Symcon-Objekt
-            // konfigurierte Icon übernehmen. Kein Kamera-Icon erzwingen.
-            entity.icon = node.objectIcon || 'fa-light fa-circle';
-
-            variableModal.classList.remove('open');
-            variableModal.setAttribute('aria-hidden', 'true');
-            pushHistory();
-            markDirty();
-            render();
-            renderProperties();
-            return;
-        }
-
-        // Beim Wechsel zurück auf eine Variable Stream-Markierung entfernen.
-        if (entityType === 'item' && field === 'variableID') {
-            entity._objectKind = 'variable';
-            entity._mediaType = -1;
-        }
-
         const map = {
             variableID: '',
             secondaryVariableID: 'secondaryVariable',
@@ -5306,124 +5183,6 @@ class Floorplaner extends IPSModuleStrict
         }));
     }
 
-    function floorplanerStreamHookUrl(mediaID) {
-        const id = Number(mediaID) || 0;
-        if (id <= 0 || !Number.isFinite(instanceID) || instanceID <= 0) return '';
-
-        const url = new URL(`/hook/floorplaner-stream-${instanceID}`, window.location.origin);
-        url.searchParams.set('media', String(id));
-        return url.toString();
-    }
-
-    function streamElementHtml(item) {
-        const mediaID = Number(item?.variableID) || 0;
-        const streamUrl = floorplanerStreamHookUrl(mediaID);
-
-        if (!streamUrl) {
-            return `<div class="profile-hint">Stream konnte nicht geöffnet werden.</div>`;
-        }
-
-        // Der WebHook liefert MJPEG. <img> beendet die Verbindung automatisch,
-        // sobald das Popup geschlossen und das Element aus dem DOM entfernt wird.
-        return `
-            <img
-                src="${escapeHtml(streamUrl)}"
-                alt="Stream"
-                data-stream-element
-            >
-        `;
-    }
-
-    function openStreamControl(item, clientX = null, clientY = null) {
-        if (!controlModal || !controlBody || !item) return;
-
-        controlModal.classList.remove('stream-expanded');
-        controlTitle.textContent = item.name || 'Stream';
-
-        controlBody.innerHTML = `
-            <div class="stream-popup-body">
-                <div class="stream-view">
-                    ${streamElementHtml(item)}
-                </div>
-                <div class="stream-popup-actions">
-                    <button type="button" data-stream-expand>Vergrößern</button>
-                </div>
-            </div>
-        `;
-
-        const streamElement = controlBody.querySelector('[data-stream-element]');
-        if (streamElement) {
-            streamElement.addEventListener('error', () => {
-                const view = controlBody.querySelector('.stream-view');
-                if (view) {
-                    view.innerHTML = `
-                        <div class="profile-hint" style="padding:16px;text-align:center">
-                            Stream konnte über den Floorplaner-WebHook / FFmpeg nicht geladen werden.
-                        </div>
-                    `;
-                }
-            }, {once: true});
-        }
-
-        const expandBtn = controlBody.querySelector('[data-stream-expand]');
-        expandBtn?.addEventListener('click', () => {
-            const expanded = controlModal.classList.toggle('stream-expanded');
-            expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
-
-            // Nach Größenänderung das Fenster innerhalb des sichtbaren Bereichs halten.
-            requestAnimationFrame(() => {
-                const dialog = controlModal.querySelector('.control-modal');
-                if (!dialog) return;
-
-                const margin = 8;
-                const rect = dialog.getBoundingClientRect();
-                let left = parseFloat(dialog.style.left) || margin;
-                let top = parseFloat(dialog.style.top) || margin;
-
-                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
-                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
-
-                dialog.style.left = `${left}px`;
-                dialog.style.top = `${top}px`;
-            });
-        });
-
-        controlModal.classList.add('open');
-        controlModal.setAttribute('aria-hidden', 'false');
-
-        const dialog = controlModal.querySelector('.control-modal');
-        if (dialog) {
-            dialog.style.left = '';
-            dialog.style.top = '';
-            dialog.style.right = '';
-            dialog.style.bottom = '';
-
-            requestAnimationFrame(() => {
-                const x = Number(clientX);
-                const y = Number(clientY);
-                const margin = 8;
-                const offset = 10;
-                const rect = dialog.getBoundingClientRect();
-
-                let left = Number.isFinite(x) ? x + offset : margin;
-                let top = Number.isFinite(y) ? y + offset : margin;
-
-                if (left + rect.width > window.innerWidth - margin && Number.isFinite(x)) {
-                    left = x - rect.width - offset;
-                }
-                if (top + rect.height > window.innerHeight - margin && Number.isFinite(y)) {
-                    top = y - rect.height - offset;
-                }
-
-                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
-                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
-
-                dialog.style.left = `${left}px`;
-                dialog.style.top = `${top}px`;
-            });
-        }
-    }
-
     function openItemControl(item, clientX = null, clientY = null) {
         if (!controlModal || !controlBody || item?._canAction !== true) return;
 
@@ -5545,7 +5304,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     controlCloseBtn?.addEventListener('click', () => {
-        controlModal.classList.remove('open', 'stream-expanded');
+        controlModal.classList.remove('open');
         controlModal.setAttribute('aria-hidden', 'true');
     });
     controlModal?.addEventListener('click', evt => {
@@ -5564,7 +5323,7 @@ class Floorplaner extends IPSModuleStrict
         const dialog = controlModal.querySelector('.control-modal');
         if (dialog && dialog.contains(evt.target)) return;
 
-        controlModal.classList.remove('open', 'stream-expanded');
+        controlModal.classList.remove('open');
         controlModal.setAttribute('aria-hidden', 'true');
     }, true);
 
@@ -5769,7 +5528,7 @@ class Floorplaner extends IPSModuleStrict
                 variableModal.classList.add('open');
                 variableModal.setAttribute('aria-hidden', 'false');
                 variableSearch.focus();
-                statusEl.textContent = 'Objektbaum – Variable / Stream auswählen';
+                statusEl.textContent = 'Objektbaum – Variable auswählen';
             } else if (data?.type === 'runtimeValue') {
                 const floor = state.floors.find(f => f.id === data.floorId);
                 const item = floor?.items.find(i => i.id === data.itemId);
@@ -5842,158 +5601,6 @@ HTML;
             [$initial, (string) $this->InstanceID],
             $html
         );
-    }
-
-    protected function ProcessHookData(): void
-    {
-        $mediaID = isset($_GET['media']) ? (int) $_GET['media'] : 0;
-
-        if ($mediaID <= 0 || !IPS_MediaExists($mediaID)) {
-            http_response_code(404);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Stream nicht gefunden.';
-            return;
-        }
-
-        // Nur Medienobjekte zulassen, die in genau diesem Floorplan verwendet werden.
-        $allowed = false;
-        foreach (($this->GetProject()['floors'] ?? []) as $floor) {
-            foreach (($floor['items'] ?? []) as $item) {
-                if ((int) ($item['variableID'] ?? 0) === $mediaID) {
-                    $allowed = true;
-                    break 2;
-                }
-            }
-        }
-
-        if (!$allowed) {
-            http_response_code(403);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Stream ist in diesem Floorplan nicht freigegeben.';
-            return;
-        }
-
-        $media = IPS_GetMedia($mediaID);
-        if ((int) ($media['MediaType'] ?? -1) !== 3) {
-            http_response_code(400);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Das Medienobjekt ist kein Stream.';
-            return;
-        }
-
-        $source = trim((string) ($media['MediaFile'] ?? ''));
-        if ($source === '') {
-            http_response_code(404);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Das Stream-Medienobjekt besitzt keine Quelle.';
-            return;
-        }
-
-        if (!function_exists('proc_open')) {
-            http_response_code(501);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'proc_open ist auf diesem IP-Symcon-System nicht verfügbar.';
-            return;
-        }
-
-        /*
-         * Browser können RTSP nicht direkt darstellen.
-         * FFmpeg wird NUR solange gestartet, wie dieses Popup verbunden ist.
-         *
-         * Testprofil:
-         * - RTSP über TCP
-         * - kein Audio
-         * - 8 fps
-         * - max. 640 px Breite
-         * - MJPEG als multipart/x-mixed-replace
-         */
-        $command = implode(
-            ' ',
-            [
-                'ffmpeg',
-                '-hide_banner',
-                '-loglevel', 'error',
-                '-rtsp_transport', 'tcp',
-                '-i', escapeshellarg($source),
-                '-an',
-                '-vf', escapeshellarg('fps=8,scale=640:-2:force_original_aspect_ratio=decrease'),
-                '-q:v', '7',
-                '-f', 'mpjpeg',
-                '-boundary_tag', 'floorplanerframe',
-                'pipe:1'
-            ]
-        );
-
-        $descriptorSpec = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w']
-        ];
-
-        $process = @proc_open($command, $descriptorSpec, $pipes);
-        if (!is_resource($process)) {
-            http_response_code(500);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'FFmpeg konnte nicht gestartet werden.';
-            return;
-        }
-
-        fclose($pipes[0]);
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        ignore_user_abort(false);
-        @set_time_limit(0);
-
-        header('Content-Type: multipart/x-mixed-replace; boundary=floorplanerframe');
-        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-        header('Pragma: no-cache');
-        header('X-Accel-Buffering: no');
-
-        try {
-            while (true) {
-                if (connection_aborted()) {
-                    break;
-                }
-
-                $status = proc_get_status($process);
-
-                $chunk = fread($pipes[1], 65536);
-                if ($chunk !== false && $chunk !== '') {
-                    echo $chunk;
-                    @ob_flush();
-                    flush();
-                }
-
-                if (!$status['running']) {
-                    // Bei einem Startfehler die FFmpeg-Meldung wenigstens ins Debug schreiben.
-                    $error = stream_get_contents($pipes[2]);
-                    if (is_string($error) && trim($error) !== '') {
-                        $this->SendDebug('Stream.FFmpeg', trim($error), 0);
-                    }
-                    break;
-                }
-
-                usleep(10000);
-            }
-        } finally {
-            if (isset($pipes[1]) && is_resource($pipes[1])) {
-                fclose($pipes[1]);
-            }
-            if (isset($pipes[2]) && is_resource($pipes[2])) {
-                $error = stream_get_contents($pipes[2]);
-                if (is_string($error) && trim($error) !== '') {
-                    $this->SendDebug('Stream.FFmpeg', trim($error), 0);
-                }
-                fclose($pipes[2]);
-            }
-
-            $status = proc_get_status($process);
-            if ($status['running']) {
-                @proc_terminate($process);
-            }
-            @proc_close($process);
-        }
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
@@ -6423,57 +6030,18 @@ HTML;
         foreach ($Project['floors'] as $floorIndex => $floor) {
             if (isset($floor['items']) && is_array($floor['items'])) {
                 foreach ($floor['items'] as $itemIndex => $item) {
-                    $objectID = (int) ($item['variableID'] ?? 0);
-                    if ($objectID <= 0) {
+                    $variableID = (int) ($item['variableID'] ?? 0);
+                    if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
                         continue;
                     }
 
-                    // Normale IP-Symcon-Variable: bisheriger Laufzeitpfad.
-                    if (IPS_VariableExists($objectID)) {
-                        try {
-                            $meta = $this->GetVariableRuntimeMeta($objectID);
-                            foreach ($meta as $key => $value) {
-                                $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
-                            }
-                        } catch (Throwable $e) {
-                            $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
+                    try {
+                        $meta = $this->GetVariableRuntimeMeta($variableID);
+                        foreach ($meta as $key => $value) {
+                            $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
                         }
-                        continue;
-                    }
-
-                    // Stream-Medienobjekt:
-                    // Die mit "_" beginnenden Laufzeitfelder werden beim Speichern
-                    // absichtlich entfernt. Deshalb hier bei JEDEM Laden frisch
-                    // aus dem realen Symcon-Medienobjekt rekonstruieren.
-                    if (IPS_MediaExists($objectID)) {
-                        try {
-                            $media = IPS_GetMedia($objectID);
-                            $mediaType = (int) ($media['MediaType'] ?? -1);
-
-                            if ($mediaType === 3) {
-                                $object = IPS_GetObject($objectID);
-
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectKind'] = 'stream';
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_mediaType'] = 3;
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_streamSource'] =
-                                    (string) ($media['MediaFile'] ?? '');
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variablePath'] =
-                                    $this->GetObjectPath($objectID);
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_valueText'] = 'Stream';
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_rawValue'] = '';
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variableType'] = -1;
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileName'] = '';
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileSummary'] = '';
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profile'] = null;
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_canAction'] = false;
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasLegacyProfile'] = false;
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasNewPresentation'] = false;
-                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectIcon'] =
-                                    (string) ($object['ObjectIcon'] ?? '');
-                            }
-                        } catch (Throwable $e) {
-                            $this->SendDebug('RuntimeStream', $e->getMessage(), 0);
-                        }
+                    } catch (Throwable $e) {
+                        $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
                     }
                 }
             }
@@ -6563,23 +6131,6 @@ HTML;
                 'objectIcon'     => (string) ($object['ObjectIcon'] ?? ''),
                 'children'       => []
             ];
-
-            if ($objectType === 5 && IPS_MediaExists($objectID)) {
-                try {
-                    $media = IPS_GetMedia($objectID);
-                    $mediaType = (int) ($media['MediaType'] ?? -1);
-                    $node['mediaType'] = $mediaType;
-                    $node['isStream'] = $mediaType === 3;
-                    if ($mediaType === 3) {
-                        $node['objectTypeName'] = 'Stream';
-                        $node['streamSource'] = (string) ($media['MediaFile'] ?? '');
-                    }
-                } catch (Throwable $e) {
-                    $node['mediaType'] = -1;
-                    $node['isStream'] = false;
-                    $this->SendDebug('ObjectTree.Media', $e->getMessage(), 0);
-                }
-            }
 
             if ($objectType === 2 && IPS_VariableExists($objectID)) {
                 try {
