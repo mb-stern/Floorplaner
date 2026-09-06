@@ -3504,6 +3504,13 @@ class Floorplaner extends IPSModuleStrict
                         value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
                     ${obj._profileName ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>` : ''}
                 </div>
+                ${Number(obj.variableID || 0) > 0 ? `
+                    <div class="field">
+                        <button id="refreshVariableSettings" type="button" title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                            Variableneinstellungen aktualisieren
+                        </button>
+                    </div>
+                ` : ''}
                 <div class="row2">
                     <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
                     <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
@@ -3739,6 +3746,23 @@ class Floorplaner extends IPSModuleStrict
                 statusEl.textContent = 'Objektbaum wird geladen …';
                 requestAction('getObjectTree', '');
             });
+        });
+
+        properties.querySelector('#refreshVariableSettings')?.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (!selected || selected.type !== 'item') return;
+            const floor = currentFloor();
+            const item = floor?.items?.find(i => i.id === selected.id);
+            if (!item || Number(item.variableID || 0) <= 0) return;
+
+            statusEl.textContent = 'Variableneinstellungen werden aktualisiert …';
+            requestAction('refreshVariableSettings', JSON.stringify({
+                floorId: state.activeFloor,
+                itemId: item.id,
+                variableID: Number(item.variableID)
+            }));
         });
 
         properties.querySelectorAll('[data-project]').forEach(input => {
@@ -5248,6 +5272,48 @@ class Floorplaner extends IPSModuleStrict
                 renderProperties();
                 return;
             }
+            if (data?.type === 'refreshedVariableSettings' && data.itemId && data.meta) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const item = floor?.items?.find(i => i.id === data.itemId);
+                if (!item) return;
+
+                const meta = data.meta || {};
+                const manualIcon = item.iconManual === true;
+                const manualOff = item.iconOffManual === true;
+                const manualOn = item.iconOnManual === true;
+
+                Object.assign(item, meta);
+
+                // Frische Symcon-Daten übernehmen, ohne manuelle Icon-Overrides zu zerstören.
+                if (meta._hasLegacyProfile === true) {
+                    if (!manualIcon) {
+                        item.icon = meta._objectIcon || 'fa-light fa-circle';
+                        item.iconSvg = '';
+                    }
+                    if (Number(meta._variableType) === 0) {
+                        if (!manualOff) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                        if (!manualOn) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                    }
+                } else if (Number(meta._variableType) === 0) {
+                    if (!manualOff) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
+                    if (!manualOn) item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+
+                    if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
+                        item.statusColor = String(meta._glowColor);
+                    }
+                } else if (!manualIcon) {
+                    item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                    item.iconSvg = '';
+                }
+
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+                statusEl.textContent = 'Variableneinstellungen aktualisiert';
+                return;
+            }
+
             if (data?.type === 'variableUpdate' && data.variableID && data.meta) {
                 const variableID = Number(data.variableID);
                 const meta = data.meta || {};
@@ -5455,6 +5521,36 @@ HTML;
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'refreshVariableSettings':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'    => 'refreshedVariableSettings',
+                        'floorId' => (string) ($request['floorId'] ?? ''),
+                        'itemId'  => (string) ($request['itemId'] ?? ''),
+                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
                 if ($message !== false) {
                     $this->UpdateVisualizationValue($message);
                 }
