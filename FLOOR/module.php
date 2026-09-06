@@ -1576,9 +1576,7 @@ class Floorplaner extends IPSModuleStrict
     <div class="control-modal">
         <h3 id="controlTitle">Gerät bedienen</h3>
         <div id="controlBody" class="control-body"></div>
-        <div class="control-actions">
-            <button id="controlCloseBtn" type="button">Schließen</button>
-        </div>
+
     </div>
 </div>
 
