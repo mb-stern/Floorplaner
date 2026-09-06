@@ -6229,26 +6229,101 @@ HTML;
         return $result;
     }
 
+    private function GetActiveVariablePresentationInfo(int $VariableID): array
+    {
+        $result = [
+            'parameters'       => [],
+            'presentationID'   => '',
+            'presentationName' => '',
+            'isLegacyProfile'  => false,
+            'legacyProfile'    => ''
+        ];
+
+        if (!function_exists('IPS_GetVariablePresentation')) {
+            return $result;
+        }
+
+        try {
+            $parameters = IPS_GetVariablePresentation($VariableID);
+            if (!is_array($parameters)) {
+                return $result;
+            }
+
+            $result['parameters'] = $parameters;
+            $result['presentationID'] = (string) ($parameters['PRESENTATION'] ?? '');
+
+            if ($result['presentationID'] !== '' && function_exists('IPS_GetPresentation')) {
+                try {
+                    $presentation = IPS_GetPresentation($result['presentationID']);
+                    if (is_array($presentation)) {
+                        $result['presentationName'] = (string) (
+                            $presentation['caption']
+                            ?? $presentation['name']
+                            ?? ''
+                        );
+                    }
+                } catch (Throwable $e) {
+                    $this->SendDebug('GetPresentation', $e->getMessage(), 0);
+                }
+            }
+
+            // Die aktive Symcon-Darstellung "Legacy Profil" liefert den
+            // zugrunde liegenden Profilnamen im Parameter PROFILE.
+            $legacyProfile = (string) ($parameters['PROFILE'] ?? '');
+            $caption = mb_strtolower(trim($result['presentationName']));
+            $result['isLegacyProfile'] =
+                $legacyProfile !== '' ||
+                $caption === 'legacy profil' ||
+                $caption === 'legacy profile';
+            $result['legacyProfile'] = $legacyProfile;
+        } catch (Throwable $e) {
+            $this->SendDebug('GetVariablePresentation', $e->getMessage(), 0);
+        }
+
+        return $result;
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
         $variableType = (int) ($variable['VariableType'] ?? -1);
         $rawValue = GetValue($VariableID);
 
-        $profileName = (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
+        $activePresentation = $this->GetActiveVariablePresentationInfo($VariableID);
 
-        // Neue Variablendarstellung hat Vorrang.
-        // Beim Wechsel von Legacy auf die neue Darstellung kann Symcon weiterhin
-        // einen alten Profilnamen an der Variable führen. Dieser darf die neue
-        // Darstellung nicht mehr blockieren.
-        $hasNewPresentation =
-            !empty($variable['VariableCustomPresentation'] ?? []) ||
-            !empty($variable['VariablePresentation'] ?? []);
+        // Ab Symcon 8.1 ist IPS_GetVariablePresentation() die maßgebliche Quelle:
+        // Es liefert die Parameter der AKTUELL genutzten Darstellung.
+        $activePresentationID = (string) ($activePresentation['presentationID'] ?? '');
+        $activeIsLegacy = (bool) ($activePresentation['isLegacyProfile'] ?? false);
+
+        $legacyProfileFromPresentation = (string) ($activePresentation['legacyProfile'] ?? '');
+        $profileName = $legacyProfileFromPresentation !== ''
+            ? $legacyProfileFromPresentation
+            : (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
 
         $hasLegacyProfile =
-            !$hasNewPresentation &&
+            $activeIsLegacy &&
             $profileName !== '' &&
             IPS_VariableProfileExists($profileName);
+
+        $hasNewPresentation =
+            $activePresentationID !== '' &&
+            !$activeIsLegacy;
+
+        // Nur als Fallback für Systeme/Variablen, bei denen die aktive Darstellung
+        // nicht geliefert werden kann, verwenden wir die alten Felder.
+        if ($activePresentationID === '') {
+            $fallbackHasPresentation =
+                !empty($variable['VariableCustomPresentation'] ?? []) ||
+                !empty($variable['VariablePresentation'] ?? []);
+
+            $hasLegacyProfile =
+                !$fallbackHasPresentation &&
+                $profileName !== '' &&
+                IPS_VariableProfileExists($profileName);
+
+            $hasNewPresentation = $fallbackHasPresentation;
+        }
 
         $presentationIcons = $hasNewPresentation
             ? $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable)
@@ -6315,6 +6390,8 @@ HTML;
             '_objectIcon'           => (string) ($objectInfo['ObjectIcon'] ?? ''),
             '_hasLegacyProfile'     => $hasLegacyProfile,
             '_hasNewPresentation'   => $hasNewPresentation,
+            '_activePresentationID' => $activePresentationID,
+            '_activePresentationName' => (string) ($activePresentation['presentationName'] ?? ''),
             '_presentationIcon'     => (string) ($presentationIcons['icon'] ?? ''),
             '_presentationIconOff'  => (string) ($presentationIcons['off'] ?? ''),
             '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
