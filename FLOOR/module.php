@@ -2925,7 +2925,7 @@ class Floorplaner extends IPSModuleStrict
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '')}</g>`
+                      `<g class="device-glyph" style="${item._stateColor ? `color:${escapeHtml(String(item._stateColor))};` : ''}" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '')}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
@@ -5991,6 +5991,20 @@ HTML;
         return $result;
     }
 
+    private function SymconColorToCss(mixed $Color): string
+    {
+        if (!is_int($Color) && !is_numeric($Color)) {
+            return '';
+        }
+
+        $color = (int) $Color;
+        if ($color < 0) {
+            return '';
+        }
+
+        return sprintf('#%06X', $color & 0xFFFFFF);
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -6002,6 +6016,32 @@ HTML;
         $presentationIcons = $hasLegacyProfile
             ? ['icon' => '', 'off' => '', 'on' => '']
             : $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable);
+
+        // Farbe getrennt von der funktionierenden Icon-Logik ermitteln.
+        // Legacy: Association Color für den aktuellen Wert.
+        // Neue Schalter-Darstellung: GLOW_COLOR nur im aktiven (true) Zustand.
+        $stateColor = '';
+        if (!$hasLegacyProfile && $variableType === 0 && (bool) $rawValue) {
+            $presentation = [];
+            if (function_exists('IPS_GetVariablePresentation')) {
+                try {
+                    $candidate = IPS_GetVariablePresentation($VariableID);
+                    if (is_array($candidate)) {
+                        $presentation = $candidate;
+                    }
+                } catch (Throwable $e) {
+                    $this->SendDebug('VariablePresentationColor', $e->getMessage(), 0);
+                }
+            }
+            if ($presentation === []) {
+                $presentation = !empty($variable['VariableCustomPresentation'] ?? [])
+                    ? (array) $variable['VariableCustomPresentation']
+                    : (array) ($variable['VariablePresentation'] ?? []);
+            }
+            $glowColor = $this->FindPresentationValue($presentation, 'GLOW_COLOR');
+            $stateColor = $this->SymconColorToCss($glowColor);
+        }
+
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
@@ -6040,8 +6080,13 @@ HTML;
                 $profileSummary = implode(' · ', $parts);
 
                 foreach ($associations as $association) {
-                    if ((float) $association['value'] === (float) $rawValue && $association['name'] !== '') {
-                        $valueText = $association['name'];
+                    if ((float) $association['value'] === (float) $rawValue) {
+                        if ($association['name'] !== '') {
+                            $valueText = $association['name'];
+                        }
+                        if ($variableType === 0) {
+                            $stateColor = $this->SymconColorToCss($association['color'] ?? -1);
+                        }
                         break;
                     }
                 }
@@ -6066,6 +6111,7 @@ HTML;
             '_presentationIcon'     => (string) ($presentationIcons['icon'] ?? ''),
             '_presentationIconOff'  => (string) ($presentationIcons['off'] ?? ''),
             '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
+            '_stateColor'           => $stateColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
