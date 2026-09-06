@@ -77,17 +77,15 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ### 1.4
 
-- Icons werden nun sowohl aus den **neuen IP-Symcon-Variablendarstellungen** als auch aus **Legacy-Profilen** automatisch übernommen.
-- Bei Boolean-Variablen können **zwei unterschiedliche Icons für AUS und EIN** aus der Variablendarstellung übernommen und verwendet werden.
-- Die übernommenen Icons können weiterhin manuell geändert oder über **Variableneinstellungen aktualisieren** neu aus IP-Symcon eingelesen werden.
+- Icons werden nun sowohl aus den neuen IP-Symcon-Variablendarstellungen als auch aus Legacy-Profilen automatisch übernommen.
+- Bei Boolean-Variablen können zwei unterschiedliche Icons für AUS und EIN aus der Variablendarstellung übernommen und verwendet werden.
+- Die übernommenen Icons können weiterhin manuell geändert oder über Variableneinstellungen aktualisieren neu aus IP-Symcon eingelesen werden.
 
 ### 1.3
 
-### 1.4
-
-- Icons werden nun sowohl aus neuen IP-Symcon-Variablendarstellungen als auch aus Legacy-Profilen automatisch übernommen. Bei Boolean-Variablen sind unterschiedliche Icons für AUS und EIN möglich.
-- Statusfarben werden ebenfalls aus IP-Symcon übernommen: bei neuen Darstellungen aus der konfigurierten Glow-Farbe und bei Legacy-Profilen aus der Profilfarbe für EIN.
-- Über Variableneinstellungen aktualisieren können die aktuellen Darstellungsinformationen erneut aus der zugeordneten Variable eingelesen werden.
+- IP-Symcon-Icons werden automatisch aus der Variable übernommen und können manuell geändert werden.
+- Umfangreiche Iconauswahl mit rund 4000 IP-Symcon-Icons.
+- Verbesserungen an Geräte-, Fenster- und Statusdarstellung.
 
 ### 1.2
 
