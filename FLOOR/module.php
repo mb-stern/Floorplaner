@@ -5028,6 +5028,7 @@ class Floorplaner extends IPSModuleStrict
         const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
         const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
         const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
+        const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -5045,6 +5046,7 @@ class Floorplaner extends IPSModuleStrict
         entity[presentationSingleKey] = node?.presentationIcon || '';
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
+        entity[legacyColorOnKey] = node?.legacyColorOn || '';
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
         // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
@@ -5089,6 +5091,13 @@ class Floorplaner extends IPSModuleStrict
                         entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
                     }
                 } else if (node.hasLegacyProfile === true) {
+                    if (
+                        Number(node.variableType) === 0 &&
+                        /^#[0-9a-f]{6}$/i.test(String(node.legacyColorOn || ''))
+                    ) {
+                        entity.statusColor = String(node.legacyColorOn);
+                    }
+
                     if (entity.iconManual !== true) {
                         entity.icon = node.objectIcon || 'fa-light fa-circle';
                         entity.iconSvg = '';
@@ -5376,6 +5385,10 @@ class Floorplaner extends IPSModuleStrict
                     if (Number(meta._variableType) === 0) {
                         item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                         item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(meta._legacyColorOn || ''))) {
+                            item.statusColor = String(meta._legacyColorOn);
+                        }
                     }
                 } else {
                     item.icon = meta._objectIcon || 'fa-light fa-circle';
@@ -5411,6 +5424,10 @@ class Floorplaner extends IPSModuleStrict
                                 if (Number(meta._variableType) === 0) {
                                     if (item.iconOffManual !== true) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                                     if (item.iconOnManual !== true) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                                    if (/^#[0-9a-f]{6}$/i.test(String(meta._legacyColorOn || ''))) {
+                                        item.statusColor = String(meta._legacyColorOn);
+                                    }
                                 }
                             } else if (Number(meta._variableType) === 0) {
                                 if (item.iconOffManual !== true) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
@@ -6116,6 +6133,7 @@ HTML;
                     $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
+                    $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -6324,6 +6342,7 @@ HTML;
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
+        $legacyColorOn = '';
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -6348,6 +6367,19 @@ HTML;
                     'suffix'       => (string) ($p['Suffix'] ?? ''),
                     'associations' => $associations
                 ];
+
+                if ($hasLegacyProfile && $variableType === 0) {
+                    foreach ($associations as $association) {
+                        if ((float) ($association['value'] ?? 0) !== 1.0) {
+                            continue;
+                        }
+                        $color = (int) ($association['color'] ?? -1);
+                        if ($color >= 0) {
+                            $legacyColorOn = sprintf('#%06X', $color & 0xFFFFFF);
+                        }
+                        break;
+                    }
+                }
 
                 $parts = [];
                 if ($associations !== []) {
@@ -6389,6 +6421,7 @@ HTML;
             '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
+            '_legacyColorOn'        => $legacyColorOn,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
