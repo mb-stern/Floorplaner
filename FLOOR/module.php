@@ -2469,7 +2469,7 @@ class Floorplaner extends IPSModuleStrict
         return `<i class="${escapeHtml(icon)}"></i>`;
     }
 
-    function renderSymconGlyph(icon, radius, storedSvg = '', explicitColor = '') {
+    function renderSymconGlyph(icon, radius, storedSvg = '') {
         const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
         const fontSize = Math.max(12, r * 1.18);
@@ -2480,9 +2480,8 @@ class Floorplaner extends IPSModuleStrict
         const content = svgHtml !== ''
             ? svgHtml
             : `<i class="${escapeHtml(parsed.cls)}"></i>`;
-        const colorStyle = explicitColor ? `;color:${escapeHtml(String(explicitColor))}` : '';
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
-            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px${colorStyle}">${content}</div></foreignObject>`;
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
 
 
@@ -2870,7 +2869,11 @@ class Floorplaner extends IPSModuleStrict
             // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
             // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
             const lightClass = '';
-            const statusColor = normalizeStatusColor(item.statusColor);
+            const statusColor = (Number(item?._variableType) === 0 &&
+                (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true') &&
+                item._stateColor)
+                ? String(item._stateColor)
+                : (item.statusColor || '#ffe66d');
             const icon = effectiveItemIcon(item);
 
             const showName = item.showName === true;
@@ -2926,7 +2929,7 @@ class Floorplaner extends IPSModuleStrict
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '', item._stateColor || '')}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, item.iconSvg || '')}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
