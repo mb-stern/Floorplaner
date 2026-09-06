@@ -3689,9 +3689,22 @@ class Floorplaner extends IPSModuleStrict
             openSymconIconPicker();
         };
 
-        properties.querySelector('#itemIconSelect')?.addEventListener('click', () => openItemIconPicker('single'));
-        properties.querySelector('#itemIconOffSelect')?.addEventListener('click', () => openItemIconPicker('off'));
-        properties.querySelector('#itemIconOnSelect')?.addEventListener('click', () => openItemIconPicker('on'));
+        // pointerdown statt click: Die Icon-Auswahl öffnet sofort beim ersten
+        // Antippen/Anklicken und ist nicht davon abhängig, ob zuvor ein anderes
+        // Eingabefeld den Fokus hatte.
+        const bindItemIconPicker = (selector, slot) => {
+            const button = properties.querySelector(selector);
+            if (!button) return;
+            button.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                openItemIconPicker(slot);
+            });
+        };
+
+        bindItemIconPicker('#itemIconSelect', 'single');
+        bindItemIconPicker('#itemIconOffSelect', 'off');
+        bindItemIconPicker('#itemIconOnSelect', 'on');
 
         properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
             field.addEventListener('click', () => {
