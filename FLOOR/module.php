@@ -590,8 +590,8 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .device.boolean-active circle {
-            stroke: var(--device-status-color, #ffe66d);
-            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d));
+            stroke: var(--device-status-color, #ffe66d) !important;
+            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d)) !important;
         }
 
         /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
@@ -1249,6 +1249,13 @@ class Floorplaner extends IPSModuleStrict
         html[data-theme="light"] .device circle {
             fill: rgba(255,255,255,.72);
             stroke: #777777;
+        }
+
+        /* Aktiver Bool-Zustand muss auch im hellen Theme Vorrang vor der
+           allgemeinen grauen Geräte-Kontur haben. */
+        html[data-theme="light"] .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d) !important;
+            filter: drop-shadow(0 0 7px var(--device-status-color, #ffe66d)) !important;
         }
 
         html[data-theme="light"] .device .climate-panel {
