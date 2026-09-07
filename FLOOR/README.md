@@ -73,6 +73,11 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ## 📝 Änderungen
 
+### 1.5
+
+- Icons mit einer reinen Statusvariable reagieren nun nicht mehr auf Betätigung.
+- Die Mauerdicke lässt sich nun konfigurieren.
+
 ### 1.4
 
 - Icons werden nun sowohl aus den neuen IP-Symcon-Variablendarstellungen als auch aus Legacy-Profilen automatisch übernommen.

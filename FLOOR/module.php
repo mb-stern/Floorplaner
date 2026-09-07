@@ -939,9 +939,11 @@ class Floorplaner extends IPSModuleStrict
         /* Reine Status-/Messwertvariablen ohne Aktion sind im Bedienmodus
            bewusst nicht als klickbares Bedienelement dargestellt. */
         #app.view-mode .device.status-only,
+        #app.view-mode .device.status-only *,
         #scene.runtime-view .device.status-only,
         #scene.runtime-view .device.status-only * {
             cursor: default !important;
+            pointer-events: none !important;
         }
 
         .control-modal {
@@ -1738,6 +1740,7 @@ class Floorplaner extends IPSModuleStrict
             id: 'floor_1',
             name: 'Erdgeschoss',
             order: 1,
+            wallThickness: 12,
             walls: [],
             openings: [],
             items: [],
@@ -1758,6 +1761,10 @@ class Floorplaner extends IPSModuleStrict
         for (const floor of q.floors) {
             floor.id ||= uid('floor');
             floor.name ||= 'Etage';
+            const wallThickness = Number(floor.wallThickness);
+            floor.wallThickness = Number.isFinite(wallThickness) && wallThickness > 0
+                ? Math.max(1, Math.min(60, wallThickness))
+                : 12;
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
             for (const opening of floor.openings) {
@@ -2705,11 +2712,14 @@ class Floorplaner extends IPSModuleStrict
         const shutterControlParts = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
+        const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
+        const openingGapThickness = wallThickness + 4;
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
             parts.push(
-                `<line class="wall${sel}" data-type="wall" data-id="${w.id}" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
+                `<line class="wall${sel}" data-type="wall" data-id="${w.id}" ` +
+                `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
             );
 
             if (state.mode !== 'view' && selected?.type === 'wall' && selected.id === w.id) {
@@ -2738,7 +2748,7 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}" style="cursor:${state.mode === 'view' ? 'default' : 'pointer'}">`);
             parts.push(`<line class="opening-hit" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
-            parts.push(`<line class="opening-gap" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
+            parts.push(`<line class="opening-gap" style="stroke-width:${openingGapThickness}px" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
 
             if (o.type === 'door') {
                 const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
@@ -3433,6 +3443,10 @@ class Floorplaner extends IPSModuleStrict
                     <input type="number" min="1" max="${state.floors.length}" step="1" data-project="floorOrder" value="${Number(floor.order) || 1}">
                 </div>
                 <div class="field">
+                    <label>Mauerwerkdicke</label>
+                    <input type="number" min="1" max="60" step="1" data-project="wallThickness" value="${Number(floor.wallThickness) || 12}">
+                </div>
+                <div class="field">
                     <label>Elemente</label>
                     <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte, ${(floor.furniture || []).length} Möbel" disabled>
                 </div>
@@ -3816,6 +3830,16 @@ class Floorplaner extends IPSModuleStrict
             input.addEventListener('change', () => {
                 if (input.dataset.project === 'floorName') {
                     currentFloor().name = input.value.trim() || 'Etage';
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'wallThickness') {
+                    const floor = currentFloor();
+                    floor.wallThickness = Math.max(1, Math.min(60, Number(input.value) || 12));
+                    input.value = String(floor.wallThickness);
                     pushHistory();
                     markDirty();
                     render();
@@ -5176,6 +5200,10 @@ class Floorplaner extends IPSModuleStrict
     });
 
     function sendItemValue(item, value) {
+        if (!item || item._canAction !== true) {
+            return;
+        }
+
         requestAction('operateValue', JSON.stringify({
             floorId: state.activeFloor,
             itemId: item.id,
@@ -5915,6 +5943,7 @@ HTML;
 
             $floor['id'] = (string) ($floor['id'] ?? ('floor_' . ($index + 1)));
             $floor['name'] = (string) ($floor['name'] ?? ('Etage ' . ($index + 1)));
+            $floor['wallThickness'] = max(1, min(60, (int) ($floor['wallThickness'] ?? 12)));
 
             foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'trackers'] as $key) {
                 if (!isset($floor[$key]) || !is_array($floor[$key])) {
@@ -5976,9 +6005,10 @@ HTML;
     private function CreateDefaultFloor(): array
     {
         return [
-            'id'        => 'floor_1',
-            'name'      => 'Erdgeschoss',
-            'walls'     => [],
+            'id'            => 'floor_1',
+            'name'          => 'Erdgeschoss',
+            'wallThickness' => 12,
+            'walls'         => [],
             'openings'  => [],
             'items'     => [],
             'texts'     => [],
@@ -6319,6 +6349,54 @@ HTML;
         return $result;
     }
 
+    private function GetEffectiveVariableActionID(array $Variable): int
+    {
+        $customAction = (int) ($Variable['VariableCustomAction'] ?? 0);
+        $defaultAction = (int) ($Variable['VariableAction'] ?? 0);
+
+        /*
+         * IP-Symcon-Sonderfall:
+         * VariableCustomAction = 1 bedeutet NICHT "Action-ID 1",
+         * sondern dass eine vorhandene Standardaktion explizit deaktiviert wurde.
+         */
+        if ($customAction === 1) {
+            return 0;
+        }
+
+        if ($customAction > 1) {
+            return $customAction;
+        }
+
+        return $defaultAction > 0 ? $defaultAction : 0;
+    }
+
+    private function PresentationAllowsRequestAction(string $PresentationID): bool
+    {
+        if ($PresentationID === '' || !function_exists('IPS_GetPresentation')) {
+            return false;
+        }
+
+        try {
+            $presentation = IPS_GetPresentation($PresentationID);
+
+            // Je nach Symcon-Version kommt hier JSON als String oder bereits ein Array.
+            if (is_string($presentation)) {
+                $decoded = json_decode($presentation, true);
+                $presentation = is_array($decoded) ? $decoded : [];
+            }
+
+            if (!is_array($presentation)) {
+                return false;
+            }
+
+            $restrictions = $presentation['restrictions'] ?? [];
+            return is_array($restrictions) && (($restrictions['requestAction'] ?? false) === true);
+        } catch (Throwable $e) {
+            $this->SendDebug('PresentationAllowsRequestAction', $e->getMessage(), 0);
+            return false;
+        }
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -6431,7 +6509,20 @@ HTML;
         }
 
         $variableInfo = IPS_GetVariable($VariableID);
-        $actionID = (int) (($variableInfo['VariableCustomAction'] ?? 0) ?: ($variableInfo['VariableAction'] ?? 0));
+        $actionID = $this->GetEffectiveVariableActionID($variableInfo);
+
+        // Nicht jede Variable mit Action-ID ist in der aktuellen Darstellung
+        // tatsächlich bedienbar. Bei neuen Darstellungen gilt deshalb nur
+        // requestAction=true als echte Bedienfreigabe.
+        if ($hasLegacyProfile) {
+            $canAction = $actionID > 0;
+        } elseif ($hasNewPresentation) {
+            $canAction =
+                $actionID > 0 &&
+                $this->PresentationAllowsRequestAction($activePresentationID);
+        } else {
+            $canAction = false;
+        }
 
         $objectInfo = IPS_GetObject($VariableID);
 
@@ -6453,7 +6544,7 @@ HTML;
             '_profileName'    => $profileName,
             '_profileSummary' => $profileSummary,
             '_profile'        => $profile,
-            '_canAction'      => $actionID > 0
+            '_canAction'      => $canAction
         ];
     }
 
@@ -6516,6 +6607,15 @@ HTML;
                 }
 
                 $variable = IPS_GetVariable($variableID);
+
+                // Exakt dieselbe Bedienfreigabe wie im Live-Rendering verwenden.
+                // Reine Statusvariablen gelangen damit auch serverseitig niemals
+                // in RequestAction.
+                $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
+                if (($runtimeMeta['_canAction'] ?? false) !== true) {
+                    return;
+                }
+
                 $variableType = (int) ($variable['VariableType'] ?? -1);
 
                 if ($ToggleBoolean) {
@@ -6591,7 +6691,7 @@ HTML;
     private function DispatchVariableAction(int $VariableID, mixed $Value): bool
     {
         $variable = IPS_GetVariable($VariableID);
-        $actionID = (int) (($variable['VariableCustomAction'] ?? 0) ?: ($variable['VariableAction'] ?? 0));
+        $actionID = $this->GetEffectiveVariableActionID($variable);
 
         try {
             if ($actionID > 0) {
