@@ -5200,6 +5200,10 @@ class Floorplaner extends IPSModuleStrict
     });
 
     function sendItemValue(item, value) {
+        if (!item || item._canAction !== true) {
+            return;
+        }
+
         requestAction('operateValue', JSON.stringify({
             floorId: state.activeFloor,
             itemId: item.id,
@@ -6542,6 +6546,20 @@ HTML;
                 }
 
                 $variable = IPS_GetVariable($variableID);
+
+                // Reine Status-/Messwertvariablen besitzen keine echte Variablenaktion.
+                // Im Live-Modus sind sie nur Anzeige. Selbst wenn durch Browser-/SVG-
+                // Event-Bubbling doch eine Bedienanforderung ankommt, hier still beenden.
+                // Dadurch wird insbesondere KEIN Fallback-RequestAction an die Elterninstanz
+                // ausgelöst, der bei Statusvariablen den roten Symcon-Fehler verursachen kann.
+                $actionID = (int) (
+                    ($variable['VariableCustomAction'] ?? 0)
+                    ?: ($variable['VariableAction'] ?? 0)
+                );
+                if ($actionID <= 0) {
+                    return;
+                }
+
                 $variableType = (int) ($variable['VariableType'] ?? -1);
 
                 if ($ToggleBoolean) {
