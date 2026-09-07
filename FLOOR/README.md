@@ -75,7 +75,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ### 1.5
 
-- Icons mit einer hintelegten Statusvariable reagieren nun nicht mehr auf Betätigung.
+- Icons mit einer reinen Statusvariable reagieren nun nicht mehr auf Betätigung.
 - Die Mauerdicke lässt sich nun konfigurieren.
 
 ### 1.4
