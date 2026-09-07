@@ -6349,6 +6349,33 @@ HTML;
         return $result;
     }
 
+    private function PresentationAllowsRequestAction(string $PresentationID): bool
+    {
+        if ($PresentationID === '' || !function_exists('IPS_GetPresentation')) {
+            return false;
+        }
+
+        try {
+            $presentation = IPS_GetPresentation($PresentationID);
+
+            // Je nach Symcon-Version kommt hier JSON als String oder bereits ein Array.
+            if (is_string($presentation)) {
+                $decoded = json_decode($presentation, true);
+                $presentation = is_array($decoded) ? $decoded : [];
+            }
+
+            if (!is_array($presentation)) {
+                return false;
+            }
+
+            $restrictions = $presentation['restrictions'] ?? [];
+            return is_array($restrictions) && (($restrictions['requestAction'] ?? false) === true);
+        } catch (Throwable $e) {
+            $this->SendDebug('PresentationAllowsRequestAction', $e->getMessage(), 0);
+            return false;
+        }
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -6463,6 +6490,19 @@ HTML;
         $variableInfo = IPS_GetVariable($VariableID);
         $actionID = (int) (($variableInfo['VariableCustomAction'] ?? 0) ?: ($variableInfo['VariableAction'] ?? 0));
 
+        // Nicht jede Variable mit Action-ID ist in der aktuellen Darstellung
+        // tatsächlich bedienbar. Bei neuen Darstellungen gilt deshalb nur
+        // requestAction=true als echte Bedienfreigabe.
+        if ($hasLegacyProfile) {
+            $canAction = $actionID > 0;
+        } elseif ($hasNewPresentation) {
+            $canAction =
+                $actionID > 0 &&
+                $this->PresentationAllowsRequestAction($activePresentationID);
+        } else {
+            $canAction = false;
+        }
+
         $objectInfo = IPS_GetObject($VariableID);
 
         return [
@@ -6483,7 +6523,7 @@ HTML;
             '_profileName'    => $profileName,
             '_profileSummary' => $profileSummary,
             '_profile'        => $profile,
-            '_canAction'      => $actionID > 0
+            '_canAction'      => $canAction
         ];
     }
 
@@ -6547,16 +6587,11 @@ HTML;
 
                 $variable = IPS_GetVariable($variableID);
 
-                // Reine Status-/Messwertvariablen besitzen keine echte Variablenaktion.
-                // Im Live-Modus sind sie nur Anzeige. Selbst wenn durch Browser-/SVG-
-                // Event-Bubbling doch eine Bedienanforderung ankommt, hier still beenden.
-                // Dadurch wird insbesondere KEIN Fallback-RequestAction an die Elterninstanz
-                // ausgelöst, der bei Statusvariablen den roten Symcon-Fehler verursachen kann.
-                $actionID = (int) (
-                    ($variable['VariableCustomAction'] ?? 0)
-                    ?: ($variable['VariableAction'] ?? 0)
-                );
-                if ($actionID <= 0) {
+                // Exakt dieselbe Bedienfreigabe wie im Live-Rendering verwenden.
+                // Reine Statusvariablen gelangen damit auch serverseitig niemals
+                // in RequestAction.
+                $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
+                if (($runtimeMeta['_canAction'] ?? false) !== true) {
                     return;
                 }
 
