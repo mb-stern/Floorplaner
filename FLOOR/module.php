@@ -6349,6 +6349,27 @@ HTML;
         return $result;
     }
 
+    private function GetEffectiveVariableActionID(array $Variable): int
+    {
+        $customAction = (int) ($Variable['VariableCustomAction'] ?? 0);
+        $defaultAction = (int) ($Variable['VariableAction'] ?? 0);
+
+        /*
+         * IP-Symcon-Sonderfall:
+         * VariableCustomAction = 1 bedeutet NICHT "Action-ID 1",
+         * sondern dass eine vorhandene Standardaktion explizit deaktiviert wurde.
+         */
+        if ($customAction === 1) {
+            return 0;
+        }
+
+        if ($customAction > 1) {
+            return $customAction;
+        }
+
+        return $defaultAction > 0 ? $defaultAction : 0;
+    }
+
     private function PresentationAllowsRequestAction(string $PresentationID): bool
     {
         if ($PresentationID === '' || !function_exists('IPS_GetPresentation')) {
@@ -6488,7 +6509,7 @@ HTML;
         }
 
         $variableInfo = IPS_GetVariable($VariableID);
-        $actionID = (int) (($variableInfo['VariableCustomAction'] ?? 0) ?: ($variableInfo['VariableAction'] ?? 0));
+        $actionID = $this->GetEffectiveVariableActionID($variableInfo);
 
         // Nicht jede Variable mit Action-ID ist in der aktuellen Darstellung
         // tatsächlich bedienbar. Bei neuen Darstellungen gilt deshalb nur
@@ -6670,7 +6691,7 @@ HTML;
     private function DispatchVariableAction(int $VariableID, mixed $Value): bool
     {
         $variable = IPS_GetVariable($VariableID);
-        $actionID = (int) (($variable['VariableCustomAction'] ?? 0) ?: ($variable['VariableAction'] ?? 0));
+        $actionID = $this->GetEffectiveVariableActionID($variable);
 
         try {
             if ($actionID > 0) {
