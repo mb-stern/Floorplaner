@@ -28,6 +28,8 @@ class Floorplaner extends IPSModuleStrict
 
         $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
 
+        $this->RegisterHook('floorplaner-streamtest-' . $this->InstanceID);
+
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
 
@@ -36,6 +38,7 @@ class Floorplaner extends IPSModuleStrict
         parent::ApplyChanges();
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
+        $this->RegisterHook('floorplaner-streamtest-' . $this->InstanceID);
 
         if ($this->ReadAttributeString(self::ATTRIBUTE_DATA) === '') {
             $this->WriteAttributeString(
@@ -5663,6 +5666,321 @@ HTML;
             [$initial, (string) $this->InstanceID],
             $html
         );
+    }
+
+    protected function ProcessHookData(): void
+    {
+        $action = (string) ($_GET['action'] ?? 'page');
+        $mediaID = isset($_GET['media']) ? (int) $_GET['media'] : 0;
+
+        if ($action === 'diagnose') {
+            $this->OutputFloorplanerStreamDiagnosis($mediaID);
+            return;
+        }
+
+        if ($action === 'stream') {
+            $this->OutputFloorplanerTestStream($mediaID);
+            return;
+        }
+
+        $this->OutputFloorplanerStreamTestPage($mediaID);
+    }
+
+    private function GetFloorplanerTestStreamSource(int $MediaID): array
+    {
+        if ($MediaID <= 0 || !IPS_MediaExists($MediaID)) {
+            throw new RuntimeException('Kein gültiges Medienobjekt gewählt.');
+        }
+
+        $media = IPS_GetMedia($MediaID);
+        if ((int) ($media['MediaType'] ?? -1) !== 3) {
+            throw new RuntimeException('Das gewählte Medienobjekt ist kein Stream.');
+        }
+
+        $source = trim((string) ($media['MediaFile'] ?? ''));
+        if ($source === '') {
+            throw new RuntimeException('Das Stream-Medienobjekt besitzt keine Quelle.');
+        }
+
+        return [$media, $source];
+    }
+
+    private function OutputFloorplanerStreamTestPage(int $MediaID): void
+    {
+        $hook = '/hook/floorplaner-streamtest-' . $this->InstanceID;
+
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store');
+
+        $safeHook = htmlspecialchars($hook, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeMedia = htmlspecialchars((string) $MediaID, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        echo '<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Floorplaner Stream-Test</title>
+<style>
+body{font-family:Arial,sans-serif;margin:24px;background:#202124;color:#eee}
+.card{max-width:780px;margin:auto;padding:20px;border:1px solid #555;border-radius:12px;background:#292a2d}
+input{width:120px;padding:8px;margin-right:8px}
+button{padding:9px 14px;margin:4px;cursor:pointer}
+img{display:block;max-width:100%;margin-top:16px;border-radius:8px;background:#111;min-height:180px}
+pre{white-space:pre-wrap;word-break:break-word;background:#181818;padding:12px;border-radius:8px}
+.small{opacity:.72;font-size:12px}
+</style>
+</head>
+<body>
+<div class="card">
+<h2>Floorplaner Stream-Test</h2>
+<p>
+<label>Media-ID:
+<input id="media" type="number" value="' . $safeMedia . '">
+</label>
+</p>
+<p>
+<button id="start">Stream starten</button>
+<button id="stop">Stream stoppen</button>
+<button id="diag">Diagnose</button>
+</p>
+<div id="state">Bereit.</div>
+<img id="cam" style="display:none" alt="">
+<pre id="result">Noch keine Diagnose.</pre>
+<div class="small">RTSP-Zugangsdaten werden nicht im Browser ausgegeben.</div>
+</div>
+<script>
+const hook=' . json_encode($safeHook) . ';
+const media=document.getElementById("media");
+const img=document.getElementById("cam");
+const state=document.getElementById("state");
+const result=document.getElementById("result");
+
+function id(){
+    return Number(media.value)||0;
+}
+
+document.getElementById("start").onclick=()=>{
+    const mediaID=id();
+    if(mediaID<=0){state.textContent="Bitte Media-ID eingeben.";return;}
+    state.textContent="Stream wird geöffnet …";
+    img.style.display="block";
+    img.src=hook+"?action=stream&media="+mediaID+"&t="+Date.now();
+};
+
+document.getElementById("stop").onclick=()=>{
+    img.removeAttribute("src");
+    img.style.display="none";
+    state.textContent="Stream gestoppt.";
+};
+
+img.onload=()=>state.textContent="Stream läuft.";
+img.onerror=()=>state.textContent="Stream fehlgeschlagen – Diagnose ausführen.";
+
+document.getElementById("diag").onclick=async()=>{
+    const mediaID=id();
+    if(mediaID<=0){result.textContent="Bitte Media-ID eingeben.";return;}
+    result.textContent="Diagnose läuft …";
+    try{
+        const r=await fetch(
+            hook+"?action=diagnose&media="+mediaID+"&t="+Date.now(),
+            {cache:"no-store"}
+        );
+        result.textContent=JSON.stringify(await r.json(),null,2);
+    }catch(e){
+        result.textContent="Diagnosefehler: "+e;
+    }
+};
+</script>
+</body>
+</html>';
+    }
+
+    private function OutputFloorplanerStreamDiagnosis(int $MediaID): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+
+        $result = [
+            'mediaID'         => $MediaID,
+            'mediaExists'     => false,
+            'mediaType'       => null,
+            'protocol'        => '',
+            'procOpen'        => function_exists('proc_open'),
+            'ffmpegAvailable' => false,
+            'ffmpegVersion'   => '',
+            'rtspProbe'       => false,
+            'error'           => ''
+        ];
+
+        try {
+            [$media, $source] = $this->GetFloorplanerTestStreamSource($MediaID);
+
+            $result['mediaExists'] = true;
+            $result['mediaType'] = (int) ($media['MediaType'] ?? -1);
+            $result['protocol'] = strtolower((string) parse_url($source, PHP_URL_SCHEME));
+
+            if (!$result['procOpen']) {
+                throw new RuntimeException('proc_open ist nicht verfügbar.');
+            }
+
+            $spec = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w']
+            ];
+
+            $process = @proc_open('ffmpeg -version', $spec, $pipes);
+            if (!is_resource($process)) {
+                throw new RuntimeException('ffmpeg konnte nicht gestartet werden.');
+            }
+
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            $exitCode = proc_close($process);
+
+            if ($exitCode !== 0) {
+                throw new RuntimeException(
+                    trim((string) $stderr) ?: 'ffmpeg -version fehlgeschlagen.'
+                );
+            }
+
+            $result['ffmpegAvailable'] = true;
+            $firstLine = strtok((string) $stdout, "\r\n");
+            $result['ffmpegVersion'] = is_string($firstLine) ? $firstLine : '';
+
+            if ($result['protocol'] !== 'rtsp') {
+                throw new RuntimeException(
+                    'Für den ersten Test wird eine RTSP-Quelle erwartet.'
+                );
+            }
+
+            $command =
+                'ffmpeg -hide_banner -loglevel error -rtsp_transport tcp -i ' .
+                escapeshellarg($source) .
+                ' -frames:v 1 -an -f null -';
+
+            $process = @proc_open($command, $spec, $pipes);
+            if (!is_resource($process)) {
+                throw new RuntimeException(
+                    'RTSP-Testprozess konnte nicht gestartet werden.'
+                );
+            }
+
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            $exitCode = proc_close($process);
+
+            if ($exitCode !== 0) {
+                $error = trim((string) $stderr);
+                $error = preg_replace(
+                    '#rtsp://[^@\s]+@#i',
+                    'rtsp://***:***@',
+                    $error
+                ) ?? $error;
+
+                throw new RuntimeException(
+                    $error !== '' ? $error : 'RTSP-Probe fehlgeschlagen.'
+                );
+            }
+
+            $result['rtspProbe'] = true;
+        } catch (Throwable $e) {
+            $result['error'] = $e->getMessage();
+        }
+
+        echo json_encode(
+            $result,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+    }
+
+    private function OutputFloorplanerTestStream(int $MediaID): void
+    {
+        try {
+            [, $source] = $this->GetFloorplanerTestStreamSource($MediaID);
+
+            if (strtolower((string) parse_url($source, PHP_URL_SCHEME)) !== 'rtsp') {
+                throw new RuntimeException('Für diesen Test wird RTSP erwartet.');
+            }
+
+            if (!function_exists('proc_open')) {
+                throw new RuntimeException('proc_open ist nicht verfügbar.');
+            }
+
+            $filter = 'fps=5,scale=640:-2:force_original_aspect_ratio=decrease';
+
+            $command =
+                'ffmpeg -hide_banner -loglevel error -rtsp_transport tcp -i ' .
+                escapeshellarg($source) .
+                ' -an -vf ' . escapeshellarg($filter) .
+                ' -q:v 7 -f mpjpeg -boundary_tag floorplanerframe pipe:1';
+
+            $spec = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w']
+            ];
+
+            $process = @proc_open($command, $spec, $pipes);
+            if (!is_resource($process)) {
+                throw new RuntimeException('ffmpeg konnte nicht gestartet werden.');
+            }
+
+            fclose($pipes[0]);
+            stream_set_blocking($pipes[1], false);
+            stream_set_blocking($pipes[2], false);
+
+            ignore_user_abort(false);
+            @set_time_limit(0);
+
+            header('Content-Type: multipart/x-mixed-replace; boundary=floorplanerframe');
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            header('Pragma: no-cache');
+            header('X-Accel-Buffering: no');
+
+            try {
+                while (!connection_aborted()) {
+                    $status = proc_get_status($process);
+
+                    $chunk = fread($pipes[1], 65536);
+                    if ($chunk !== false && $chunk !== '') {
+                        echo $chunk;
+                        @ob_flush();
+                        flush();
+                    }
+
+                    if (!$status['running']) {
+                        break;
+                    }
+
+                    usleep(10000);
+                }
+            } finally {
+                if (isset($pipes[1]) && is_resource($pipes[1])) {
+                    fclose($pipes[1]);
+                }
+                if (isset($pipes[2]) && is_resource($pipes[2])) {
+                    fclose($pipes[2]);
+                }
+
+                $status = proc_get_status($process);
+                if ($status['running']) {
+                    @proc_terminate($process);
+                }
+                @proc_close($process);
+            }
+        } catch (Throwable $e) {
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo $e->getMessage();
+        }
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
