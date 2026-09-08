@@ -76,6 +76,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 ### 1.7
 
 - Der farbige Statusring funktioniert nun auch im hellen Theme.
+- Kamerastreams können nun dargestellt werden.
 
 ### 1.6
 
