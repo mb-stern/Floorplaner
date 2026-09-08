@@ -1253,6 +1253,17 @@ class Floorplaner extends IPSModuleStrict
             stroke: #777777;
         }
 
+        /* Aktive Bool-Geräte müssen auch im hellen Theme ihre konfigurierte
+           Statusfarbe behalten. Diese Regel steht bewusst nach der allgemeinen
+           hellen Geräte-Kontur, damit diese die Statusfarbe nicht überschreibt. */
+        html[data-theme="light"] .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(
+                0 0 var(--device-status-glow, 7px)
+                var(--device-status-color, #ffe66d)
+            );
+        }
+
         html[data-theme="light"] .device .climate-panel {
             fill: rgba(255,255,255,.82);
             stroke: #777777;
@@ -1307,6 +1318,52 @@ class Floorplaner extends IPSModuleStrict
             color: var(--fp-muted);
         }
 
+
+        /* Kamera-/Stream-Popup: klein starten, bei Bedarf vergrößern. */
+        .stream-popup-body {
+            display: grid;
+            gap: 8px;
+        }
+
+        .stream-view {
+            width: 320px;
+            height: 180px;
+            max-width: min(72vw, 640px);
+            max-height: min(60vh, 360px);
+            overflow: hidden;
+            border-radius: 7px;
+            background: #000;
+        }
+
+        .stream-view img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            background: #000;
+        }
+
+        #controlModal.stream-expanded .stream-view {
+            width: min(78vw, 960px);
+            height: min(68vh, 540px);
+            max-width: none;
+            max-height: none;
+        }
+
+        .stream-popup-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .stream-popup-actions button {
+            min-height: 32px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 5px 10px;
+            cursor: pointer;
+        }
 
         /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
         #controlModal {
@@ -4337,6 +4394,15 @@ class Floorplaner extends IPSModuleStrict
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
 
+                if (
+                    item?._objectKind === 'stream' &&
+                    Number(item?._mediaType) === 3 &&
+                    Number(item?.variableID) > 0
+                ) {
+                    openStreamControl(item, evt.clientX, evt.clientY);
+                    return;
+                }
+
                 if (!item || item._canAction !== true) {
                     // Reine Istwerte/Messwerte besitzen keine Bedienaktion.
                     return;
@@ -4795,12 +4861,18 @@ class Floorplaner extends IPSModuleStrict
         const children = Array.isArray(node.children) ? node.children : [];
         const hasChildren = children.length > 0;
         const isVariable = Number(node.objectType) === 2;
+        const isStream = node.isStream === true && Number(node.mediaType) === 3;
+        const streamSelectable =
+            isStream &&
+            (variablePickerTarget?.entityType || 'item') === 'item' &&
+            (variablePickerTarget?.field || 'variableID') === 'variableID';
+        const isSelectable = isVariable || streamSelectable;
         const forceOpen = !!needle;
         const isOpen = forceOpen || expandedObjectIDs.has(Number(node.id));
-        const selectedClass = isVariable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
-        const rowClass = isVariable ? ' variable' : '';
+        const selectedClass = isSelectable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
+        const rowClass = isSelectable ? ' variable' : '';
         const toggle = hasChildren ? (isOpen ? '▾' : '▸') : '';
-        const value = isVariable ? escapeHtml(node.valueText || '') : '';
+        const value = (isVariable || isStream) ? escapeHtml(node.valueText || '') : '';
         const typeTitle = isVariable
             ? escapeHtml([node.variableTypeName || '', node.profileName || ''].filter(Boolean).join(' · '))
             : escapeHtml(node.objectTypeName || '');
@@ -5060,6 +5132,50 @@ class Floorplaner extends IPSModuleStrict
         entity[field] = Number(variableID) || 0;
         const node = entity[field] ? findTreeNode(objectTree, entity[field]) : null;
 
+        // Beim Hauptobjekt eines Geräts darf statt einer Variable auch direkt
+        // ein Symcon-Stream-Medienobjekt gewählt werden.
+        if (
+            entityType === 'item' &&
+            field === 'variableID' &&
+            node?.isStream === true &&
+            Number(node?.mediaType) === 3
+        ) {
+            entity._objectKind = 'stream';
+            entity._mediaType = 3;
+            entity._canAction = true;
+            entity._variableType = -1;
+            entity._variablePath = node.path || '';
+            entity._valueText = 'Stream';
+            entity._rawValue = '';
+            entity._profileName = '';
+            entity._profileSummary = '';
+            entity._profile = null;
+            entity._hasLegacyProfile = false;
+            entity._hasNewPresentation = false;
+            entity._objectIcon = node.objectIcon || '';
+
+            entity.showDirectSlider = false;
+            entity.showValue = false;
+
+            // Genau wie bei Variablen das am Symcon-Objekt konfigurierte Icon
+            // übernehmen. Kein Kamera-Icon erzwingen.
+            entity.iconManual = false;
+            entity.iconOffManual = false;
+            entity.iconOnManual = false;
+            entity.iconSvg = '';
+            entity.iconOffSvg = '';
+            entity.iconOnSvg = '';
+            entity.icon = node.objectIcon || 'fa-light fa-circle';
+
+            variableModal.classList.remove('open');
+            variableModal.setAttribute('aria-hidden', 'true');
+            pushHistory();
+            markDirty();
+            render();
+            refreshPropertiesAfterStructuralChange();
+            return;
+        }
+
         const map = {
             variableID: '',
             secondaryVariableID: 'secondaryVariable',
@@ -5222,6 +5338,71 @@ class Floorplaner extends IPSModuleStrict
         }));
     }
 
+    function openStreamControl(item, clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || !item) return;
+
+        const mediaID = Number(item.variableID) || 0;
+        if (mediaID <= 0) return;
+
+        controlModal.classList.remove('stream-expanded');
+        controlTitle.textContent = item.name || 'Kamera';
+
+        const streamUrl = `/proxy/${mediaID}`;
+        controlBody.innerHTML = `
+            <div class="stream-popup-body">
+                <div class="stream-view">
+                    <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(item.name || 'Stream')}">
+                </div>
+                <div class="stream-popup-actions">
+                    <button type="button" data-stream-expand>Vergrößern</button>
+                </div>
+            </div>
+        `;
+
+        const expandBtn = controlBody.querySelector('[data-stream-expand]');
+        expandBtn?.addEventListener('click', () => {
+            const expanded = controlModal.classList.toggle('stream-expanded');
+            expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
+        });
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            dialog.style.left = '';
+            dialog.style.top = '';
+            dialog.style.right = '';
+            dialog.style.bottom = '';
+
+            requestAnimationFrame(() => {
+                const x = Number(clientX);
+                const y = Number(clientY);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = x + offset;
+                let top = y + offset;
+
+                if (left + rect.width > window.innerWidth - margin) {
+                    left = x - rect.width - offset;
+                }
+                if (top + rect.height > window.innerHeight - margin) {
+                    top = y - rect.height - offset;
+                }
+
+                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+            });
+        }
+    }
+
     function openItemControl(item, clientX = null, clientY = null) {
         if (!controlModal || !controlBody || item?._canAction !== true) return;
 
@@ -5343,7 +5524,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     controlCloseBtn?.addEventListener('click', () => {
-        controlModal.classList.remove('open');
+        controlModal.classList.remove('open', 'stream-expanded');
         controlModal.setAttribute('aria-hidden', 'true');
     });
     controlModal?.addEventListener('click', evt => {
@@ -5362,7 +5543,7 @@ class Floorplaner extends IPSModuleStrict
         const dialog = controlModal.querySelector('.control-modal');
         if (dialog && dialog.contains(evt.target)) return;
 
-        controlModal.classList.remove('open');
+        controlModal.classList.remove('open', 'stream-expanded');
         controlModal.setAttribute('aria-hidden', 'true');
     }, true);
 
@@ -6083,18 +6264,48 @@ HTML;
         foreach ($Project['floors'] as $floorIndex => $floor) {
             if (isset($floor['items']) && is_array($floor['items'])) {
                 foreach ($floor['items'] as $itemIndex => $item) {
-                    $variableID = (int) ($item['variableID'] ?? 0);
-                    if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    $objectID = (int) ($item['variableID'] ?? 0);
+                    if ($objectID <= 0) {
                         continue;
                     }
 
-                    try {
-                        $meta = $this->GetVariableRuntimeMeta($variableID);
-                        foreach ($meta as $key => $value) {
-                            $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                    if (IPS_VariableExists($objectID)) {
+                        try {
+                            $meta = $this->GetVariableRuntimeMeta($objectID);
+                            foreach ($meta as $key => $value) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
                         }
-                    } catch (Throwable $e) {
-                        $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
+                        continue;
+                    }
+
+                    // Stream-Metadaten sind Laufzeitdaten und werden beim Speichern
+                    // entfernt. Deshalb aus dem Media-Objekt bei jedem Laden neu aufbauen.
+                    if (IPS_MediaExists($objectID)) {
+                        try {
+                            $media = IPS_GetMedia($objectID);
+                            if ((int) ($media['MediaType'] ?? -1) === 3) {
+                                $object = IPS_GetObject($objectID);
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectKind'] = 'stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_mediaType'] = 3;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_canAction'] = true;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variableType'] = -1;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variablePath'] = $this->GetObjectPath($objectID);
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_valueText'] = 'Stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_rawValue'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileName'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileSummary'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profile'] = null;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasLegacyProfile'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasNewPresentation'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectIcon'] =
+                                    (string) ($object['ObjectIcon'] ?? '');
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeStream', $e->getMessage(), 0);
+                        }
                     }
                 }
             }
@@ -6215,6 +6426,23 @@ HTML;
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
+                }
+            }
+
+            // Stream-Medienobjekte direkt im selben Objektbaum anbieten.
+            // MediaType 3 = Stream. Keine Hersteller-/Protokoll-Erkennung nötig.
+            if ($objectType === 5 && IPS_MediaExists($objectID)) {
+                try {
+                    $media = IPS_GetMedia($objectID);
+                    $mediaType = (int) ($media['MediaType'] ?? -1);
+                    if ($mediaType === 3) {
+                        $node['isStream'] = true;
+                        $node['mediaType'] = 3;
+                        $node['objectTypeName'] = 'Stream';
+                        $node['valueText'] = 'Stream';
+                    }
+                } catch (Throwable $e) {
+                    $this->SendDebug('ObjectTree.Stream', $e->getMessage(), 0);
                 }
             }
 
