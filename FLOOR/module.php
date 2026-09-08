@@ -28,8 +28,6 @@ class Floorplaner extends IPSModuleStrict
 
         $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
 
-        $this->RegisterHook('floorplaner-streamtest-' . $this->InstanceID);
-
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
 
@@ -38,7 +36,6 @@ class Floorplaner extends IPSModuleStrict
         parent::ApplyChanges();
 
         $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
-        $this->RegisterHook('floorplaner-streamtest-' . $this->InstanceID);
 
         if ($this->ReadAttributeString(self::ATTRIBUTE_DATA) === '') {
             $this->WriteAttributeString(
@@ -1321,6 +1318,52 @@ class Floorplaner extends IPSModuleStrict
             color: var(--fp-muted);
         }
 
+
+        /* Kamera-/Stream-Popup: klein starten, bei Bedarf vergrößern. */
+        .stream-popup-body {
+            display: grid;
+            gap: 8px;
+        }
+
+        .stream-view {
+            width: 320px;
+            height: 180px;
+            max-width: min(72vw, 640px);
+            max-height: min(60vh, 360px);
+            overflow: hidden;
+            border-radius: 7px;
+            background: #000;
+        }
+
+        .stream-view img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            background: #000;
+        }
+
+        #controlModal.stream-expanded .stream-view {
+            width: min(78vw, 960px);
+            height: min(68vh, 540px);
+            max-width: none;
+            max-height: none;
+        }
+
+        .stream-popup-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .stream-popup-actions button {
+            min-height: 32px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 5px 10px;
+            cursor: pointer;
+        }
 
         /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
         #controlModal {
@@ -4351,6 +4394,15 @@ class Floorplaner extends IPSModuleStrict
             if (target && target.dataset.type === 'item') {
                 const item = floor.items.find(i => i.id === target.dataset.id);
 
+                if (
+                    item?._objectKind === 'stream' &&
+                    Number(item?._mediaType) === 3 &&
+                    Number(item?.variableID) > 0
+                ) {
+                    openStreamControl(item, evt.clientX, evt.clientY);
+                    return;
+                }
+
                 if (!item || item._canAction !== true) {
                     // Reine Istwerte/Messwerte besitzen keine Bedienaktion.
                     return;
@@ -4809,12 +4861,18 @@ class Floorplaner extends IPSModuleStrict
         const children = Array.isArray(node.children) ? node.children : [];
         const hasChildren = children.length > 0;
         const isVariable = Number(node.objectType) === 2;
+        const isStream = node.isStream === true && Number(node.mediaType) === 3;
+        const streamSelectable =
+            isStream &&
+            (variablePickerTarget?.entityType || 'item') === 'item' &&
+            (variablePickerTarget?.field || 'variableID') === 'variableID';
+        const isSelectable = isVariable || streamSelectable;
         const forceOpen = !!needle;
         const isOpen = forceOpen || expandedObjectIDs.has(Number(node.id));
-        const selectedClass = isVariable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
-        const rowClass = isVariable ? ' variable' : '';
+        const selectedClass = isSelectable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
+        const rowClass = isSelectable ? ' variable' : '';
         const toggle = hasChildren ? (isOpen ? '▾' : '▸') : '';
-        const value = isVariable ? escapeHtml(node.valueText || '') : '';
+        const value = (isVariable || isStream) ? escapeHtml(node.valueText || '') : '';
         const typeTitle = isVariable
             ? escapeHtml([node.variableTypeName || '', node.profileName || ''].filter(Boolean).join(' · '))
             : escapeHtml(node.objectTypeName || '');
@@ -5074,6 +5132,50 @@ class Floorplaner extends IPSModuleStrict
         entity[field] = Number(variableID) || 0;
         const node = entity[field] ? findTreeNode(objectTree, entity[field]) : null;
 
+        // Beim Hauptobjekt eines Geräts darf statt einer Variable auch direkt
+        // ein Symcon-Stream-Medienobjekt gewählt werden.
+        if (
+            entityType === 'item' &&
+            field === 'variableID' &&
+            node?.isStream === true &&
+            Number(node?.mediaType) === 3
+        ) {
+            entity._objectKind = 'stream';
+            entity._mediaType = 3;
+            entity._canAction = true;
+            entity._variableType = -1;
+            entity._variablePath = node.path || '';
+            entity._valueText = 'Stream';
+            entity._rawValue = '';
+            entity._profileName = '';
+            entity._profileSummary = '';
+            entity._profile = null;
+            entity._hasLegacyProfile = false;
+            entity._hasNewPresentation = false;
+            entity._objectIcon = node.objectIcon || '';
+
+            entity.showDirectSlider = false;
+            entity.showValue = false;
+
+            // Genau wie bei Variablen das am Symcon-Objekt konfigurierte Icon
+            // übernehmen. Kein Kamera-Icon erzwingen.
+            entity.iconManual = false;
+            entity.iconOffManual = false;
+            entity.iconOnManual = false;
+            entity.iconSvg = '';
+            entity.iconOffSvg = '';
+            entity.iconOnSvg = '';
+            entity.icon = node.objectIcon || 'fa-light fa-circle';
+
+            variableModal.classList.remove('open');
+            variableModal.setAttribute('aria-hidden', 'true');
+            pushHistory();
+            markDirty();
+            render();
+            refreshPropertiesAfterStructuralChange();
+            return;
+        }
+
         const map = {
             variableID: '',
             secondaryVariableID: 'secondaryVariable',
@@ -5236,6 +5338,71 @@ class Floorplaner extends IPSModuleStrict
         }));
     }
 
+    function openStreamControl(item, clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || !item) return;
+
+        const mediaID = Number(item.variableID) || 0;
+        if (mediaID <= 0) return;
+
+        controlModal.classList.remove('stream-expanded');
+        controlTitle.textContent = item.name || 'Kamera';
+
+        const streamUrl = `/proxy/${mediaID}`;
+        controlBody.innerHTML = `
+            <div class="stream-popup-body">
+                <div class="stream-view">
+                    <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(item.name || 'Stream')}">
+                </div>
+                <div class="stream-popup-actions">
+                    <button type="button" data-stream-expand>Vergrößern</button>
+                </div>
+            </div>
+        `;
+
+        const expandBtn = controlBody.querySelector('[data-stream-expand]');
+        expandBtn?.addEventListener('click', () => {
+            const expanded = controlModal.classList.toggle('stream-expanded');
+            expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
+        });
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            dialog.style.left = '';
+            dialog.style.top = '';
+            dialog.style.right = '';
+            dialog.style.bottom = '';
+
+            requestAnimationFrame(() => {
+                const x = Number(clientX);
+                const y = Number(clientY);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = x + offset;
+                let top = y + offset;
+
+                if (left + rect.width > window.innerWidth - margin) {
+                    left = x - rect.width - offset;
+                }
+                if (top + rect.height > window.innerHeight - margin) {
+                    top = y - rect.height - offset;
+                }
+
+                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+            });
+        }
+    }
+
     function openItemControl(item, clientX = null, clientY = null) {
         if (!controlModal || !controlBody || item?._canAction !== true) return;
 
@@ -5357,7 +5524,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     controlCloseBtn?.addEventListener('click', () => {
-        controlModal.classList.remove('open');
+        controlModal.classList.remove('open', 'stream-expanded');
         controlModal.setAttribute('aria-hidden', 'true');
     });
     controlModal?.addEventListener('click', evt => {
@@ -5376,7 +5543,7 @@ class Floorplaner extends IPSModuleStrict
         const dialog = controlModal.querySelector('.control-modal');
         if (dialog && dialog.contains(evt.target)) return;
 
-        controlModal.classList.remove('open');
+        controlModal.classList.remove('open', 'stream-expanded');
         controlModal.setAttribute('aria-hidden', 'true');
     }, true);
 
@@ -5665,618 +5832,6 @@ HTML;
             ['__INITIAL_PROJECT__', '__INSTANCE_ID__'],
             [$initial, (string) $this->InstanceID],
             $html
-        );
-    }
-
-    protected function ProcessHookData(): void
-    {
-        $action = (string) ($_GET['action'] ?? 'page');
-        $mediaID = isset($_GET['media']) ? (int) $_GET['media'] : 0;
-
-        if ($action === 'diagnose') {
-            $this->OutputFloorplanerStreamDiagnosis($mediaID);
-            return;
-        }
-
-        if ($action === 'stream') {
-            $this->OutputFloorplanerTestStream($mediaID);
-            return;
-        }
-
-        if ($action === 'proxyinspect') {
-            $this->OutputFloorplanerProxyInspection($mediaID);
-            return;
-        }
-
-        $this->OutputFloorplanerStreamTestPage($mediaID);
-    }
-
-    private function GetFloorplanerTestStreamSource(int $MediaID): array
-    {
-        if ($MediaID <= 0 || !IPS_MediaExists($MediaID)) {
-            throw new RuntimeException('Kein gültiges Medienobjekt gewählt.');
-        }
-
-        $media = IPS_GetMedia($MediaID);
-        if ((int) ($media['MediaType'] ?? -1) !== 3) {
-            throw new RuntimeException('Das gewählte Medienobjekt ist kein Stream.');
-        }
-
-        $source = trim((string) ($media['MediaFile'] ?? ''));
-        if ($source === '') {
-            throw new RuntimeException('Das Stream-Medienobjekt besitzt keine Quelle.');
-        }
-
-        return [$media, $source];
-    }
-
-    private function OutputFloorplanerStreamTestPage(int $MediaID): void
-    {
-        $hook = '/hook/floorplaner-streamtest-' . $this->InstanceID;
-
-        header('Content-Type: text/html; charset=utf-8');
-        header('Cache-Control: no-store');
-
-        $safeHook = htmlspecialchars($hook, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeMedia = htmlspecialchars((string) $MediaID, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-        echo '<!doctype html>
-<html lang="de">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Floorplaner Stream-Test</title>
-<style>
-body{font-family:Arial,sans-serif;margin:24px;background:#202124;color:#eee}
-.card{max-width:780px;margin:auto;padding:20px;border:1px solid #555;border-radius:12px;background:#292a2d}
-input{width:120px;padding:8px;margin-right:8px}
-button{padding:9px 14px;margin:4px;cursor:pointer}
-img{display:block;max-width:100%;margin-top:16px;border-radius:8px;background:#111;min-height:180px}
-pre{white-space:pre-wrap;word-break:break-word;background:#181818;padding:12px;border-radius:8px}
-.small{opacity:.72;font-size:12px}
-</style>
-</head>
-<body>
-<div class="card">
-<h2>Floorplaner Stream-Test</h2>
-<p>
-<label>Media-ID:
-<input id="media" type="number" value="' . $safeMedia . '">
-</label>
-</p>
-<p>
-<button id="start">Stream starten</button>
-<button id="stop">Stream stoppen</button>
-<button id="diag">FFmpeg-Diagnose</button>
-<button id="symcon">Symcon direkt prüfen</button>
-<button id="symconVideo">Symcon Stream anzeigen</button>
-<button id="inspect">Proxy direkt im Browser analysieren</button>
-</p>
-<div id="state">Bereit.</div>
-<img id="cam" style="display:none" alt="">
-<video id="symconPlayer" style="display:none;max-width:100%;margin-top:16px;border-radius:8px;background:#111;min-height:180px" autoplay muted playsinline controls></video>
-<pre id="result">Noch keine Diagnose.</pre>
-<div class="small">RTSP-Zugangsdaten werden nicht im Browser ausgegeben. Der Symcon-Direkttest verwendet kein FFmpeg.</div>
-</div>
-<script>
-const hook=' . json_encode($safeHook) . ';
-const instanceID=' . json_encode($this->InstanceID) . ';
-const media=document.getElementById("media");
-const img=document.getElementById("cam");
-const symconPlayer=document.getElementById("symconPlayer");
-const state=document.getElementById("state");
-const result=document.getElementById("result");
-
-function id(){
-    return Number(media.value)||0;
-}
-
-document.getElementById("start").onclick=()=>{
-    const mediaID=id();
-    if(mediaID<=0){state.textContent="Bitte Media-ID eingeben.";return;}
-    state.textContent="Stream wird geöffnet …";
-    img.style.display="block";
-    img.src=hook+"?action=stream&media="+mediaID+"&t="+Date.now();
-};
-
-document.getElementById("stop").onclick=()=>{
-    img.removeAttribute("src");
-    img.style.display="none";
-
-    try{
-        symconPlayer.pause();
-        symconPlayer.removeAttribute("src");
-        symconPlayer.load();
-    }catch(e){}
-    symconPlayer.style.display="none";
-
-    state.textContent="Stream gestoppt.";
-};
-
-img.onload=()=>state.textContent="Stream läuft.";
-img.onerror=()=>state.textContent="Stream fehlgeschlagen – Diagnose ausführen.";
-
-document.getElementById("diag").onclick=async()=>{
-    const mediaID=id();
-    if(mediaID<=0){result.textContent="Bitte Media-ID eingeben.";return;}
-    result.textContent="Diagnose läuft …";
-    try{
-        const r=await fetch(
-            hook+"?action=diagnose&media="+mediaID+"&t="+Date.now(),
-            {cache:"no-store"}
-        );
-        result.textContent=JSON.stringify(await r.json(),null,2);
-    }catch(e){
-        result.textContent="Diagnosefehler: "+e;
-    }
-};
-
-async function probeUrl(url, timeoutMs=3500){
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), timeoutMs);
-    const started = performance.now();
-
-    try{
-        const response = await fetch(url, {
-            method:"GET",
-            cache:"no-store",
-            redirect:"manual",
-            signal:controller.signal
-        });
-
-        const elapsed = Math.round(performance.now()-started);
-        const contentType = response.headers.get("content-type") || "";
-        const location = response.headers.get("location") || "";
-        const contentLength = response.headers.get("content-length") || "";
-
-        controller.abort();
-
-        return {
-            url:url,
-            reachable:true,
-            status:response.status,
-            statusText:response.statusText,
-            contentType:contentType,
-            contentLength:contentLength,
-            location:location,
-            elapsedMs:elapsed
-        };
-    }catch(e){
-        const elapsed = Math.round(performance.now()-started);
-        return {
-            url:url,
-            reachable:false,
-            error:e?.name === "AbortError"
-                ? "Timeout oder Stream blieb offen"
-                : String(e?.message || e),
-            elapsedMs:elapsed
-        };
-    }finally{
-        clearTimeout(timer);
-    }
-}
-
-document.getElementById("symcon").onclick=async()=>{
-    const mediaID=id();
-    if(mediaID<=0){result.textContent="Bitte Media-ID eingeben.";return;}
-
-    result.textContent="Symcon-Direktwege werden geprüft …";
-
-    const candidates = [
-        `/proxy/${mediaID}`,
-        `/visu/${instanceID}/proxy/${mediaID}`,
-        `/visu/proxy/${mediaID}`,
-        `/preview/proxy/${mediaID}`
-    ];
-
-    const probes = [];
-    for(const path of candidates){
-        const url = new URL(path, window.location.origin).toString();
-        probes.push(await probeUrl(url));
-    }
-
-    result.textContent=JSON.stringify({
-        mediaID:mediaID,
-        origin:window.location.origin,
-        note:"HTTP-Endpunkte geprüft. Ein Fehler hier schließt Symcons internen VideoServer nicht aus.",
-        probes:probes
-    },null,2);
-};
-
-document.getElementById("symconVideo").onclick=()=>{
-    const mediaID=id();
-    if(mediaID<=0){
-        state.textContent="Bitte Media-ID eingeben.";
-        return;
-    }
-
-    // FFmpeg-Testbild ausblenden, damit wirklich nur der native Symcon-Pfad getestet wird.
-    img.removeAttribute("src");
-    img.style.display="none";
-
-    const url = new URL(`/proxy/${mediaID}`, window.location.origin).toString();
-
-    state.textContent="Symcon-Stream wird direkt über /proxy/" + mediaID + " geöffnet …";
-    result.textContent="Direkter Symcon-Test:\n" + url;
-
-    symconPlayer.style.display="block";
-    symconPlayer.src = url;
-
-    const playPromise = symconPlayer.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch(err => {
-            state.textContent="Video-Element konnte den Symcon-Stream nicht starten.";
-            result.textContent += "\n\nplay()-Fehler: " + String(err?.message || err);
-        });
-    }
-};
-
-symconPlayer.addEventListener("loadedmetadata", ()=>{
-    state.textContent="Symcon-Stream erkannt – Metadaten geladen.";
-});
-
-symconPlayer.addEventListener("playing", ()=>{
-    state.textContent="Symcon-Stream läuft.";
-});
-
-symconPlayer.addEventListener("error", ()=>{
-    const err = symconPlayer.error;
-    state.textContent="Symcon-Stream konnte im Video-Element nicht abgespielt werden.";
-    result.textContent += "\n\nVideo-Fehlercode: " + String(err?.code || 0)
-        + (err?.message ? "\nMeldung: " + err.message : "");
-});
-
-document.getElementById("inspect").onclick=async()=>{
-    const mediaID=id();
-    if(mediaID<=0){
-        result.textContent="Bitte Media-ID eingeben.";
-        return;
-    }
-
-    const url=new URL(`/proxy/${mediaID}`, window.location.origin).toString();
-    result.textContent="Browser prüft direkt:\n"+url+"\n\nWarte auf Stream-Header …";
-
-    const controller=new AbortController();
-    const overallTimer=setTimeout(()=>controller.abort(),10000);
-
-    try{
-        const started=performance.now();
-        const response=await fetch(url,{
-            method:"GET",
-            cache:"no-store",
-            signal:controller.signal
-        });
-
-        const headers={};
-        response.headers.forEach((value,key)=>{headers[key]=value;});
-
-        let firstBytes=new Uint8Array();
-        let readError="";
-
-        if(response.body){
-            const reader=response.body.getReader();
-            try{
-                const readPromise=reader.read();
-                const timeoutPromise=new Promise((_,reject)=>
-                    setTimeout(()=>reject(new Error("Kein erster Datenblock innerhalb 3000 ms")),3000)
-                );
-                const chunk=await Promise.race([readPromise,timeoutPromise]);
-                if(chunk && chunk.value){
-                    firstBytes=chunk.value.slice(0,256);
-                }
-            }catch(e){
-                readError=String(e?.message||e);
-            }finally{
-                try{await reader.cancel();}catch(e){}
-            }
-        }
-
-        controller.abort();
-
-        const hex=Array.from(firstBytes)
-            .map(b=>b.toString(16).padStart(2,"0").toUpperCase())
-            .join(" ");
-
-        const ascii=Array.from(firstBytes)
-            .map(b=>(b>=32&&b<=126)?String.fromCharCode(b):".")
-            .join("");
-
-        result.textContent=JSON.stringify({
-            mediaID:mediaID,
-            url:url,
-            status:response.status,
-            statusText:response.statusText,
-            redirected:response.redirected,
-            responseType:response.type,
-            headers:headers,
-            elapsedToHeadersMs:Math.round(performance.now()-started),
-            bytesRead:firstBytes.length,
-            hex:hex,
-            ascii:ascii,
-            readError:readError
-        },null,2);
-
-        state.textContent="Direkter Browser-Proxy-Test abgeschlossen.";
-    }catch(e){
-        result.textContent=JSON.stringify({
-            mediaID:mediaID,
-            url:url,
-            error:e?.name==="AbortError"
-                ? "Nach 10 Sekunden ohne vollständige Header-Antwort abgebrochen."
-                : String(e?.message||e)
-        },null,2);
-        state.textContent="Browser-Proxy-Test fehlgeschlagen.";
-    }finally{
-        clearTimeout(overallTimer);
-    }
-};
-</script>
-</body>
-</html>';
-    }
-
-    private function OutputFloorplanerStreamDiagnosis(int $MediaID): void
-    {
-        header('Content-Type: application/json; charset=utf-8');
-        header('Cache-Control: no-store');
-
-        $result = [
-            'mediaID'         => $MediaID,
-            'mediaExists'     => false,
-            'mediaType'       => null,
-            'protocol'        => '',
-            'procOpen'        => function_exists('proc_open'),
-            'ffmpegAvailable' => false,
-            'ffmpegVersion'   => '',
-            'rtspProbe'       => false,
-            'error'           => ''
-        ];
-
-        try {
-            [$media, $source] = $this->GetFloorplanerTestStreamSource($MediaID);
-
-            $result['mediaExists'] = true;
-            $result['mediaType'] = (int) ($media['MediaType'] ?? -1);
-            $result['protocol'] = strtolower((string) parse_url($source, PHP_URL_SCHEME));
-
-            if (!$result['procOpen']) {
-                throw new RuntimeException('proc_open ist nicht verfügbar.');
-            }
-
-            $spec = [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'],
-                2 => ['pipe', 'w']
-            ];
-
-            $process = @proc_open('ffmpeg -version', $spec, $pipes);
-            if (!is_resource($process)) {
-                throw new RuntimeException('ffmpeg konnte nicht gestartet werden.');
-            }
-
-            fclose($pipes[0]);
-            $stdout = stream_get_contents($pipes[1]);
-            $stderr = stream_get_contents($pipes[2]);
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-            $exitCode = proc_close($process);
-
-            if ($exitCode !== 0) {
-                throw new RuntimeException(
-                    trim((string) $stderr) ?: 'ffmpeg -version fehlgeschlagen.'
-                );
-            }
-
-            $result['ffmpegAvailable'] = true;
-            $firstLine = strtok((string) $stdout, "\r\n");
-            $result['ffmpegVersion'] = is_string($firstLine) ? $firstLine : '';
-
-            if ($result['protocol'] !== 'rtsp') {
-                throw new RuntimeException(
-                    'Für den ersten Test wird eine RTSP-Quelle erwartet.'
-                );
-            }
-
-            $command =
-                'ffmpeg -hide_banner -loglevel error -rtsp_transport tcp -i ' .
-                escapeshellarg($source) .
-                ' -frames:v 1 -an -f null -';
-
-            $process = @proc_open($command, $spec, $pipes);
-            if (!is_resource($process)) {
-                throw new RuntimeException(
-                    'RTSP-Testprozess konnte nicht gestartet werden.'
-                );
-            }
-
-            fclose($pipes[0]);
-            $stdout = stream_get_contents($pipes[1]);
-            $stderr = stream_get_contents($pipes[2]);
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-            $exitCode = proc_close($process);
-
-            if ($exitCode !== 0) {
-                $error = trim((string) $stderr);
-                $error = preg_replace(
-                    '#rtsp://[^@\s]+@#i',
-                    'rtsp://***:***@',
-                    $error
-                ) ?? $error;
-
-                throw new RuntimeException(
-                    $error !== '' ? $error : 'RTSP-Probe fehlgeschlagen.'
-                );
-            }
-
-            $result['rtspProbe'] = true;
-        } catch (Throwable $e) {
-            $result['error'] = $e->getMessage();
-        }
-
-        echo json_encode(
-            $result,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-    }
-
-    private function OutputFloorplanerTestStream(int $MediaID): void
-    {
-        try {
-            [, $source] = $this->GetFloorplanerTestStreamSource($MediaID);
-
-            if (strtolower((string) parse_url($source, PHP_URL_SCHEME)) !== 'rtsp') {
-                throw new RuntimeException('Für diesen Test wird RTSP erwartet.');
-            }
-
-            if (!function_exists('proc_open')) {
-                throw new RuntimeException('proc_open ist nicht verfügbar.');
-            }
-
-            $filter = 'fps=5,scale=640:-2:force_original_aspect_ratio=decrease';
-
-            $command =
-                'ffmpeg -hide_banner -loglevel error -rtsp_transport tcp -i ' .
-                escapeshellarg($source) .
-                ' -an -vf ' . escapeshellarg($filter) .
-                ' -q:v 7 -f mpjpeg -boundary_tag floorplanerframe pipe:1';
-
-            $spec = [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'],
-                2 => ['pipe', 'w']
-            ];
-
-            $process = @proc_open($command, $spec, $pipes);
-            if (!is_resource($process)) {
-                throw new RuntimeException('ffmpeg konnte nicht gestartet werden.');
-            }
-
-            fclose($pipes[0]);
-            stream_set_blocking($pipes[1], false);
-            stream_set_blocking($pipes[2], false);
-
-            ignore_user_abort(false);
-            @set_time_limit(0);
-
-            header('Content-Type: multipart/x-mixed-replace; boundary=floorplanerframe');
-            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-            header('Pragma: no-cache');
-            header('X-Accel-Buffering: no');
-
-            try {
-                while (!connection_aborted()) {
-                    $status = proc_get_status($process);
-
-                    $chunk = fread($pipes[1], 65536);
-                    if ($chunk !== false && $chunk !== '') {
-                        echo $chunk;
-                        @ob_flush();
-                        flush();
-                    }
-
-                    if (!$status['running']) {
-                        break;
-                    }
-
-                    usleep(10000);
-                }
-            } finally {
-                if (isset($pipes[1]) && is_resource($pipes[1])) {
-                    fclose($pipes[1]);
-                }
-                if (isset($pipes[2]) && is_resource($pipes[2])) {
-                    fclose($pipes[2]);
-                }
-
-                $status = proc_get_status($process);
-                if ($status['running']) {
-                    @proc_terminate($process);
-                }
-                @proc_close($process);
-            }
-        } catch (Throwable $e) {
-            http_response_code(500);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo $e->getMessage();
-        }
-    }
-
-    private function OutputFloorplanerProxyInspection(int $MediaID): void
-    {
-        header('Content-Type: application/json; charset=utf-8');
-        header('Cache-Control: no-store');
-
-        $result = [
-            'mediaID' => $MediaID,
-            'url' => '',
-            'httpCode' => 0,
-            'headers' => [],
-            'bytesRead' => 0,
-            'hex' => '',
-            'ascii' => '',
-            'error' => ''
-        ];
-
-        try {
-            if ($MediaID <= 0 || !IPS_MediaExists($MediaID)) {
-                throw new RuntimeException('Ungültige Media-ID.');
-            }
-
-            $url = 'http://127.0.0.1:3777/proxy/' . $MediaID;
-            $result['url'] = $url;
-
-            $headers = [];
-            $body = '';
-
-            $context = stream_context_create([
-                'http' => [
-                    'method' => 'GET',
-                    'ignore_errors' => true,
-                    'timeout' => 4,
-                    'header' => "Connection: close\r\nUser-Agent: FloorplanerProxyInspect\r\n"
-                ]
-            ]);
-
-            $fp = @fopen($url, 'rb', false, $context);
-            if ($fp === false) {
-                throw new RuntimeException('Proxy konnte lokal nicht geöffnet werden.');
-            }
-
-            $meta = stream_get_meta_data($fp);
-            $wrapperData = $meta['wrapper_data'] ?? [];
-            if (is_array($wrapperData)) {
-                $headers = $wrapperData;
-            }
-
-            // Nur sehr wenig lesen, damit ein laufender Stream sofort wieder abgebrochen wird.
-            stream_set_timeout($fp, 2);
-            $body = (string) fread($fp, 256);
-            fclose($fp);
-
-            $result['headers'] = $headers;
-            $result['bytesRead'] = strlen($body);
-            $result['hex'] = strtoupper(implode(' ', str_split(bin2hex($body), 2)));
-
-            $ascii = '';
-            for ($i = 0, $len = strlen($body); $i < $len; $i++) {
-                $ord = ord($body[$i]);
-                $ascii .= ($ord >= 32 && $ord <= 126) ? $body[$i] : '.';
-            }
-            $result['ascii'] = $ascii;
-
-            foreach ($headers as $line) {
-                if (preg_match('#^HTTP/\S+\s+(\d{3})#i', (string) $line, $m)) {
-                    $result['httpCode'] = (int) $m[1];
-                }
-            }
-        } catch (Throwable $e) {
-            $result['error'] = $e->getMessage();
-        }
-
-        echo json_encode(
-            $result,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
         );
     }
 
@@ -6709,18 +6264,48 @@ document.getElementById("inspect").onclick=async()=>{
         foreach ($Project['floors'] as $floorIndex => $floor) {
             if (isset($floor['items']) && is_array($floor['items'])) {
                 foreach ($floor['items'] as $itemIndex => $item) {
-                    $variableID = (int) ($item['variableID'] ?? 0);
-                    if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    $objectID = (int) ($item['variableID'] ?? 0);
+                    if ($objectID <= 0) {
                         continue;
                     }
 
-                    try {
-                        $meta = $this->GetVariableRuntimeMeta($variableID);
-                        foreach ($meta as $key => $value) {
-                            $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                    if (IPS_VariableExists($objectID)) {
+                        try {
+                            $meta = $this->GetVariableRuntimeMeta($objectID);
+                            foreach ($meta as $key => $value) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
                         }
-                    } catch (Throwable $e) {
-                        $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
+                        continue;
+                    }
+
+                    // Stream-Metadaten sind Laufzeitdaten und werden beim Speichern
+                    // entfernt. Deshalb aus dem Media-Objekt bei jedem Laden neu aufbauen.
+                    if (IPS_MediaExists($objectID)) {
+                        try {
+                            $media = IPS_GetMedia($objectID);
+                            if ((int) ($media['MediaType'] ?? -1) === 3) {
+                                $object = IPS_GetObject($objectID);
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectKind'] = 'stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_mediaType'] = 3;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_canAction'] = true;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variableType'] = -1;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variablePath'] = $this->GetObjectPath($objectID);
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_valueText'] = 'Stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_rawValue'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileName'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileSummary'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profile'] = null;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasLegacyProfile'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasNewPresentation'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectIcon'] =
+                                    (string) ($object['ObjectIcon'] ?? '');
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeStream', $e->getMessage(), 0);
+                        }
                     }
                 }
             }
@@ -6841,6 +6426,23 @@ document.getElementById("inspect").onclick=async()=>{
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
+                }
+            }
+
+            // Stream-Medienobjekte direkt im selben Objektbaum anbieten.
+            // MediaType 3 = Stream. Keine Hersteller-/Protokoll-Erkennung nötig.
+            if ($objectType === 5 && IPS_MediaExists($objectID)) {
+                try {
+                    $media = IPS_GetMedia($objectID);
+                    $mediaType = (int) ($media['MediaType'] ?? -1);
+                    if ($mediaType === 3) {
+                        $node['isStream'] = true;
+                        $node['mediaType'] = 3;
+                        $node['objectTypeName'] = 'Stream';
+                        $node['valueText'] = 'Stream';
+                    }
+                } catch (Throwable $e) {
+                    $this->SendDebug('ObjectTree.Stream', $e->getMessage(), 0);
                 }
             }
 
