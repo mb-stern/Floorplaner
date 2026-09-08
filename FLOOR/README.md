@@ -73,6 +73,10 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ## 📝 Änderungen
 
+### 1.7
+
+- Der farbige Statusring funktioniert nun auch im hellen Theme.
+
 ### 1.6
 
 - Die Leuchtfarbe der Icons kann nun durch den Konfigurator übersteuert werden.
