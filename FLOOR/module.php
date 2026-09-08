@@ -5750,7 +5750,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#181818;padding:12px;b
 <button id="diag">FFmpeg-Diagnose</button>
 <button id="symcon">Symcon direkt prüfen</button>
 <button id="symconVideo">Symcon Stream anzeigen</button>
-<button id="inspect">Proxy-Header/Signatur prüfen</button>
+<button id="inspect">Proxy direkt im Browser analysieren</button>
 </p>
 <div id="state">Bereit.</div>
 <img id="cam" style="display:none" alt="">
@@ -5933,17 +5933,81 @@ document.getElementById("inspect").onclick=async()=>{
         return;
     }
 
-    result.textContent="Proxy-Header/Signatur werden geprüft …";
+    const url=new URL(`/proxy/${mediaID}`, window.location.origin).toString();
+    result.textContent="Browser prüft direkt:\n"+url+"\n\nWarte auf Stream-Header …";
+
+    const controller=new AbortController();
+    const overallTimer=setTimeout(()=>controller.abort(),10000);
 
     try{
-        const r=await fetch(
-            hook+"?action=proxyinspect&media="+mediaID+"&t="+Date.now(),
-            {cache:"no-store"}
-        );
-        const j=await r.json();
-        result.textContent=JSON.stringify(j,null,2);
+        const started=performance.now();
+        const response=await fetch(url,{
+            method:"GET",
+            cache:"no-store",
+            signal:controller.signal
+        });
+
+        const headers={};
+        response.headers.forEach((value,key)=>{headers[key]=value;});
+
+        let firstBytes=new Uint8Array();
+        let readError="";
+
+        if(response.body){
+            const reader=response.body.getReader();
+            try{
+                const readPromise=reader.read();
+                const timeoutPromise=new Promise((_,reject)=>
+                    setTimeout(()=>reject(new Error("Kein erster Datenblock innerhalb 3000 ms")),3000)
+                );
+                const chunk=await Promise.race([readPromise,timeoutPromise]);
+                if(chunk && chunk.value){
+                    firstBytes=chunk.value.slice(0,256);
+                }
+            }catch(e){
+                readError=String(e?.message||e);
+            }finally{
+                try{await reader.cancel();}catch(e){}
+            }
+        }
+
+        controller.abort();
+
+        const hex=Array.from(firstBytes)
+            .map(b=>b.toString(16).padStart(2,"0").toUpperCase())
+            .join(" ");
+
+        const ascii=Array.from(firstBytes)
+            .map(b=>(b>=32&&b<=126)?String.fromCharCode(b):".")
+            .join("");
+
+        result.textContent=JSON.stringify({
+            mediaID:mediaID,
+            url:url,
+            status:response.status,
+            statusText:response.statusText,
+            redirected:response.redirected,
+            responseType:response.type,
+            headers:headers,
+            elapsedToHeadersMs:Math.round(performance.now()-started),
+            bytesRead:firstBytes.length,
+            hex:hex,
+            ascii:ascii,
+            readError:readError
+        },null,2);
+
+        state.textContent="Direkter Browser-Proxy-Test abgeschlossen.";
     }catch(e){
-        result.textContent="Proxy-Inspektionsfehler: "+String(e?.message || e);
+        result.textContent=JSON.stringify({
+            mediaID:mediaID,
+            url:url,
+            error:e?.name==="AbortError"
+                ? "Nach 10 Sekunden ohne vollständige Header-Antwort abgebrochen."
+                : String(e?.message||e)
+        },null,2);
+        state.textContent="Browser-Proxy-Test fehlgeschlagen.";
+    }finally{
+        clearTimeout(overallTimer);
     }
 };
 </script>
