@@ -5683,6 +5683,11 @@ HTML;
             return;
         }
 
+        if ($action === 'proxyinspect') {
+            $this->OutputFloorplanerProxyInspection($mediaID);
+            return;
+        }
+
         $this->OutputFloorplanerStreamTestPage($mediaID);
     }
 
@@ -5745,6 +5750,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#181818;padding:12px;b
 <button id="diag">FFmpeg-Diagnose</button>
 <button id="symcon">Symcon direkt prüfen</button>
 <button id="symconVideo">Symcon Stream anzeigen</button>
+<button id="inspect">Proxy-Header/Signatur prüfen</button>
 </p>
 <div id="state">Bereit.</div>
 <img id="cam" style="display:none" alt="">
@@ -5919,6 +5925,27 @@ symconPlayer.addEventListener("error", ()=>{
     result.textContent += "\n\nVideo-Fehlercode: " + String(err?.code || 0)
         + (err?.message ? "\nMeldung: " + err.message : "");
 });
+
+document.getElementById("inspect").onclick=async()=>{
+    const mediaID=id();
+    if(mediaID<=0){
+        result.textContent="Bitte Media-ID eingeben.";
+        return;
+    }
+
+    result.textContent="Proxy-Header/Signatur werden geprüft …";
+
+    try{
+        const r=await fetch(
+            hook+"?action=proxyinspect&media="+mediaID+"&t="+Date.now(),
+            {cache:"no-store"}
+        );
+        const j=await r.json();
+        result.textContent=JSON.stringify(j,null,2);
+    }catch(e){
+        result.textContent="Proxy-Inspektionsfehler: "+String(e?.message || e);
+    }
+};
 </script>
 </body>
 </html>';
@@ -6109,6 +6136,84 @@ symconPlayer.addEventListener("error", ()=>{
             header('Content-Type: text/plain; charset=utf-8');
             echo $e->getMessage();
         }
+    }
+
+    private function OutputFloorplanerProxyInspection(int $MediaID): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+
+        $result = [
+            'mediaID' => $MediaID,
+            'url' => '',
+            'httpCode' => 0,
+            'headers' => [],
+            'bytesRead' => 0,
+            'hex' => '',
+            'ascii' => '',
+            'error' => ''
+        ];
+
+        try {
+            if ($MediaID <= 0 || !IPS_MediaExists($MediaID)) {
+                throw new RuntimeException('Ungültige Media-ID.');
+            }
+
+            $url = 'http://127.0.0.1:3777/proxy/' . $MediaID;
+            $result['url'] = $url;
+
+            $headers = [];
+            $body = '';
+
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'ignore_errors' => true,
+                    'timeout' => 4,
+                    'header' => "Connection: close\r\nUser-Agent: FloorplanerProxyInspect\r\n"
+                ]
+            ]);
+
+            $fp = @fopen($url, 'rb', false, $context);
+            if ($fp === false) {
+                throw new RuntimeException('Proxy konnte lokal nicht geöffnet werden.');
+            }
+
+            $meta = stream_get_meta_data($fp);
+            $wrapperData = $meta['wrapper_data'] ?? [];
+            if (is_array($wrapperData)) {
+                $headers = $wrapperData;
+            }
+
+            // Nur sehr wenig lesen, damit ein laufender Stream sofort wieder abgebrochen wird.
+            stream_set_timeout($fp, 2);
+            $body = (string) fread($fp, 256);
+            fclose($fp);
+
+            $result['headers'] = $headers;
+            $result['bytesRead'] = strlen($body);
+            $result['hex'] = strtoupper(implode(' ', str_split(bin2hex($body), 2)));
+
+            $ascii = '';
+            for ($i = 0, $len = strlen($body); $i < $len; $i++) {
+                $ord = ord($body[$i]);
+                $ascii .= ($ord >= 32 && $ord <= 126) ? $body[$i] : '.';
+            }
+            $result['ascii'] = $ascii;
+
+            foreach ($headers as $line) {
+                if (preg_match('#^HTTP/\S+\s+(\d{3})#i', (string) $line, $m)) {
+                    $result['httpCode'] = (int) $m[1];
+                }
+            }
+        } catch (Throwable $e) {
+            $result['error'] = $e->getMessage();
+        }
+
+        echo json_encode(
+            $result,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
