@@ -5742,15 +5742,17 @@ pre{white-space:pre-wrap;word-break:break-word;background:#181818;padding:12px;b
 <p>
 <button id="start">Stream starten</button>
 <button id="stop">Stream stoppen</button>
-<button id="diag">Diagnose</button>
+<button id="diag">FFmpeg-Diagnose</button>
+<button id="symcon">Symcon direkt prüfen</button>
 </p>
 <div id="state">Bereit.</div>
 <img id="cam" style="display:none" alt="">
 <pre id="result">Noch keine Diagnose.</pre>
-<div class="small">RTSP-Zugangsdaten werden nicht im Browser ausgegeben.</div>
+<div class="small">RTSP-Zugangsdaten werden nicht im Browser ausgegeben. Der Symcon-Direkttest verwendet kein FFmpeg.</div>
 </div>
 <script>
 const hook=' . json_encode($safeHook) . ';
+const instanceID=' . json_encode($this->InstanceID) . ';
 const media=document.getElementById("media");
 const img=document.getElementById("cam");
 const state=document.getElementById("state");
@@ -5790,6 +5792,78 @@ document.getElementById("diag").onclick=async()=>{
     }catch(e){
         result.textContent="Diagnosefehler: "+e;
     }
+};
+
+async function probeUrl(url, timeoutMs=3500){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), timeoutMs);
+    const started = performance.now();
+
+    try{
+        const response = await fetch(url, {
+            method:"GET",
+            cache:"no-store",
+            redirect:"manual",
+            signal:controller.signal
+        });
+
+        const elapsed = Math.round(performance.now()-started);
+        const contentType = response.headers.get("content-type") || "";
+        const location = response.headers.get("location") || "";
+        const contentLength = response.headers.get("content-length") || "";
+
+        controller.abort();
+
+        return {
+            url:url,
+            reachable:true,
+            status:response.status,
+            statusText:response.statusText,
+            contentType:contentType,
+            contentLength:contentLength,
+            location:location,
+            elapsedMs:elapsed
+        };
+    }catch(e){
+        const elapsed = Math.round(performance.now()-started);
+        return {
+            url:url,
+            reachable:false,
+            error:e?.name === "AbortError"
+                ? "Timeout oder Stream blieb offen"
+                : String(e?.message || e),
+            elapsedMs:elapsed
+        };
+    }finally{
+        clearTimeout(timer);
+    }
+}
+
+document.getElementById("symcon").onclick=async()=>{
+    const mediaID=id();
+    if(mediaID<=0){result.textContent="Bitte Media-ID eingeben.";return;}
+
+    result.textContent="Symcon-Direktwege werden geprüft …";
+
+    const candidates = [
+        `/proxy/${mediaID}`,
+        `/visu/${instanceID}/proxy/${mediaID}`,
+        `/visu/proxy/${mediaID}`,
+        `/preview/proxy/${mediaID}`
+    ];
+
+    const probes = [];
+    for(const path of candidates){
+        const url = new URL(path, window.location.origin).toString();
+        probes.push(await probeUrl(url));
+    }
+
+    result.textContent=JSON.stringify({
+        mediaID:mediaID,
+        origin:window.location.origin,
+        note:"HTTP-Endpunkte geprüft. Ein Fehler hier schließt Symcons internen VideoServer nicht aus.",
+        probes:probes
+    },null,2);
 };
 </script>
 </body>
