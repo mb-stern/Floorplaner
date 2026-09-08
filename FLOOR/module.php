@@ -5744,9 +5744,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#181818;padding:12px;b
 <button id="stop">Stream stoppen</button>
 <button id="diag">FFmpeg-Diagnose</button>
 <button id="symcon">Symcon direkt prüfen</button>
+<button id="symconVideo">Symcon Stream anzeigen</button>
 </p>
 <div id="state">Bereit.</div>
 <img id="cam" style="display:none" alt="">
+<video id="symconPlayer" style="display:none;max-width:100%;margin-top:16px;border-radius:8px;background:#111;min-height:180px" autoplay muted playsinline controls></video>
 <pre id="result">Noch keine Diagnose.</pre>
 <div class="small">RTSP-Zugangsdaten werden nicht im Browser ausgegeben. Der Symcon-Direkttest verwendet kein FFmpeg.</div>
 </div>
@@ -5755,6 +5757,7 @@ const hook=' . json_encode($safeHook) . ';
 const instanceID=' . json_encode($this->InstanceID) . ';
 const media=document.getElementById("media");
 const img=document.getElementById("cam");
+const symconPlayer=document.getElementById("symconPlayer");
 const state=document.getElementById("state");
 const result=document.getElementById("result");
 
@@ -5773,6 +5776,14 @@ document.getElementById("start").onclick=()=>{
 document.getElementById("stop").onclick=()=>{
     img.removeAttribute("src");
     img.style.display="none";
+
+    try{
+        symconPlayer.pause();
+        symconPlayer.removeAttribute("src");
+        symconPlayer.load();
+    }catch(e){}
+    symconPlayer.style.display="none";
+
     state.textContent="Stream gestoppt.";
 };
 
@@ -5865,6 +5876,49 @@ document.getElementById("symcon").onclick=async()=>{
         probes:probes
     },null,2);
 };
+
+document.getElementById("symconVideo").onclick=()=>{
+    const mediaID=id();
+    if(mediaID<=0){
+        state.textContent="Bitte Media-ID eingeben.";
+        return;
+    }
+
+    // FFmpeg-Testbild ausblenden, damit wirklich nur der native Symcon-Pfad getestet wird.
+    img.removeAttribute("src");
+    img.style.display="none";
+
+    const url = new URL(`/proxy/${mediaID}`, window.location.origin).toString();
+
+    state.textContent="Symcon-Stream wird direkt über /proxy/" + mediaID + " geöffnet …";
+    result.textContent="Direkter Symcon-Test:\n" + url;
+
+    symconPlayer.style.display="block";
+    symconPlayer.src = url;
+
+    const playPromise = symconPlayer.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(err => {
+            state.textContent="Video-Element konnte den Symcon-Stream nicht starten.";
+            result.textContent += "\n\nplay()-Fehler: " + String(err?.message || err);
+        });
+    }
+};
+
+symconPlayer.addEventListener("loadedmetadata", ()=>{
+    state.textContent="Symcon-Stream erkannt – Metadaten geladen.";
+});
+
+symconPlayer.addEventListener("playing", ()=>{
+    state.textContent="Symcon-Stream läuft.";
+});
+
+symconPlayer.addEventListener("error", ()=>{
+    const err = symconPlayer.error;
+    state.textContent="Symcon-Stream konnte im Video-Element nicht abgespielt werden.";
+    result.textContent += "\n\nVideo-Fehlercode: " + String(err?.code || 0)
+        + (err?.message ? "\nMeldung: " + err.message : "");
+});
 </script>
 </body>
 </html>';
