@@ -1253,6 +1253,17 @@ class Floorplaner extends IPSModuleStrict
             stroke: #777777;
         }
 
+        /* Aktive Bool-Geräte müssen auch im hellen Theme ihre konfigurierte
+           Statusfarbe behalten. Diese Regel steht bewusst nach der allgemeinen
+           hellen Geräte-Kontur, damit diese die Statusfarbe nicht überschreibt. */
+        html[data-theme="light"] .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(
+                0 0 var(--device-status-glow, 7px)
+                var(--device-status-color, #ffe66d)
+            );
+        }
+
         html[data-theme="light"] .device .climate-panel {
             fill: rgba(255,255,255,.82);
             stroke: #777777;
