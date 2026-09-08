@@ -1778,6 +1778,7 @@ class Floorplaner extends IPSModuleStrict
             floor.items = Array.isArray(floor.items) ? floor.items : [];
             for (const item of floor.items) {
                 item.statusColor = normalizeStatusColor(item.statusColor);
+                if (typeof item.statusColorManual !== 'boolean') item.statusColorManual = false;
                 // Migration älterer Projekte: Der frühere Gerätetyp wird nur noch
                 // verwendet, um einmalig ein passendes Standardsymbol zu übernehmen.
                 // Die Bedienlogik hängt NICHT mehr vom Gerätetyp ab.
@@ -3697,6 +3698,10 @@ class Floorplaner extends IPSModuleStrict
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
                 obj[fieldName] = value;
 
+                if (selected.type === 'item' && fieldName === 'statusColor') {
+                    obj.statusColorManual = true;
+                }
+
                 if (selected.type === 'opening' && fieldName === 'shutterValueMappingEnabled') {
                     if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
                         obj.shutterValueMap = {};
@@ -5116,6 +5121,7 @@ class Floorplaner extends IPSModuleStrict
         // aktuellen Symcon-Vorgaben vollständig übernehmen.
         if (entityType === 'item' && field === 'variableID') {
             if (node) {
+                entity.statusColorManual = false;
                 entity.iconManual = false;
                 entity.iconOffManual = false;
                 entity.iconOnManual = false;
@@ -5409,6 +5415,7 @@ class Floorplaner extends IPSModuleStrict
 
                 // Explizites Aktualisieren bedeutet: aktuelle Symcon-Einstellungen
                 // vollständig übernehmen, keine alten manuellen Icon-Overrides behalten.
+                item.statusColorManual = false;
                 item.iconManual = false;
                 item.iconOffManual = false;
                 item.iconOnManual = false;
@@ -5466,7 +5473,15 @@ class Floorplaner extends IPSModuleStrict
                             for (const item of floor.items || []) {
                         if (Number(item.variableID || 0) === variableID) {
                             const manualIcon = item.iconManual === true;
+                            const manualStatusColor = item.statusColorManual === true;
+                            const preservedStatusColor = item.statusColor;
                             Object.assign(item, meta);
+
+                            if (manualStatusColor) {
+                                item.statusColorManual = true;
+                                item.statusColor = preservedStatusColor;
+                            }
+
                             if (meta._hasLegacyProfile === true) {
                                 // Funktionierenden Legacy-Weg nicht verändern.
                                 if (!manualIcon && meta._objectIcon !== undefined) {
@@ -5478,7 +5493,7 @@ class Floorplaner extends IPSModuleStrict
                                     if (item.iconOnManual !== true) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
 
                                     const legacyOnColor = legacyBoolOnColorFromProfile(meta._profile);
-                                    if (legacyOnColor) {
+                                    if (!manualStatusColor && legacyOnColor) {
                                         item.statusColor = legacyOnColor;
                                     }
                                 }
@@ -5487,7 +5502,10 @@ class Floorplaner extends IPSModuleStrict
                                 if (item.iconOnManual !== true) item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
 
                                 // GLOW_COLOR ist ausschließlich die EIN-Farbe.
-                                if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
+                                if (
+                                    !manualStatusColor &&
+                                    /^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))
+                                ) {
                                     item.statusColor = String(meta._glowColor);
                                 }
                             } else if (!manualIcon) {
