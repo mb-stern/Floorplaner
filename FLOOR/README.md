@@ -73,6 +73,10 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ## 📝 Änderungen
 
+### 1.6
+
+- Die Leuchtfarbe der Icons kann nun durch den Konfigurator übersteuert werden.
+
 ### 1.5
 
 - Icons mit einer reinen Statusvariable reagieren nun nicht mehr auf Betätigung.
