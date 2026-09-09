@@ -75,7 +75,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ### 1.8
 
-- Überflüssige Konfiguration bie Fenster und Tür entfernt, dafür kann nun die Öffnungsrichtung der Tür und die Anordnung der Rollos invertiert werden.
+- Umfassende Konfigurationsmöglichkeiten der Fenster und Türen, zb. wird nun auch die Farbe aus der Variable übernommen oder diese kann definiert werden, Öffnungsseite der Türe und Anordnnng der Rollos kann invertiert werden.
 - Schriftarten und Grössen vereinheitlicht.
 
 ### 1.7
