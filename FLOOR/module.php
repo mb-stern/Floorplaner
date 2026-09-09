@@ -3659,6 +3659,12 @@ class Floorplaner extends IPSModuleStrict
                                 Variableneinstellungen aktualisieren
                             </button>
                         </div>
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Fensterzustand invertieren
+                            </label>
+                        </div>
                     ` : ''}
 
                     <div class="field">
@@ -3674,13 +3680,6 @@ class Floorplaner extends IPSModuleStrict
                                 <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
                                 <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
                             </select>
-                        </div>
-
-                        <div class="field">
-                            <label class="check">
-                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
-                                Fensterzustand invertieren
-                            </label>
                         </div>
 
                         <div class="field">
@@ -3733,19 +3732,21 @@ class Floorplaner extends IPSModuleStrict
                         </div>
                     ` : ''}
 
-                    <div class="field">
-                        <label class="check">
-                            <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
-                            Öffnungsseite innen / außen tauschen
-                        </label>
-                    </div>
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
+                                Öffnungsseite innen / außen tauschen
+                            </label>
+                        </div>
 
-                    <div class="field">
-                        <label class="check">
-                            <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
-                            Türzustand invertieren
-                        </label>
-                    </div>
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Türzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
                 `;
             }
 
