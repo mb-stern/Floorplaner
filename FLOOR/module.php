@@ -1662,7 +1662,7 @@ class Floorplaner extends IPSModuleStrict
             <button id="zoomOutBtn" type="button" title="Herauszoomen">−</button>
             <button id="zoomInBtn" type="button" title="Hineinzoomen">+</button>
             <button id="fitBtn">Einpassen</button>
-            <button id="finishBtn">Fertig / Bedienen</button>
+            <button id="finishBtn">Bedienen</button>
         </div>
 
         <div class="spacer"></div>
