@@ -3394,77 +3394,7 @@ class Floorplaner extends IPSModuleStrict
             floor.walls = floor.walls.filter(v => v.id !== selected.id);
             floor.openings = floor.openings.filter(v => v.wallId !== selected.id);
         } else if (selected.type === 'opening') {
-            propTitle.textContent = obj.type === 'door' ? 'Tür' : 'Fenster';
-
-            const typeSpecificHtml = obj.type === 'window'
-                ? `
-                    <div class="field">
-                        <label>Rollo / Rollladen (optional)</label>
-                        <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
-                            value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
-                    </div>
-
-                    ${obj.shutterVariableID ? `
-                        <div class="field">
-                            <label>Rollo-Typ</label>
-                            <select data-field="shutterStyle">
-                                <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
-                                <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
-                            </select>
-                        </div>
-
-                        <div class="field">
-                            <label class="check">
-                                <input data-field="shutterSideInvert" type="checkbox"${obj.shutterSideInvert === true ? ' checked' : ''}>
-                                Rollo innen/außen tauschen
-                            </label>
-                        </div>
-
-                        <div class="field">
-                            <label class="check">
-                                <input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}>
-                                Rollo-Status invertieren
-                            </label>
-                        </div>
-
-                        ${shutterValueMappingHtml(obj)}
-                    ` : ''}
-                `
-                : `
-                    <div class="field">
-                        <label class="check">
-                            <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
-                            Öffnungsseite innen/außen tauschen
-                        </label>
-                    </div>
-                `;
-
-            properties.innerHTML = `
-                <div class="field">
-                    <label>Länge</label>
-                    <input data-field="length" type="number" min="20" value="${obj.length || 80}">
-                </div>
-
-                <div class="field">
-                    <label>Position auf Wand (0–1)</label>
-                    <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
-                </div>
-
-                <div class="field">
-                    <label>${obj.type === 'door' ? 'Türkontakt / Türposition' : 'Fensterkontakt / Fensterposition'}</label>
-                    <input class="variable-select-field" data-variable-field="variableID" readonly
-                        value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
-                </div>
-
-                ${typeSpecificHtml}
-
-                <div class="field">
-                    <label class="check">
-                        <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
-                        ${obj.type === 'door' ? 'Türzustand' : 'Fensterzustand'} invertieren
-                    </label>
-                </div>
-            `;
+            floor.openings = floor.openings.filter(v => v.id !== selected.id);
         } else if (selected.type === 'item') {
             floor.items = floor.items.filter(v => v.id !== selected.id);
         } else if (selected.type === 'furniture') {
@@ -3620,48 +3550,98 @@ class Floorplaner extends IPSModuleStrict
             `;
         } else if (selected.type === 'opening') {
             propTitle.textContent = obj.type === 'door' ? 'Tür' : 'Fenster';
-            properties.innerHTML = `
-                <div class="field">
-                    <label>Typ</label>
-                    <select data-field="type">
-                        <option value="door"${obj.type === 'door' ? ' selected' : ''}>Tür</option>
-                        <option value="window"${obj.type === 'window' ? ' selected' : ''}>Fenster</option>
-                    </select>
-                </div>
-                <div class="field"><label>Länge</label><input data-field="length" type="number" min="20" value="${obj.length || 80}"></div>
-                <div class="field"><label>Position auf Wand (0–1)</label><input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}"></div>
 
-                <div class="field">
-                    <label>${obj.type === 'door' ? 'Türkontakt / Türposition' : 'Fensterkontakt / Fensterposition'}</label>
-                    <input class="variable-select-field" data-variable-field="variableID" readonly
-                        value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
-                </div>
-
-                <div class="field">
-                    <label>Rollo / Rollladen (optional)</label>
-                    <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
-                        value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
-                </div>
-
-                ${obj.shutterVariableID ? `
+            if (obj.type === 'window') {
+                properties.innerHTML = `
                     <div class="field">
-                        <label>Rollo-Typ</label>
-                        <select data-field="shutterStyle">
-                            <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
-                            <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
-                        </select>
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 120}">
                     </div>
+
                     <div class="field">
-                        <label><input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}> Rollo-Animation invertieren</label>
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
                     </div>
-                ` : ''}
 
-                <div class="field">
-                    <label><input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}> ${obj.type === 'door' ? 'Tür' : 'Fenster'}-Animation invertieren</label>
-                </div>
+                    <div class="field">
+                        <label>Fensterkontakt / Fensterposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
 
-                ${obj.shutterVariableID ? shutterValueMappingHtml(obj) : ''}
-            `;
+                    <div class="field">
+                        <label>Rollo / Rollladen (optional)</label>
+                        <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
+                            value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label>Rollo-Typ</label>
+                            <select data-field="shutterStyle">
+                                <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
+                                <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterSideInvert" type="checkbox"${obj.shutterSideInvert === true ? ' checked' : ''}>
+                                Rollo innen / außen tauschen
+                            </label>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}>
+                                Rollo-Status invertieren
+                            </label>
+                        </div>
+
+                        ${shutterValueMappingHtml(obj)}
+                    ` : ''}
+
+                    <div class="field">
+                        <label class="check">
+                            <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                            Fensterzustand invertieren
+                        </label>
+                    </div>
+                `;
+            } else {
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 80}">
+                    </div>
+
+                    <div class="field">
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
+                    </div>
+
+                    <div class="field">
+                        <label>Türkontakt / Türposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    <div class="field">
+                        <label class="check">
+                            <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
+                            Öffnungsseite innen / außen tauschen
+                        </label>
+                    </div>
+
+                    <div class="field">
+                        <label class="check">
+                            <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                            Türzustand invertieren
+                        </label>
+                    </div>
+                `;
+            }
+
         } else if (selected.type === 'item') {
             propTitle.textContent = 'Gerät';
             const kind = obj.kind || 'generic';
