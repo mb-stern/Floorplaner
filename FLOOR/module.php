@@ -407,6 +407,17 @@ class Floorplaner extends IPSModuleStrict
             vector-effect: non-scaling-stroke;
             cursor: move;
         }
+
+        /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
+           mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
+        .drawing-shape-hit {
+            fill: none;
+            stroke: transparent;
+            stroke-width: 14;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+            cursor: move;
+        }
         .drawing-shape.selection-shape {
             stroke: var(--fp-accent);
         }
@@ -2886,14 +2897,17 @@ class Floorplaner extends IPSModuleStrict
             const sel = selected?.type === 'shape' && selected.id === shape.id;
             const cls = sel ? ' selection-shape' : '';
             if (shape.kind === 'line') {
+                parts.push(`<line class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
                 parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
                 if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
             } else if (shape.kind === 'rect') {
                 const x=Math.min(shape.x1,shape.x2), y=Math.min(shape.y1,shape.y2), w=Math.abs(shape.x2-shape.x1), h=Math.abs(shape.y2-shape.y1);
+                parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
                 parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
                 if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
             } else if (shape.kind === 'circle') {
                 const r=Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1);
+                parts.push(`<circle class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
                 parts.push(`<circle class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
                 if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
             }
