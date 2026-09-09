@@ -1831,6 +1831,12 @@ class Floorplaner extends IPSModuleStrict
                 if (!opening.shutterValueMap || typeof opening.shutterValueMap !== 'object' || Array.isArray(opening.shutterValueMap)) {
                     opening.shutterValueMap = {};
                 }
+                if (typeof opening.doorSideInvert !== 'boolean') {
+                    opening.doorSideInvert = false;
+                }
+                if (typeof opening.shutterSideInvert !== 'boolean') {
+                    opening.shutterSideInvert = false;
+                }
             }
             floor.items = Array.isArray(floor.items) ? floor.items : [];
             for (const item of floor.items) {
@@ -2811,14 +2817,15 @@ class Floorplaner extends IPSModuleStrict
             if (o.type === 'door') {
                 const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
                 const angle = amount * Math.PI / 2;
-                const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
-                const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
+                const doorSide = o.doorSideInvert === true ? -1 : 1;
+                const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * doorSide * leafLength * Math.sin(angle);
+                const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * doorSide * leafLength * Math.sin(angle);
 
                 parts.push(`<line class="opening-line${stateClass}" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
 
                 if (isOpen) {
-                    const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * leafLength * .28 * amount;
-                    const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * leafLength * .28 * amount;
+                    const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * doorSide * leafLength * .28 * amount;
+                    const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * doorSide * leafLength * .28 * amount;
                     parts.push(`<path class="opening-line${stateClass}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
                 }
             } else {
@@ -2841,14 +2848,15 @@ class Floorplaner extends IPSModuleStrict
                 }
             }
 
-            if (o.shutterVariableID) {
+            if (o.type === 'window' && o.shutterVariableID) {
                 const shutterOpen = shutterState(o);
                 const closed = 1 - shutterOpen;
                 const shutterOffset = 8;
-                const sx1 = geom.x1 - geom.nx * shutterOffset;
-                const sy1 = geom.y1 - geom.ny * shutterOffset;
-                const sx2 = geom.x2 - geom.nx * shutterOffset;
-                const sy2 = geom.y2 - geom.ny * shutterOffset;
+                const shutterSide = o.shutterSideInvert === true ? 1 : -1;
+                const sx1 = geom.x1 + geom.nx * shutterSide * shutterOffset;
+                const sy1 = geom.y1 + geom.ny * shutterSide * shutterOffset;
+                const sx2 = geom.x2 + geom.nx * shutterSide * shutterOffset;
+                const sy2 = geom.y2 + geom.ny * shutterSide * shutterOffset;
 
                 if ((o.shutterStyle || 'roll') === 'roll') {
                     if (closed > 0.01) {
@@ -2871,8 +2879,8 @@ class Floorplaner extends IPSModuleStrict
                 } else {
                     const panel = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1) * .24 * closed;
                     if (panel > .5) {
-                        parts.push(`<line class="opening-shutter" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x1 - geom.nx * panel}" y2="${geom.y1 - geom.ny * panel}"/>`);
-                        parts.push(`<line class="opening-shutter" x1="${geom.x2}" y1="${geom.y2}" x2="${geom.x2 - geom.nx * panel}" y2="${geom.y2 - geom.ny * panel}"/>`);
+                        parts.push(`<line class="opening-shutter" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x1 + geom.nx * shutterSide * panel}" y2="${geom.y1 + geom.ny * shutterSide * panel}"/>`);
+                        parts.push(`<line class="opening-shutter" x1="${geom.x2}" y1="${geom.y2}" x2="${geom.x2 + geom.nx * shutterSide * panel}" y2="${geom.y2 + geom.ny * shutterSide * panel}"/>`);
                     }
                 }
             }
@@ -2891,9 +2899,12 @@ class Floorplaner extends IPSModuleStrict
             // Rollladen-Bedienung wird in der Mitte direkt AUF dem Rollladen platziert.
             // Sie wird separat gesammelt und erst nach Möbeln/Geräten gerendert,
             // damit kein anderes SVG-Element den Klick abfangen kann.
-            const shutterField =
-                Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
-                (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
+            const shutterField = o.type === 'window'
+                ? (
+                    Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
+                    (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '')
+                )
+                : '';
 
             if (shutterField) {
                 const sx = geom.cx;
@@ -3383,7 +3394,67 @@ class Floorplaner extends IPSModuleStrict
             floor.walls = floor.walls.filter(v => v.id !== selected.id);
             floor.openings = floor.openings.filter(v => v.wallId !== selected.id);
         } else if (selected.type === 'opening') {
-            floor.openings = floor.openings.filter(v => v.id !== selected.id);
+            propTitle.textContent = obj.type === 'door' ? 'Tür' : 'Fenster';
+
+            const openingSpecificFields = obj.type === 'window'
+                ? `
+                    <div class="field">
+                        <label>Rollo / Rollladen (optional)</label>
+                        <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
+                            value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label>Rollo-Typ</label>
+                            <select data-field="shutterStyle">
+                                <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
+                                <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterSideInvert" type="checkbox"${obj.shutterSideInvert === true ? ' checked' : ''}>
+                                Rollo innen/außen tauschen
+                            </label>
+                        </div>
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}>
+                                Rollo-Status invertieren
+                            </label>
+                        </div>
+                        ${shutterValueMappingHtml(obj)}
+                    ` : ''}
+                `
+                : `
+                    <div class="field">
+                        <label class="check">
+                            <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
+                            Öffnungsseite innen/außen tauschen
+                        </label>
+                    </div>
+                `;
+
+            properties.innerHTML = `
+                <div class="field"><label>Länge</label><input data-field="length" type="number" min="20" value="${obj.length || 80}"></div>
+                <div class="field"><label>Position auf Wand (0–1)</label><input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}"></div>
+
+                <div class="field">
+                    <label>${obj.type === 'door' ? 'Türkontakt / Türposition' : 'Fensterkontakt / Fensterposition'}</label>
+                    <input class="variable-select-field" data-variable-field="variableID" readonly
+                        value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                </div>
+
+                ${openingSpecificFields}
+
+                <div class="field">
+                    <label class="check">
+                        <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                        ${obj.type === 'door' ? 'Türzustand' : 'Fensterzustand'} invertieren
+                    </label>
+                </div>
+            `;
         } else if (selected.type === 'item') {
             floor.items = floor.items.filter(v => v.id !== selected.id);
         } else if (selected.type === 'furniture') {
@@ -4480,9 +4551,11 @@ class Floorplaner extends IPSModuleStrict
                 shutterSecondaryVariableID: 0,
                 shutterStyle: 'roll',
                 shutterInvert: false,
+                shutterSideInvert: false,
                 shutterValueMappingEnabled: false,
                 shutterValueMap: {},
-                invert: false
+                invert: false,
+                doorSideInvert: false
             };
             floor.openings.push(o);
             selected = {type: 'opening', id: o.id};
