@@ -1581,6 +1581,24 @@ class Floorplaner extends IPSModuleStrict
             stroke-dasharray: 5 3;
         }
 
+        .garden-tree {
+            cursor: move;
+        }
+        .garden-tree .tree-crown,
+        .garden-tree .tree-inner,
+        .garden-tree .tree-trunk {
+            fill: none;
+            stroke: var(--fp-text);
+            vector-effect: non-scaling-stroke;
+        }
+        .garden-tree .tree-crown { stroke-width: 1.35; }
+        .garden-tree .tree-inner { stroke-width: .85; opacity: .55; }
+        .garden-tree .tree-trunk { stroke-width: 1.05; opacity: .75; }
+        .garden-tree.selected .tree-crown {
+            stroke-width: 2;
+            stroke-dasharray: 4 3;
+        }
+
 </style>
 </head>
 <body>
@@ -1619,6 +1637,7 @@ class Floorplaner extends IPSModuleStrict
                 <option value="device">Gerät</option>
                 <option value="text">Text</option>
                 <option value="furniture">Möbel</option>
+                <option value="tree">Baum</option>
                 <optgroup label="Außenbereich">
                     <option value="area:lawn">Rasen</option>
                     <option value="area:bed">Beet</option>
@@ -2228,6 +2247,13 @@ class Floorplaner extends IPSModuleStrict
             const width = Math.max(8, Number(area.width) || 120);
             const height = Math.max(8, Number(area.height) || 80);
             addBox(x, y, x + width, y + height);
+        }
+
+        for (const tree of floor.trees || []) {
+            const x = Number(tree.x) || 0;
+            const y = Number(tree.y) || 0;
+            const size = Math.max(18, Number(tree.size) || 60);
+            addBox(x - size / 2, y - size / 2, x + size / 2, y + size / 2);
         }
 
         // Hauptreferenz bleibt der eigentliche Grundriss.
@@ -2864,98 +2890,49 @@ class Floorplaner extends IPSModuleStrict
         // Monochrome Außenflächen; Farbe bleibt ausschließlich Zuständen/Variablen vorbehalten.
         parts.push(`
             <defs>
-                <!-- Rasen: kurze, unregelmäßig versetzte Grasstriche -->
-                <pattern id="fp-area-lawn" width="26" height="22" patternUnits="userSpaceOnUse">
-                    <path d="
-                        M4 18 l1 -4
-                        M9 10 l1 -3
-                        M14 19 l-1 -5
-                        M20 13 l1 -4
-                        M24 5 l-1 -3
-                        M6 4 l1 -2
-                        M17 7 l-1 -3"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width="1.15"
-                        stroke-linecap="round"
-                        opacity=".44"/>
+                <!-- Rasen: feine, kurze Grashalme -->
+                <pattern id="fp-area-lawn" width="28" height="24" patternUnits="userSpaceOnUse">
+                    <path d="M4 20 l1 -5 M10 10 l1 -4 M16 21 l-1 -5 M23 14 l1 -5 M7 4 l1 -3 M20 5 l-1 -3"
+                          fill="none" stroke="var(--fp-text)" stroke-width="1.05" stroke-linecap="round" opacity=".42"/>
                 </pattern>
 
-                <!-- Beet: lockere Blatt-/Pflanzenformen, deutlich größer und seltener -->
-                <pattern id="fp-area-bed" width="34" height="30" patternUnits="userSpaceOnUse">
-                    <path d="
-                        M8 24 V15
-                        M8 18 C4 17 4 13 8 14
-                        M8 20 C12 19 13 15 8 16
-                        M24 13 V5
-                        M24 8 C20 7 20 4 24 5
-                        M24 10 C28 9 29 6 24 7"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width="1.05"
-                        stroke-linecap="round"
-                        opacity=".46"/>
-                    <path d="M3 8 q2 -2 4 0 M17 25 q2 -2 4 0"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width=".8"
-                        opacity=".28"/>
+                <!-- Beet: lockere organische Blattgruppen -->
+                <pattern id="fp-area-bed" width="44" height="38" patternUnits="userSpaceOnUse">
+                    <path d="M11 29 C4 26 4 18 11 20 C8 13 16 10 18 17 C24 13 29 18 25 23 C31 26 26 33 20 29 C17 35 10 34 11 29 Z"
+                          fill="none" stroke="var(--fp-text)" stroke-width="1" opacity=".40"/>
+                    <path d="M31 9 C27 6 29 2 33 4 C36 0 40 5 37 8 C41 11 36 14 33 11 C30 14 27 11 31 9 Z"
+                          fill="none" stroke="var(--fp-text)" stroke-width=".85" opacity=".32"/>
                 </pattern>
 
-                <!-- Kies: wirklich unregelmäßige, verschieden große Steine -->
-                <pattern id="fp-area-gravel" width="30" height="26" patternUnits="userSpaceOnUse">
-                    <path d="M3 6 q2 -3 5 -1 q2 1 1 4 q-2 2 -5 1 q-2 -1 -1 -4
-                             M15 4 q1 -2 3 -1 q2 0 2 2 q0 2 -2 3 q-3 0 -3 -2
-                             M23 12 q3 -2 5 1 q1 2 -1 4 q-3 2 -6 0 q-1 -3 2 -5
-                             M8 18 q2 -2 4 0 q1 3 -2 4 q-3 1 -4 -1 q0 -2 2 -3
-                             M18 22 q2 -1 4 1 q0 2 -2 3 q-3 0 -3 -2 q0 -1 1 -2"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width=".9"
-                        opacity=".42"/>
+                <!-- Kies: verschieden große unregelmäßige Steine -->
+                <pattern id="fp-area-gravel" width="34" height="28" patternUnits="userSpaceOnUse">
+                    <path d="M3 7 q2 -4 6 -2 q3 2 1 5 q-3 3 -6 1 q-2 -1 -1 -4
+                             M16 4 q2 -2 5 0 q1 3 -2 5 q-4 0 -4 -3 q0 -1 1 -2
+                             M25 15 q4 -3 7 1 q1 3 -2 5 q-4 2 -7 -1 q-1 -3 2 -5
+                             M7 20 q3 -3 6 0 q1 3 -2 5 q-4 1 -6 -1 q0 -2 2 -4
+                             M18 24 q2 -2 4 0 q1 2 -2 3 q-3 0 -3 -2 q0 -1 1 -1"
+                          fill="none" stroke="var(--fp-text)" stroke-width=".9" opacity=".42"/>
                 </pattern>
 
-                <!-- Terrasse: lange Holzdielen mit klar versetzten Stößen -->
-                <pattern id="fp-area-terrace" width="64" height="18" patternUnits="userSpaceOnUse">
-                    <path d="M0 0 H64 M0 9 H64 M0 18 H64"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width=".75"
-                        opacity=".42"/>
-                    <path d="M18 0 V9 M47 0 V9 M7 9 V18 M34 9 V18 M58 9 V18"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width=".75"
-                        opacity=".42"/>
+                <!-- Terrasse: lange Holzdielen, wenige versetzte Stöße -->
+                <pattern id="fp-area-terrace" width="96" height="24" patternUnits="userSpaceOnUse">
+                    <path d="M0 0 H96 M0 12 H96 M0 24 H96"
+                          fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".40"/>
+                    <path d="M31 0 V12 M76 0 V12 M14 12 V24 M62 12 V24"
+                          fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".40"/>
                 </pattern>
 
-                <!-- Pflaster: kompakter, klarer Steinverband mit kürzeren Rechtecken -->
-                <pattern id="fp-area-paving" width="36" height="24" patternUnits="userSpaceOnUse">
-                    <path d="M0 0 H36 M0 8 H36 M0 16 H36 M0 24 H36"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width=".8"
-                        opacity=".43"/>
-                    <path d="
-                        M9 0 V8 M27 0 V8
-                        M0 8 V16 M18 8 V16 M36 8 V16
-                        M9 16 V24 M27 16 V24"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width=".8"
-                        opacity=".43"/>
+                <!-- Pflaster: große Platten, klar verschieden von Holzdielen -->
+                <pattern id="fp-area-paving" width="56" height="42" patternUnits="userSpaceOnUse">
+                    <path d="M0 0 H56 V42 H0 Z M28 0 V42 M0 21 H56"
+                          fill="none" stroke="var(--fp-text)" stroke-width=".9" opacity=".42"/>
                 </pattern>
 
-                <!-- Wasser: wenige, breite und ruhige Wellen -->
-                <pattern id="fp-area-water" width="52" height="28" patternUnits="userSpaceOnUse">
-                    <path d="
-                        M-6 7 C2 1 10 13 18 7 S34 1 42 7 S58 13 66 7
-                        M-6 20 C2 14 10 26 18 20 S34 14 42 20 S58 26 66 20"
-                        fill="none"
-                        stroke="var(--fp-text)"
-                        stroke-width="1.15"
-                        stroke-linecap="round"
-                        opacity=".46"/>
+                <!-- Wasser: wenige breite Wellen -->
+                <pattern id="fp-area-water" width="64" height="34" patternUnits="userSpaceOnUse">
+                    <path d="M-8 9 C2 1 12 17 22 9 S42 1 52 9 S72 17 82 9
+                             M-8 26 C2 18 12 34 22 26 S42 18 52 26 S72 34 82 26"
+                          fill="none" stroke="var(--fp-text)" stroke-width="1.15" stroke-linecap="round" opacity=".44"/>
                 </pattern>
             </defs>
         `);
@@ -2970,6 +2947,36 @@ class Floorplaner extends IPSModuleStrict
             parts.push(`<rect class="outside-area${sel}" data-type="area" data-id="${area.id}" x="${x}" y="${y}" width="${width}" height="${height}" rx="2" fill="url(#fp-area-${areaType})"/>`);
             if (state.mode !== 'view' && selected?.type === 'area' && selected.id === area.id) {
                 parts.push(`<circle class="resize-handle" data-resize-type="area" data-id="${area.id}" cx="${x + width}" cy="${y + height}" r="2.8"/>`);
+            }
+        }
+
+        for (const tree of floor.trees || []) {
+            const x = Number(tree.x) || 0;
+            const y = Number(tree.y) || 0;
+            const size = Math.max(18, Number(tree.size) || 60);
+            const r = size / 2;
+            const sel = selected?.type === 'tree' && selected.id === tree.id ? ' selected' : '';
+
+            // Unregelmäßige Baumkrone als architektonisches Grundrisssymbol.
+            const crown = [
+                [0,-1.00],[.30,-.88],[.57,-.72],[.83,-.42],[.92,-.10],
+                [.82,.22],[.91,.50],[.62,.72],[.36,.94],[.03,.88],
+                [-.28,.98],[-.51,.76],[-.80,.60],[-.86,.28],[-.98,.02],
+                [-.83,-.28],[-.76,-.58],[-.47,-.73],[-.25,-.96]
+            ].map(([px,py]) => `${x + px*r},${y + py*r}`).join(' ');
+
+            parts.push(`
+                <g class="garden-tree${sel}" data-type="tree" data-id="${tree.id}">
+                    <polygon class="tree-crown" points="${crown}"/>
+                    <circle class="tree-inner" cx="${x}" cy="${y}" r="${r * .58}"/>
+                    <circle class="tree-trunk" cx="${x}" cy="${y}" r="${Math.max(2.5, r * .10)}"/>
+                    <path class="tree-inner" d="M${x-r*.42} ${y+r*.18} Q${x} ${y-r*.34} ${x+r*.43} ${y+r*.12}
+                                                      M${x-r*.22} ${y-r*.36} Q${x+r*.05} ${y} ${x+r*.26} ${y+r*.39}"/>
+                </g>
+            `);
+
+            if (state.mode !== 'view' && selected?.type === 'tree' && selected.id === tree.id) {
+                parts.push(`<circle class="resize-handle" data-resize-type="tree" data-id="${tree.id}" cx="${x + r}" cy="${y + r}" r="2.8"/>`);
             }
         }
 
@@ -3635,6 +3642,7 @@ class Floorplaner extends IPSModuleStrict
         if (type === 'furniture') return (floor.furniture || []).find(v => v.id === id);
         if (type === 'text') return floor.texts.find(v => v.id === id);
         if (type === 'area') return (floor.areas || []).find(v => v.id === id);
+        if (type === 'tree') return (floor.trees || []).find(v => v.id === id);
         return null;
     }
 
@@ -3655,6 +3663,8 @@ class Floorplaner extends IPSModuleStrict
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
         } else if (selected.type === 'area') {
             floor.areas = (floor.areas || []).filter(v => v.id !== selected.id);
+        } else if (selected.type === 'tree') {
+            floor.trees = (floor.trees || []).filter(v => v.id !== selected.id);
         }
 
         selected = null;
@@ -4092,6 +4102,11 @@ class Floorplaner extends IPSModuleStrict
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
                 </div>
                 <div class="field"><label>Schriftgröße</label><input data-field="size" type="number" min="8" max="100" value="${obj.size || 18}"></div>
+            `;
+        } else if (selected.type === 'tree') {
+            propTitle.textContent = 'Baum';
+            properties.innerHTML = `
+                <div class="field"><label>Größe</label><input data-field="size" type="number" min="18" max="500" value="${Math.round(Number(obj.size) || 60)}"></div>
             `;
         } else if (selected.type === 'area') {
             const names = {lawn:'Rasen',bed:'Beet',gravel:'Kies',terrace:'Terrasse',paving:'Pflaster',water:'Wasser'};
@@ -4850,6 +4865,17 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
+        if (tool === 'tree') {
+            const tree = {id:uid('tree'), x:snapValue(p.x), y:snapValue(p.y), size:60};
+            floor.trees = Array.isArray(floor.trees) ? floor.trees : [];
+            floor.trees.push(tree);
+            selected = {type:'tree', id:tree.id};
+            pushHistory();
+            markDirty();
+            renderAll();
+            return;
+        }
+
         if (tool === 'wall') {
             if (!wallStart) {
                 wallStart = p;
@@ -5062,7 +5088,7 @@ class Floorplaner extends IPSModuleStrict
 
                 position = Math.max(edge, Math.min(1 - edge, position));
                 obj.position = Math.round(position * 10000) / 10000;
-            } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture' || drag.type === 'area') {
+            } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture' || drag.type === 'area' || drag.type === 'tree') {
                 obj.x = snapValue(drag.original.x + dx);
                 obj.y = snapValue(drag.original.y + dy);
             }
@@ -5101,6 +5127,10 @@ class Floorplaner extends IPSModuleStrict
                     obj.x2 = snapValue(p.x);
                     obj.y2 = snapValue(p.y);
                 }
+            } else if (drag.type === 'tree') {
+                const cx = Number(drag.original.x) || 0;
+                const cy = Number(drag.original.y) || 0;
+                obj.size = Math.max(18, snapValue(Math.max(Math.abs(p.x - cx), Math.abs(p.y - cy)) * 2));
             } else if (drag.type === 'area') {
                 const originX = Number(drag.original.x) || 0;
                 const originY = Number(drag.original.y) || 0;
