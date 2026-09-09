@@ -3659,12 +3659,6 @@ class Floorplaner extends IPSModuleStrict
                                 Variableneinstellungen aktualisieren
                             </button>
                         </div>
-                        <div class="field">
-                            <label class="check">
-                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
-                                Fensterzustand invertieren
-                            </label>
-                        </div>
                     ` : ''}
 
                     <div class="field">
@@ -3672,6 +3666,15 @@ class Floorplaner extends IPSModuleStrict
                         <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
                             value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
                     </div>
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Fensterzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
 
                     ${obj.shutterVariableID ? `
                         <div class="field">
