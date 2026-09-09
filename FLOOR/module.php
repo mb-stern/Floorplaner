@@ -413,7 +413,7 @@ class Floorplaner extends IPSModuleStrict
         .drawing-shape-hit {
             fill: none;
             stroke: transparent;
-            stroke-width: 14;
+            stroke-width: 7;
             vector-effect: non-scaling-stroke;
             pointer-events: stroke;
             cursor: move;
