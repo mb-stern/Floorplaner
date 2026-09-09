@@ -1602,6 +1602,7 @@ class Floorplaner extends IPSModuleStrict
                 Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
                 Außenfläche: Typ wählen und Fläche mit gedrückter linker Maustaste aufziehen.<br>
                 Vorhandene Elemente: direkt anklicken und verschieben; ein separates Auswahl-Werkzeug ist nicht nötig.<br>Geräte/Möbel/Außenflächen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
+                Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
                 − / +: manuell heraus- oder hineinzoomen.<br>
                 Start: jederzeit auf die ursprüngliche 1:1-Startansicht der aktuellen Etage zurück.<br>
@@ -1611,21 +1612,23 @@ class Floorplaner extends IPSModuleStrict
     </div>
     <div class="toolbar">
         <div class="group">
-            <select id="areaTypeSelect" title="Art der Außenfläche">
-                <option value="lawn">Rasen</option>
-                <option value="bed">Beet</option>
-                <option value="gravel">Kies</option>
-                <option value="terrace">Terrasse</option>
-                <option value="paving">Pflaster</option>
-                <option value="water">Wasser</option>
+            <select id="toolSelect" title="Werkzeug auswählen">
+                <option value="wall">Wand</option>
+                <option value="door">Tür</option>
+                <option value="window">Fenster</option>
+                <option value="device">Gerät</option>
+                <option value="text">Text</option>
+                <option value="furniture">Möbel</option>
+                <optgroup label="Außenbereich">
+                    <option value="area:lawn">Rasen</option>
+                    <option value="area:bed">Beet</option>
+                    <option value="area:gravel">Kies</option>
+                    <option value="area:terrace">Terrasse</option>
+                    <option value="area:paving">Pflaster</option>
+                    <option value="area:water">Wasser</option>
+                </optgroup>
             </select>
-            <button data-tool="area" class="active" title="Außenfläche aufziehen">Außenfläche</button>
-            <button data-tool="wall">Wand</button>
-            <button data-tool="door">Tür</button>
-            <button data-tool="window">Fenster</button>
-            <button data-tool="device">Gerät</button>
-            <button data-tool="text">Text</button>
-                <button data-tool="furniture">Möbel</button>
+            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
             <div class="grid-editor-controls" title="Raster">
                 <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
                 <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
@@ -1733,7 +1736,7 @@ class Floorplaner extends IPSModuleStrict
     let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
-    let tool = 'area';
+    let tool = 'wall';
     let selected = null;
     let wallStart = null;
     let preview = null;
@@ -2012,6 +2015,10 @@ class Floorplaner extends IPSModuleStrict
 
     function setTool(next) {
         tool = next;
+        const toolSelect = document.getElementById('toolSelect');
+        if (toolSelect && next !== 'pan' && next !== 'area') {
+            toolSelect.value = next;
+        }
         wallStart = null;
         preview = null;
         document.querySelectorAll('[data-tool]').forEach(btn => {
@@ -2857,12 +2864,46 @@ class Floorplaner extends IPSModuleStrict
         // Monochrome Außenflächen; Farbe bleibt ausschließlich Zuständen/Variablen vorbehalten.
         parts.push(`
             <defs>
-                <pattern id="fp-area-lawn" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M3 12 l2 -5 M7 12 l0 -6 M11 12 l-2 -5" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".42"/></pattern>
-                <pattern id="fp-area-bed" width="12" height="12" patternUnits="userSpaceOnUse"><path d="M-2 12 L12 -2 M4 14 L14 4" fill="none" stroke="var(--fp-text)" stroke-width=".7" opacity=".34"/></pattern>
-                <pattern id="fp-area-gravel" width="13" height="13" patternUnits="userSpaceOnUse"><circle cx="3" cy="4" r="1" fill="var(--fp-text)" opacity=".34"/><circle cx="10" cy="9" r="1.2" fill="var(--fp-text)" opacity=".28"/></pattern>
-                <pattern id="fp-area-terrace" width="24" height="12" patternUnits="userSpaceOnUse"><path d="M0 0 H24 M0 12 H24 M0 0 V12 M12 0 V12 M24 0 V12" fill="none" stroke="var(--fp-text)" stroke-width=".65" opacity=".32"/></pattern>
-                <pattern id="fp-area-paving" width="20" height="12" patternUnits="userSpaceOnUse"><path d="M0 0 H20 M0 12 H20 M0 0 V12 M10 0 V6 M5 6 V12 M15 6 V12 M0 6 H20" fill="none" stroke="var(--fp-text)" stroke-width=".65" opacity=".32"/></pattern>
-                <pattern id="fp-area-water" width="22" height="12" patternUnits="userSpaceOnUse"><path d="M0 4 Q5 1 11 4 T22 4 M0 10 Q5 7 11 10 T22 10" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".38"/></pattern>
+                <!-- Rasen: einzelne Grasbüschel -->
+                <pattern id="fp-area-lawn" width="22" height="22" patternUnits="userSpaceOnUse">
+                    <path d="M5 18 L7 11 M7 18 L7 9 M9 18 L7 12 M16 9 L18 4 M18 9 L18 2 M20 9 L18 5"
+                          fill="none" stroke="var(--fp-text)" stroke-width="1" opacity=".48"/>
+                </pattern>
+
+                <!-- Beet: organische Blätter/Pflanzen -->
+                <pattern id="fp-area-bed" width="28" height="24" patternUnits="userSpaceOnUse">
+                    <path d="M14 21 V10 M14 14 C8 14 8 8 14 10 M14 16 C20 16 20 10 14 12"
+                          fill="none" stroke="var(--fp-text)" stroke-width="1" opacity=".48"/>
+                    <circle cx="5" cy="5" r="1.4" fill="var(--fp-text)" opacity=".30"/>
+                    <circle cx="24" cy="20" r="1.2" fill="var(--fp-text)" opacity=".30"/>
+                </pattern>
+
+                <!-- Kies: unregelmäßige Steinchen -->
+                <pattern id="fp-area-gravel" width="24" height="20" patternUnits="userSpaceOnUse">
+                    <ellipse cx="4" cy="5" rx="2.2" ry="1.5" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".45"/>
+                    <ellipse cx="14" cy="4" rx="1.5" ry="2.1" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".38"/>
+                    <ellipse cx="20" cy="13" rx="2.6" ry="1.7" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".45"/>
+                    <ellipse cx="9" cy="15" rx="1.8" ry="1.2" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".38"/>
+                </pattern>
+
+                <!-- Terrasse: lange Dielen -->
+                <pattern id="fp-area-terrace" width="42" height="16" patternUnits="userSpaceOnUse">
+                    <path d="M0 0 H42 M0 8 H42 M0 16 H42 M14 0 V8 M32 8 V16"
+                          fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".40"/>
+                </pattern>
+
+                <!-- Pflaster: klar versetzter Steinverband -->
+                <pattern id="fp-area-paving" width="32" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M0 0 H32 M0 10 H32 M0 20 H32 M8 0 V10 M24 0 V10 M0 10 V20 M16 10 V20 M32 10 V20"
+                          fill="none" stroke="var(--fp-text)" stroke-width=".9" opacity=".43"/>
+                </pattern>
+
+                <!-- Wasser: deutlich geschwungene Wellen -->
+                <pattern id="fp-area-water" width="36" height="24" patternUnits="userSpaceOnUse">
+                    <path d="M-4 6 C2 1 8 11 14 6 S26 1 32 6 S44 11 50 6
+                             M-4 18 C2 13 8 23 14 18 S26 13 32 18 S44 23 50 18"
+                          fill="none" stroke="var(--fp-text)" stroke-width="1.1" opacity=".48"/>
+                </pattern>
             </defs>
         `);
 
@@ -4235,14 +4276,23 @@ class Floorplaner extends IPSModuleStrict
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
 
-    document.getElementById('areaTypeSelect')?.addEventListener('change', evt => {
-        if (selected?.type !== 'area') return;
-        const area = findEntity('area', selected.id);
-        if (!area) return;
-        area.areaType = evt.target.value || 'lawn';
-        pushHistory();
-        markDirty();
-        renderAll();
+    document.getElementById('toolSelect')?.addEventListener('change', evt => {
+        const choice = evt.target.value || 'wall';
+        if (choice.startsWith('area:')) {
+            tool = 'area';
+            // Ist bereits eine Außenfläche markiert, darf deren Muster direkt geändert werden.
+            if (selected?.type === 'area') {
+                const area = findEntity('area', selected.id);
+                if (area) {
+                    area.areaType = choice.substring(5) || 'lawn';
+                    pushHistory();
+                    markDirty();
+                    renderAll();
+                }
+            }
+        } else {
+            setTool(choice);
+        }
     });
 
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
@@ -4734,7 +4784,8 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (tool === 'area') {
-            const areaType = document.getElementById('areaTypeSelect')?.value || 'lawn';
+            const toolChoice = document.getElementById('toolSelect')?.value || 'area:lawn';
+            const areaType = toolChoice.startsWith('area:') ? toolChoice.substring(5) : 'lawn';
             const area = {id:uid('area'), areaType, x:p.x, y:p.y, width:8, height:8};
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
             floor.areas.push(area);
