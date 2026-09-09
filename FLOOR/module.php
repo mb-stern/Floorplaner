@@ -3656,13 +3656,6 @@ class Floorplaner extends IPSModuleStrict
                     ` : ''}
 
                     <div class="field">
-                        <label class="check">
-                            <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
-                            Fensterzustand invertieren
-                        </label>
-                    </div>
-
-                    <div class="field">
                         <label>Rollo / Rollladen (optional)</label>
                         <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
                             value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
@@ -3675,6 +3668,13 @@ class Floorplaner extends IPSModuleStrict
                                 <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
                                 <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
                             </select>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Fensterzustand invertieren
+                            </label>
                         </div>
 
                         <div class="field">
