@@ -1121,6 +1121,24 @@ class Floorplaner extends IPSModuleStrict
 
 
 
+        .grid-editor-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            width: auto;
+            flex: 0 0 auto;
+        }
+
+        .grid-size-input {
+            width: 4.5ch;
+            min-width: 4.5ch;
+            max-width: 4.5ch;
+            box-sizing: content-box;
+            padding-left: 4px;
+            padding-right: 2px;
+            flex: 0 0 auto;
+        }
+
         .view-mode .grid-editor-controls {
             display: none !important;
         }
