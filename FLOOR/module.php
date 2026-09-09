@@ -3077,6 +3077,12 @@ class Floorplaner extends IPSModuleStrict
             if (showName && valuePosition === namePosition) {
                 valueExtra += Math.max(labelSize, valueSize) + 3;
             }
+
+            // Wertebox minimal weiter vom Geräte-Icon abrücken.
+            // Nur die Position wird verändert; Boxgröße, Schrift und sonstige Abstände bleiben gleich.
+            const valueIconGap = 2;
+            valueExtra += valueIconGap;
+
             const valuePlace = deviceTextPlacement(valuePosition, valueSize, valueExtra);
             const statusOnlyClass = item._canAction === true ? '' : ' status-only';
             const valueFrameWidth = Math.max(26, valueText.length * valueSize * 0.62 + 12);
