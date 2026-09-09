@@ -5846,7 +5846,33 @@ class Floorplaner extends IPSModuleStrict
                 pushHistory();
                 markDirty();
                 render();
-                renderProperties();
+
+                // Den bereits sichtbaren Farbwähler sofort auf die neu aus Symcon
+                // geladene Farbe setzen. Manche Browser/WebViews behalten den
+                // bestehenden <input type="color">-DOM-Wert trotz Neuaufbau kurz fest.
+                const refreshedOpeningColor = effectiveOpeningStatusColor(opening);
+                const openingColorInput = properties.querySelector(
+                    'input[data-field="openStatusColor"]'
+                );
+                if (openingColorInput instanceof HTMLInputElement) {
+                    openingColorInput.value = refreshedOpeningColor;
+                }
+
+                // Danach die Eigenschaftenleiste zusätzlich sauber neu aufbauen.
+                propertiesControlActive = false;
+                propertiesSelectOpen = false;
+                setTimeout(() => {
+                    renderProperties();
+
+                    // Zweite Absicherung nach dem Neuaufbau des DOM.
+                    const rebuiltOpeningColorInput = properties.querySelector(
+                        'input[data-field="openStatusColor"]'
+                    );
+                    if (rebuiltOpeningColorInput instanceof HTMLInputElement) {
+                        rebuiltOpeningColorInput.value = refreshedOpeningColor;
+                    }
+                }, 0);
+
                 statusEl.textContent = 'Variableneinstellungen aktualisiert';
                 return;
             }
