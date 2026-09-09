@@ -21,6 +21,11 @@ class Floorplaner extends IPSModuleStrict
     {
         parent::Create();
 
+        // Easy-Floorplan bleibt als eigene Originaldatei im Modulbaum und wird
+        // wie beim Energiefluss-Modul über einen instanzspezifischen WebHook
+        // ausgeliefert. Dadurch muss die große JS-Datei nicht in die HTML-Ausgabe.
+        $this->RegisterHook($this->GetVisualizationWebHookBaseAddress());
+
         $this->RegisterPropertyInteger('GridSize', 20);
         $this->RegisterPropertyInteger('SnapSize', 20);
         $this->RegisterPropertyString('BackgroundColor', '#303030');
@@ -195,6 +200,8 @@ class Floorplaner extends IPSModuleStrict
     {
         $project = $this->GetProject();
 
+        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
+
         /*
          * Raster- und Anzeigeeinstellungen gehören zum gespeicherten Floorplan.
          * Sie dürfen beim Laden der HTML-SDK-Kachel nicht mehr durch die alten
@@ -215,6 +222,7 @@ class Floorplaner extends IPSModuleStrict
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <script src="/icons.js"></script>
+    <script type="module" src="__EASY_FLOORPLAN_MODULE_URL__"></script>
     <style>
         :root {
             --fp-bg: transparent;
@@ -6318,10 +6326,98 @@ class Floorplaner extends IPSModuleStrict
 HTML;
 
         return str_replace(
-            ['__INITIAL_PROJECT__', '__INSTANCE_ID__'],
-            [$initial, (string) $this->InstanceID],
+            ['__INITIAL_PROJECT__', '__INSTANCE_ID__', '__EASY_FLOORPLAN_MODULE_URL__'],
+            [
+                $initial,
+                (string) $this->InstanceID,
+                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            ],
             $html
         );
+    }
+
+    private function GetVisualizationWebHookAssets(): array
+    {
+        return [
+            'easy-floorplan.js'
+        ];
+    }
+
+    private function GetVisualizationWebHookBaseAddress(): string
+    {
+        return 'floorplaner-assets-' . $this->InstanceID;
+    }
+
+    private function GetVisualizationModuleWebHookUrl(string $asset): string
+    {
+        if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
+            throw new InvalidArgumentException('Unbekanntes Visualisierungs-Asset: ' . $asset);
+        }
+
+        return '/hook/'
+            . $this->GetVisualizationWebHookBaseAddress()
+            . '?asset='
+            . rawurlencode($asset);
+    }
+
+    protected function ProcessHookData(): void
+    {
+        try {
+            $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+            $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?? '');
+            $hookPath = '/hook/' . $this->GetVisualizationWebHookBaseAddress();
+
+            // Nur exakt den WebHook dieser Instanz bedienen.
+            if ($requestPath !== $hookPath) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Not found';
+                return;
+            }
+
+            $asset = isset($_GET['asset']) ? (string) $_GET['asset'] : '';
+            if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Not found';
+                return;
+            }
+
+            /*
+             * Bestehende Originaldatei im Modulbaum.
+             * Keine Laufzeitkopie in /user/ und keine zusätzliche generierte Datei.
+             */
+            $path = __DIR__
+                . DIRECTORY_SEPARATOR
+                . 'assets'
+                . DIRECTORY_SEPARATOR
+                . 'vendor'
+                . DIRECTORY_SEPARATOR
+                . $asset;
+
+            if (!is_file($path)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Asset not found';
+                return;
+            }
+
+            $source = file_get_contents($path);
+            if ($source === false) {
+                throw new RuntimeException('Visualisierungsdatei konnte nicht gelesen werden: ' . $asset);
+            }
+
+            header('Content-Type: text/javascript; charset=utf-8');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: no-cache');
+            header('Content-Length: ' . strlen($source));
+            echo $source;
+        } catch (Throwable $e) {
+            $this->LogMessage('ProcessHookData: ' . $e->getMessage(), KL_ERROR);
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Internal server error';
+        }
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
