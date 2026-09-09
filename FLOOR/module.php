@@ -3643,6 +3643,12 @@ class Floorplaner extends IPSModuleStrict
                             <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
                             <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
                         </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
+                        </div>
                     ` : ''}
 
                     <div class="field">
@@ -3707,6 +3713,12 @@ class Floorplaner extends IPSModuleStrict
                             <label>Farbe geöffnet</label>
                             <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
                             <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
                         </div>
                     ` : ''}
 
@@ -4040,6 +4052,26 @@ class Floorplaner extends IPSModuleStrict
                 itemId: item.id,
                 variableID: Number(item.variableID)
             }));
+        });
+
+        properties.querySelectorAll('.refreshOpeningVariableSettings').forEach(button => {
+            button.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                if (!selected || selected.type !== 'opening') return;
+                const floor = currentFloor();
+                const opening = floor?.openings?.find(o => o.id === selected.id);
+                if (!opening || Number(opening.variableID || 0) <= 0) return;
+
+                statusEl.textContent = 'Variableneinstellungen werden aktualisiert …';
+                requestAction('refreshVariableSettings', JSON.stringify({
+                    floorId: state.activeFloor,
+                    openingId: opening.id,
+                    entityType: 'opening',
+                    variableID: Number(opening.variableID)
+                }));
+            });
         });
 
         properties.querySelectorAll('[data-project]').forEach(input => {
@@ -5770,6 +5802,37 @@ class Floorplaner extends IPSModuleStrict
                 renderProperties();
                 return;
             }
+            if (
+                data?.type === 'refreshedVariableSettings' &&
+                data.entityType === 'opening' &&
+                data.openingId &&
+                data.meta
+            ) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const opening = floor?.openings?.find(o => o.id === data.openingId);
+                if (!opening) return;
+
+                const meta = data.meta || {};
+
+                // Explizites Aktualisieren: manuelle Farbübersteuerung bewusst
+                // aufheben und die aktuelle Symcon-Darstellung neu übernehmen.
+                opening.openStatusColorManual = false;
+
+                for (const [key, value] of Object.entries(meta)) {
+                    if (!key.startsWith('_')) continue;
+                    opening[key] = value;
+                }
+
+                opening.openStatusColor = automaticOpeningStatusColor(opening);
+
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+                statusEl.textContent = 'Variableneinstellungen aktualisiert';
+                return;
+            }
+
             if (data?.type === 'refreshedVariableSettings' && data.itemId && data.meta) {
                 const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
                 const item = floor?.items?.find(i => i.id === data.itemId);
@@ -6081,10 +6144,12 @@ HTML;
 
                 $message = json_encode(
                     [
-                        'type'    => 'refreshedVariableSettings',
-                        'floorId' => (string) ($request['floorId'] ?? ''),
-                        'itemId'  => (string) ($request['itemId'] ?? ''),
-                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
+                        'type'       => 'refreshedVariableSettings',
+                        'floorId'    => (string) ($request['floorId'] ?? ''),
+                        'itemId'     => (string) ($request['itemId'] ?? ''),
+                        'openingId'  => (string) ($request['openingId'] ?? ''),
+                        'entityType' => (string) ($request['entityType'] ?? 'item'),
+                        'meta'       => $this->GetVariableRuntimeMeta($variableID)
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
