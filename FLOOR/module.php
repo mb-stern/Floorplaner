@@ -2810,6 +2810,10 @@ class Floorplaner extends IPSModuleStrict
         // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
         // zuverlässig anklickbar.
         const shutterControlParts = [];
+        // Nur die sichtbaren Flügel geöffneter Türen/Fenster werden zusätzlich
+        // gesammelt und nach den Möbeln nochmals gezeichnet.
+        // Keine Hitboxen, Wandöffnungen oder Bedienlogik werden dupliziert.
+        const openOpeningTopParts = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
         const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
@@ -2867,6 +2871,15 @@ class Floorplaner extends IPSModuleStrict
                     const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * doorSide * leafLength * .28 * amount;
                     const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * doorSide * leafLength * .28 * amount;
                     parts.push(`<path class="opening-line${stateClass}" style="stroke:${openingColor}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
+
+                    openOpeningTopParts.push(
+                        `<g pointer-events="none">` +
+                        `<line class="opening-line${stateClass}" style="stroke:${openingColor}" ` +
+                        `x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>` +
+                        `<path class="opening-line${stateClass}" style="stroke:${openingColor}" ` +
+                        `d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>` +
+                        `</g>`
+                    );
                 }
             } else {
                 if (!isOpen) {
@@ -2900,6 +2913,11 @@ class Floorplaner extends IPSModuleStrict
                     const iy2 = geom.y2 - geom.ny * inset;
 
                     parts.push(`<line class="opening-line opening-state-open" style="stroke:${openingColor}" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
+
+                    openOpeningTopParts.push(
+                        `<line class="opening-line opening-state-open" pointer-events="none" ` +
+                        `style="stroke:${openingColor}" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`
+                    );
                 }
             }
 
@@ -3009,6 +3027,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(`</g>`);
         }
+
+        // Geöffnete Türen/Fenster liegen optisch immer über Möbeln.
+        // Die ursprünglichen Openings bleiben für Auswahl und Bedienung unverändert.
+        parts.push(...openOpeningTopParts);
 
         for (const item of floor.items) {
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
