@@ -2864,45 +2864,98 @@ class Floorplaner extends IPSModuleStrict
         // Monochrome Außenflächen; Farbe bleibt ausschließlich Zuständen/Variablen vorbehalten.
         parts.push(`
             <defs>
-                <!-- Rasen: einzelne Grasbüschel -->
-                <pattern id="fp-area-lawn" width="22" height="22" patternUnits="userSpaceOnUse">
-                    <path d="M5 18 L7 11 M7 18 L7 9 M9 18 L7 12 M16 9 L18 4 M18 9 L18 2 M20 9 L18 5"
-                          fill="none" stroke="var(--fp-text)" stroke-width="1" opacity=".48"/>
+                <!-- Rasen: kurze, unregelmäßig versetzte Grasstriche -->
+                <pattern id="fp-area-lawn" width="26" height="22" patternUnits="userSpaceOnUse">
+                    <path d="
+                        M4 18 l1 -4
+                        M9 10 l1 -3
+                        M14 19 l-1 -5
+                        M20 13 l1 -4
+                        M24 5 l-1 -3
+                        M6 4 l1 -2
+                        M17 7 l-1 -3"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width="1.15"
+                        stroke-linecap="round"
+                        opacity=".44"/>
                 </pattern>
 
-                <!-- Beet: organische Blätter/Pflanzen -->
-                <pattern id="fp-area-bed" width="28" height="24" patternUnits="userSpaceOnUse">
-                    <path d="M14 21 V10 M14 14 C8 14 8 8 14 10 M14 16 C20 16 20 10 14 12"
-                          fill="none" stroke="var(--fp-text)" stroke-width="1" opacity=".48"/>
-                    <circle cx="5" cy="5" r="1.4" fill="var(--fp-text)" opacity=".30"/>
-                    <circle cx="24" cy="20" r="1.2" fill="var(--fp-text)" opacity=".30"/>
+                <!-- Beet: lockere Blatt-/Pflanzenformen, deutlich größer und seltener -->
+                <pattern id="fp-area-bed" width="34" height="30" patternUnits="userSpaceOnUse">
+                    <path d="
+                        M8 24 V15
+                        M8 18 C4 17 4 13 8 14
+                        M8 20 C12 19 13 15 8 16
+                        M24 13 V5
+                        M24 8 C20 7 20 4 24 5
+                        M24 10 C28 9 29 6 24 7"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width="1.05"
+                        stroke-linecap="round"
+                        opacity=".46"/>
+                    <path d="M3 8 q2 -2 4 0 M17 25 q2 -2 4 0"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width=".8"
+                        opacity=".28"/>
                 </pattern>
 
-                <!-- Kies: unregelmäßige Steinchen -->
-                <pattern id="fp-area-gravel" width="24" height="20" patternUnits="userSpaceOnUse">
-                    <ellipse cx="4" cy="5" rx="2.2" ry="1.5" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".45"/>
-                    <ellipse cx="14" cy="4" rx="1.5" ry="2.1" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".38"/>
-                    <ellipse cx="20" cy="13" rx="2.6" ry="1.7" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".45"/>
-                    <ellipse cx="9" cy="15" rx="1.8" ry="1.2" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".38"/>
+                <!-- Kies: wirklich unregelmäßige, verschieden große Steine -->
+                <pattern id="fp-area-gravel" width="30" height="26" patternUnits="userSpaceOnUse">
+                    <path d="M3 6 q2 -3 5 -1 q2 1 1 4 q-2 2 -5 1 q-2 -1 -1 -4
+                             M15 4 q1 -2 3 -1 q2 0 2 2 q0 2 -2 3 q-3 0 -3 -2
+                             M23 12 q3 -2 5 1 q1 2 -1 4 q-3 2 -6 0 q-1 -3 2 -5
+                             M8 18 q2 -2 4 0 q1 3 -2 4 q-3 1 -4 -1 q0 -2 2 -3
+                             M18 22 q2 -1 4 1 q0 2 -2 3 q-3 0 -3 -2 q0 -1 1 -2"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width=".9"
+                        opacity=".42"/>
                 </pattern>
 
-                <!-- Terrasse: lange Dielen -->
-                <pattern id="fp-area-terrace" width="42" height="16" patternUnits="userSpaceOnUse">
-                    <path d="M0 0 H42 M0 8 H42 M0 16 H42 M14 0 V8 M32 8 V16"
-                          fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".40"/>
+                <!-- Terrasse: lange Holzdielen mit klar versetzten Stößen -->
+                <pattern id="fp-area-terrace" width="64" height="18" patternUnits="userSpaceOnUse">
+                    <path d="M0 0 H64 M0 9 H64 M0 18 H64"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width=".75"
+                        opacity=".42"/>
+                    <path d="M18 0 V9 M47 0 V9 M7 9 V18 M34 9 V18 M58 9 V18"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width=".75"
+                        opacity=".42"/>
                 </pattern>
 
-                <!-- Pflaster: klar versetzter Steinverband -->
-                <pattern id="fp-area-paving" width="32" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M0 0 H32 M0 10 H32 M0 20 H32 M8 0 V10 M24 0 V10 M0 10 V20 M16 10 V20 M32 10 V20"
-                          fill="none" stroke="var(--fp-text)" stroke-width=".9" opacity=".43"/>
+                <!-- Pflaster: kompakter, klarer Steinverband mit kürzeren Rechtecken -->
+                <pattern id="fp-area-paving" width="36" height="24" patternUnits="userSpaceOnUse">
+                    <path d="M0 0 H36 M0 8 H36 M0 16 H36 M0 24 H36"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width=".8"
+                        opacity=".43"/>
+                    <path d="
+                        M9 0 V8 M27 0 V8
+                        M0 8 V16 M18 8 V16 M36 8 V16
+                        M9 16 V24 M27 16 V24"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width=".8"
+                        opacity=".43"/>
                 </pattern>
 
-                <!-- Wasser: deutlich geschwungene Wellen -->
-                <pattern id="fp-area-water" width="36" height="24" patternUnits="userSpaceOnUse">
-                    <path d="M-4 6 C2 1 8 11 14 6 S26 1 32 6 S44 11 50 6
-                             M-4 18 C2 13 8 23 14 18 S26 13 32 18 S44 23 50 18"
-                          fill="none" stroke="var(--fp-text)" stroke-width="1.1" opacity=".48"/>
+                <!-- Wasser: wenige, breite und ruhige Wellen -->
+                <pattern id="fp-area-water" width="52" height="28" patternUnits="userSpaceOnUse">
+                    <path d="
+                        M-6 7 C2 1 10 13 18 7 S34 1 42 7 S58 13 66 7
+                        M-6 20 C2 14 10 26 18 20 S34 14 42 20 S58 26 66 20"
+                        fill="none"
+                        stroke="var(--fp-text)"
+                        stroke-width="1.15"
+                        stroke-linecap="round"
+                        opacity=".46"/>
                 </pattern>
             </defs>
         `);
