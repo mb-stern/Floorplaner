@@ -1380,6 +1380,8 @@ class Floorplaner extends IPSModuleStrict
 
         .stream-popup-status {
             min-height: 16px;
+            max-height: min(34vh, 260px);
+            overflow: auto;
             font-size: 11px;
             line-height: 1.3;
             color: var(--fp-muted);
@@ -5694,25 +5696,55 @@ class Floorplaner extends IPSModuleStrict
             if (!streamStatus) return;
 
             const origin = window.location.origin;
+            const locationInfo = {
+                href: window.location.href,
+                origin: window.location.origin,
+                protocol: window.location.protocol,
+                host: window.location.host,
+                hostname: window.location.hostname,
+                port: window.location.port,
+                pathname: window.location.pathname,
+                search: window.location.search,
+                hash: window.location.hash,
+                referrer: document.referrer || '',
+                baseURI: document.baseURI || '',
+                userAgent: navigator.userAgent || ''
+            };
+
             const pathCandidates = [
                 `/proxy/${mediaID}`,
                 `/visu/proxy/${mediaID}`,
                 `/preview/proxy/${mediaID}`
             ];
 
-            // Falls die aktuelle Visu selbst unter /visu/<ID>/ läuft, auch diesen
-            // konkreten Pfad testen, da die App/ipmagic-Routen hiervon abhängen können.
             const visuMatch = window.location.pathname.match(/\/visu\/(\d+)(?:\/|$)/i);
             if (visuMatch) {
                 pathCandidates.splice(1, 0, `/visu/${visuMatch[1]}/proxy/${mediaID}`);
             }
 
-            const candidates = [...new Set(
-                pathCandidates.map(path => new URL(path, origin).toString())
-            )];
+            // Zusätzlich Pfade relativ zum tatsächlich geladenen Dokument testen.
+            // Das ist für App-/Connect-WebViews interessant, wenn vor dem eigentlichen
+            // WebFront noch ein Routing-Präfix liegt.
+            const relativeCandidates = [
+                `proxy/${mediaID}`,
+                `./proxy/${mediaID}`,
+                `../proxy/${mediaID}`
+            ];
+
+            const candidates = [...new Set([
+                ...pathCandidates.map(path => new URL(path, origin).toString()),
+                ...relativeCandidates.map(path => new URL(path, window.location.href).toString())
+            ])];
 
             streamStatus.innerHTML =
-                `Prüfe ${candidates.length} Symcon-Pfade über ${escapeHtml(origin)} …`;
+                `<div><strong>Umgebung</strong></div>` +
+                `<div>href: ${escapeHtml(locationInfo.href)}</div>` +
+                `<div>origin: ${escapeHtml(locationInfo.origin)}</div>` +
+                `<div>path: ${escapeHtml(locationInfo.pathname + locationInfo.search + locationInfo.hash)}</div>` +
+                `<div>referrer: ${escapeHtml(locationInfo.referrer || 'leer')}</div>` +
+                `<div>baseURI: ${escapeHtml(locationInfo.baseURI || 'leer')}</div>` +
+                `<div>UA: ${escapeHtml(locationInfo.userAgent)}</div>` +
+                `<div style="margin-top:6px"><strong>Prüfe ${candidates.length} Stream-Routen …</strong></div>`;
 
             const results = [];
 
@@ -5725,10 +5757,13 @@ class Floorplaner extends IPSModuleStrict
                     const response = await fetch(url, {
                         method: 'GET',
                         cache: 'no-store',
+                        credentials: 'include',
+                        redirect: 'follow',
                         signal: controller.signal
                     });
 
                     const contentType = response.headers.get('content-type') || '';
+                    const contentLength = response.headers.get('content-length') || '';
                     const elapsed = Math.round(performance.now() - started);
 
                     const usable =
@@ -5741,8 +5776,13 @@ class Floorplaner extends IPSModuleStrict
 
                     results.push({
                         url,
+                        finalUrl: response.url || url,
                         status: response.status,
+                        statusText: response.statusText || '',
+                        redirected: response.redirected === true,
+                        type: response.type || '',
                         contentType,
+                        contentLength,
                         elapsed,
                         usable
                     });
@@ -5755,8 +5795,13 @@ class Floorplaner extends IPSModuleStrict
                 } catch (e) {
                     results.push({
                         url,
+                        finalUrl: '',
                         status: 0,
+                        statusText: '',
+                        redirected: false,
+                        type: '',
                         contentType: '',
+                        contentLength: '',
                         elapsed: Math.round(performance.now() - started),
                         usable: false,
                         error: e?.name === 'AbortError'
@@ -5770,28 +5815,35 @@ class Floorplaner extends IPSModuleStrict
 
             const winner = results.find(result => result.usable);
 
-            streamStatus.innerHTML = results.map(result => {
-                const shortUrl = result.url.replace(origin, '');
-                const state = result.usable ? 'OK' : 'Fehler';
+            streamStatus.innerHTML += results.map(result => {
                 const details = result.error
                     ? result.error
-                    : `${result.status} · ${result.contentType || 'kein Content-Type'}`;
-                return `<div><strong>${state}</strong> · ${escapeHtml(shortUrl)} · ${escapeHtml(details)} · ${result.elapsed} ms</div>`;
+                    : `${result.status} ${result.statusText} · ${result.contentType || 'kein Content-Type'} · type=${result.type || '-'}${result.redirected ? ' · redirect' : ''}`;
+                const finalInfo =
+                    result.finalUrl && result.finalUrl !== result.url
+                        ? `<div>→ ${escapeHtml(result.finalUrl)}</div>`
+                        : '';
+
+                return (
+                    `<div style="margin-top:5px">` +
+                    `<strong>${result.usable ? 'OK' : 'Fehler'}</strong> · ${escapeHtml(result.url)}<br>` +
+                    `${escapeHtml(details)} · ${result.elapsed} ms` +
+                    finalInfo +
+                    `</div>`
+                );
             }).join('');
 
             if (winner) {
-                // Nur für dieses geöffnete Kamerafenster verwenden. Noch nichts
-                // dauerhaft in der Floorplan-Konfiguration speichern.
                 const streamImg = controlBody.querySelector('.stream-view img');
-                if (streamImg && streamImg.src !== winner.url) {
-                    streamImg.src = winner.url;
+                if (streamImg && streamImg.src !== winner.finalUrl) {
+                    streamImg.src = winner.finalUrl || winner.url;
                 }
 
                 streamStatus.innerHTML +=
-                    `<div><strong>Verwendet:</strong> ${escapeHtml(winner.url)}</div>`;
+                    `<div style="margin-top:6px"><strong>Verwendet:</strong> ${escapeHtml(winner.finalUrl || winner.url)}</div>`;
             } else {
                 streamStatus.innerHTML +=
-                    `<div><strong>Kein nutzbarer MJPEG-Proxy gefunden.</strong></div>`;
+                    `<div style="margin-top:6px"><strong>Kein nutzbarer MJPEG-Proxy gefunden.</strong></div>`;
             }
         };
 
