@@ -1625,7 +1625,7 @@ class Floorplaner extends IPSModuleStrict
     </div>
     <div class="toolbar">
         <div class="group">
-            <button data-tool="pan" class="active" title="Grundriss mit der Maus verschieben">Verschieben</button>
+            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
             <select id="shapeToolSelect" title="Form zeichnen">
                 <option value="" disabled selected>Formen</option>
                 <option value="shape-line">Linie</option>
@@ -1744,7 +1744,7 @@ class Floorplaner extends IPSModuleStrict
     let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
-    let tool = 'pan';
+    let tool = '';
     let selected = null;
     let wallStart = null;
     let preview = null;
@@ -5122,7 +5122,7 @@ class Floorplaner extends IPSModuleStrict
         // Nach jeder gezeichneten Form zurück in den normalen Auswahl-/Verschiebemodus.
         // Für eine weitere Form muss Linie/Rechteck/Kreis erneut gewählt werden.
         if (finishedShape) {
-            setTool('pan');
+            setTool('');
         }
     });
 
