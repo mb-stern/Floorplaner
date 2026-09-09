@@ -1627,7 +1627,7 @@ class Floorplaner extends IPSModuleStrict
         <div class="group">
             <button data-tool="pan" class="active" title="Grundriss mit der Maus verschieben">Verschieben</button>
             <select id="shapeToolSelect" title="Form zeichnen">
-                <option value="" disabled hidden>Formen</option>
+                <option value="" disabled selected>Formen</option>
                 <option value="shape-line">Linie</option>
                 <option value="shape-rect">Rechteck</option>
                 <option value="shape-circle">Kreis</option>
@@ -2031,7 +2031,10 @@ class Floorplaner extends IPSModuleStrict
         });
         const shapeSelect = document.getElementById('shapeToolSelect');
         if (shapeSelect) {
-            shapeSelect.value = tool.startsWith('shape-') ? tool : '';
+            // Die Box soll immer "Formen" anzeigen. Die gewählte Form ist nur
+            // das aktive Werkzeug und wird nicht als dauerhafte Beschriftung
+            // im Dropdown stehen gelassen.
+            shapeSelect.value = '';
         }
         render();
     }
