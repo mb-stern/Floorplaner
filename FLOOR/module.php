@@ -5600,7 +5600,21 @@ class Floorplaner extends IPSModuleStrict
         controlModal.classList.remove('stream-expanded');
         controlTitle.textContent = item.name || 'Kamera';
 
-        const streamUrl = `/proxy/${mediaID}`;
+        const getStreamProxyUrl = mediaID => {
+            const currentOrigin = window.location.origin;
+            const currentHost = String(window.location.hostname || '').toLowerCase();
+
+            // In der IP-Symcon App kann die Visualisierung über eine ipmagic-Adresse
+            // geöffnet sein. In diesem Fall muss auch der Medienproxy über genau
+            // diesen Origin laufen. Im Browser/WLAN bleibt der aktuelle Origin erhalten.
+            if (currentHost.includes('ipmagic')) {
+                return new URL(`/proxy/${mediaID}`, currentOrigin).toString();
+            }
+
+            return new URL(`/proxy/${mediaID}`, currentOrigin).toString();
+        };
+
+        const streamUrl = getStreamProxyUrl(mediaID);
         controlBody.innerHTML = `
             <div class="stream-popup-body">
                 <div class="stream-view">
@@ -5679,43 +5693,105 @@ class Floorplaner extends IPSModuleStrict
         const checkStreamConnection = async () => {
             if (!streamStatus) return;
 
-            const testUrl = new URL(`/proxy/${mediaID}`, window.location.origin).toString();
-            streamStatus.textContent = `Prüfe ${testUrl} …`;
+            const origin = window.location.origin;
+            const pathCandidates = [
+                `/proxy/${mediaID}`,
+                `/visu/proxy/${mediaID}`,
+                `/preview/proxy/${mediaID}`
+            ];
 
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 8000);
+            // Falls die aktuelle Visu selbst unter /visu/<ID>/ läuft, auch diesen
+            // konkreten Pfad testen, da die App/ipmagic-Routen hiervon abhängen können.
+            const visuMatch = window.location.pathname.match(/\/visu\/(\d+)(?:\/|$)/i);
+            if (visuMatch) {
+                pathCandidates.splice(1, 0, `/visu/${visuMatch[1]}/proxy/${mediaID}`);
+            }
 
-            try {
-                const response = await fetch(testUrl, {
-                    method: 'GET',
-                    cache: 'no-store',
-                    signal: controller.signal
-                });
+            const candidates = [...new Set(
+                pathCandidates.map(path => new URL(path, origin).toString())
+            )];
 
-                const contentType = response.headers.get('content-type') || '';
+            streamStatus.innerHTML =
+                `Prüfe ${candidates.length} Symcon-Pfade über ${escapeHtml(origin)} …`;
 
-                // Laufenden MJPEG-Stream nicht weiter lesen.
+            const results = [];
+
+            for (const url of candidates) {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 5000);
+                const started = performance.now();
+
                 try {
-                    await response.body?.cancel();
-                } catch (e) {}
-                controller.abort();
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        cache: 'no-store',
+                        signal: controller.signal
+                    });
 
-                const ok =
-                    response.status === 200 &&
-                    contentType.toLowerCase().includes('multipart/x-mixed-replace');
+                    const contentType = response.headers.get('content-type') || '';
+                    const elapsed = Math.round(performance.now() - started);
 
-                streamStatus.textContent = ok
-                    ? `OK · ${window.location.origin} · ${response.status} · ${contentType}`
-                    : `Nicht nutzbar · ${window.location.origin} · ${response.status} · ${contentType || 'kein Content-Type'}`;
-            } catch (e) {
-                streamStatus.textContent =
-                    `Fehler · ${window.location.origin} · ${
-                        e?.name === 'AbortError'
-                            ? 'Zeitüberschreitung'
+                    const usable =
+                        response.status === 200 &&
+                        contentType.toLowerCase().includes('multipart/x-mixed-replace');
+
+                    try {
+                        await response.body?.cancel();
+                    } catch (e) {}
+
+                    results.push({
+                        url,
+                        status: response.status,
+                        contentType,
+                        elapsed,
+                        usable
+                    });
+
+                    if (usable) {
+                        clearTimeout(timer);
+                        controller.abort();
+                        break;
+                    }
+                } catch (e) {
+                    results.push({
+                        url,
+                        status: 0,
+                        contentType: '',
+                        elapsed: Math.round(performance.now() - started),
+                        usable: false,
+                        error: e?.name === 'AbortError'
+                            ? 'Timeout'
                             : String(e?.message || e)
-                    }`;
-            } finally {
-                clearTimeout(timer);
+                    });
+                } finally {
+                    clearTimeout(timer);
+                }
+            }
+
+            const winner = results.find(result => result.usable);
+
+            streamStatus.innerHTML = results.map(result => {
+                const shortUrl = result.url.replace(origin, '');
+                const state = result.usable ? 'OK' : 'Fehler';
+                const details = result.error
+                    ? result.error
+                    : `${result.status} · ${result.contentType || 'kein Content-Type'}`;
+                return `<div><strong>${state}</strong> · ${escapeHtml(shortUrl)} · ${escapeHtml(details)} · ${result.elapsed} ms</div>`;
+            }).join('');
+
+            if (winner) {
+                // Nur für dieses geöffnete Kamerafenster verwenden. Noch nichts
+                // dauerhaft in der Floorplan-Konfiguration speichern.
+                const streamImg = controlBody.querySelector('.stream-view img');
+                if (streamImg && streamImg.src !== winner.url) {
+                    streamImg.src = winner.url;
+                }
+
+                streamStatus.innerHTML +=
+                    `<div><strong>Verwendet:</strong> ${escapeHtml(winner.url)}</div>`;
+            } else {
+                streamStatus.innerHTML +=
+                    `<div><strong>Kein nutzbarer MJPEG-Proxy gefunden.</strong></div>`;
             }
         };
 
