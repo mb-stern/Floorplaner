@@ -1378,9 +1378,19 @@ class Floorplaner extends IPSModuleStrict
             max-height: calc(100vh - 120px);
         }
 
+        .stream-popup-status {
+            min-height: 16px;
+            font-size: 11px;
+            line-height: 1.3;
+            color: var(--fp-muted);
+            word-break: break-word;
+        }
+
         .stream-popup-actions {
             display: flex;
             justify-content: flex-end;
+            gap: 6px;
+            flex-wrap: wrap;
         }
 
         .stream-popup-actions button {
@@ -5596,7 +5606,9 @@ class Floorplaner extends IPSModuleStrict
                 <div class="stream-view">
                     <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(item.name || 'Stream')}">
                 </div>
+                <div class="stream-popup-status" data-stream-status></div>
                 <div class="stream-popup-actions">
+                    <button type="button" data-stream-check>Verbindung prüfen</button>
                     <button type="button" data-stream-expand>Vergrößern</button>
                 </div>
             </div>
@@ -5660,6 +5672,58 @@ class Floorplaner extends IPSModuleStrict
                 dialog.style.bottom = '';
             });
         };
+
+        const streamStatus = controlBody.querySelector('[data-stream-status]');
+        const checkBtn = controlBody.querySelector('[data-stream-check]');
+
+        const checkStreamConnection = async () => {
+            if (!streamStatus) return;
+
+            const testUrl = new URL(`/proxy/${mediaID}`, window.location.origin).toString();
+            streamStatus.textContent = `Prüfe ${testUrl} …`;
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 8000);
+
+            try {
+                const response = await fetch(testUrl, {
+                    method: 'GET',
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+
+                const contentType = response.headers.get('content-type') || '';
+
+                // Laufenden MJPEG-Stream nicht weiter lesen.
+                try {
+                    await response.body?.cancel();
+                } catch (e) {}
+                controller.abort();
+
+                const ok =
+                    response.status === 200 &&
+                    contentType.toLowerCase().includes('multipart/x-mixed-replace');
+
+                streamStatus.textContent = ok
+                    ? `OK · ${window.location.origin} · ${response.status} · ${contentType}`
+                    : `Nicht nutzbar · ${window.location.origin} · ${response.status} · ${contentType || 'kein Content-Type'}`;
+            } catch (e) {
+                streamStatus.textContent =
+                    `Fehler · ${window.location.origin} · ${
+                        e?.name === 'AbortError'
+                            ? 'Zeitüberschreitung'
+                            : String(e?.message || e)
+                    }`;
+            } finally {
+                clearTimeout(timer);
+            }
+        };
+
+        checkBtn?.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            checkStreamConnection();
+        });
 
         const expandBtn = controlBody.querySelector('[data-stream-expand]');
         expandBtn?.addEventListener('click', () => {
