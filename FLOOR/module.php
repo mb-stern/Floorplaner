@@ -1601,7 +1601,7 @@ class Floorplaner extends IPSModuleStrict
         <div class="group">
             <button data-tool="pan" class="active" title="Grundriss mit der Maus verschieben">Verschieben</button>
             <select id="shapeToolSelect" title="Form zeichnen">
-                <option value="">Formen</option>
+                <option value="" disabled hidden>Formen</option>
                 <option value="shape-line">Linie</option>
                 <option value="shape-rect">Rechteck</option>
                 <option value="shape-circle">Kreis</option>
@@ -4615,7 +4615,10 @@ class Floorplaner extends IPSModuleStrict
         const p = svgPoint(evt);
         const floor = currentFloor();
 
-        if (state.mode !== 'view' && tool === 'pan') {
+        if (state.mode !== 'view' && tool === 'pan' && !target) {
+            // Im Verschieben-Modus bewegt ein Klick auf freie Fläche den ganzen Plan.
+            // Ein Klick direkt auf ein Element fällt bewusst weiter zur Elementauswahl
+            // durch, damit kein separater Auswahl-Button benötigt wird.
             drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
             svg.setPointerCapture(evt.pointerId);
             evt.preventDefault();
@@ -4707,7 +4710,7 @@ class Floorplaner extends IPSModuleStrict
 
         // Auswahl braucht kein eigenes Werkzeug: vorhandene Elemente können
         // im Editor jederzeit direkt angeklickt und verschoben werden.
-        if (state.mode !== 'view' && target && tool !== 'pan' &&
+        if (state.mode !== 'view' && target &&
             !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
             selected = {type: target.dataset.type, id: target.dataset.id};
             const obj = findEntity(selected.type, selected.id);
