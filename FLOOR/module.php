@@ -1182,7 +1182,10 @@ class Floorplaner extends IPSModuleStrict
            angleichen. Im dunklen Theme bleibt die bestehende Darstellung
            über var(--fp-text) unverändert. */
         html[data-theme="light"] .drawing-shape {
-            stroke: #252525;
+            /* Gleiche sichtbare Linienfarbe wie Tür/Fenster im hellen Theme.
+               #252525 war deutlich dunkler als die späteren Light-Theme-Regeln
+               für Wand (#4a4a4a) und Öffnung (#5f5f5f). */
+            stroke: #5f5f5f;
         }
 
         html[data-theme="light"] .drawing-shape.selection-shape {
