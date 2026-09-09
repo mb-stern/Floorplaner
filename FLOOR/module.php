@@ -1378,21 +1378,9 @@ class Floorplaner extends IPSModuleStrict
             max-height: calc(100vh - 120px);
         }
 
-        .stream-popup-status {
-            min-height: 16px;
-            max-height: min(34vh, 260px);
-            overflow: auto;
-            font-size: 11px;
-            line-height: 1.3;
-            color: var(--fp-muted);
-            word-break: break-word;
-        }
-
         .stream-popup-actions {
             display: flex;
             justify-content: flex-end;
-            gap: 6px;
-            flex-wrap: wrap;
         }
 
         .stream-popup-actions button {
@@ -5602,29 +5590,13 @@ class Floorplaner extends IPSModuleStrict
         controlModal.classList.remove('stream-expanded');
         controlTitle.textContent = item.name || 'Kamera';
 
-        const getStreamProxyUrl = mediaID => {
-            const currentOrigin = window.location.origin;
-            const currentHost = String(window.location.hostname || '').toLowerCase();
-
-            // In der IP-Symcon App kann die Visualisierung über eine ipmagic-Adresse
-            // geöffnet sein. In diesem Fall muss auch der Medienproxy über genau
-            // diesen Origin laufen. Im Browser/WLAN bleibt der aktuelle Origin erhalten.
-            if (currentHost.includes('ipmagic')) {
-                return new URL(`/proxy/${mediaID}`, currentOrigin).toString();
-            }
-
-            return new URL(`/proxy/${mediaID}`, currentOrigin).toString();
-        };
-
-        const streamUrl = getStreamProxyUrl(mediaID);
+        const streamUrl = `/proxy/${mediaID}`;
         controlBody.innerHTML = `
             <div class="stream-popup-body">
                 <div class="stream-view">
                     <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(item.name || 'Stream')}">
                 </div>
-                <div class="stream-popup-status" data-stream-status></div>
                 <div class="stream-popup-actions">
-                    <button type="button" data-stream-check>Verbindung prüfen</button>
                     <button type="button" data-stream-expand>Vergrößern</button>
                 </div>
             </div>
@@ -5688,170 +5660,6 @@ class Floorplaner extends IPSModuleStrict
                 dialog.style.bottom = '';
             });
         };
-
-        const streamStatus = controlBody.querySelector('[data-stream-status]');
-        const checkBtn = controlBody.querySelector('[data-stream-check]');
-
-        const checkStreamConnection = async () => {
-            if (!streamStatus) return;
-
-            const origin = window.location.origin;
-            const locationInfo = {
-                href: window.location.href,
-                origin: window.location.origin,
-                protocol: window.location.protocol,
-                host: window.location.host,
-                hostname: window.location.hostname,
-                port: window.location.port,
-                pathname: window.location.pathname,
-                search: window.location.search,
-                hash: window.location.hash,
-                referrer: document.referrer || '',
-                baseURI: document.baseURI || '',
-                userAgent: navigator.userAgent || ''
-            };
-
-            const pathCandidates = [
-                `/proxy/${mediaID}`,
-                `/visu/proxy/${mediaID}`,
-                `/preview/proxy/${mediaID}`
-            ];
-
-            const visuMatch = window.location.pathname.match(/\/visu\/(\d+)(?:\/|$)/i);
-            if (visuMatch) {
-                pathCandidates.splice(1, 0, `/visu/${visuMatch[1]}/proxy/${mediaID}`);
-            }
-
-            // Zusätzlich Pfade relativ zum tatsächlich geladenen Dokument testen.
-            // Das ist für App-/Connect-WebViews interessant, wenn vor dem eigentlichen
-            // WebFront noch ein Routing-Präfix liegt.
-            const relativeCandidates = [
-                `proxy/${mediaID}`,
-                `./proxy/${mediaID}`,
-                `../proxy/${mediaID}`
-            ];
-
-            const candidates = [...new Set([
-                ...pathCandidates.map(path => new URL(path, origin).toString()),
-                ...relativeCandidates.map(path => new URL(path, window.location.href).toString())
-            ])];
-
-            streamStatus.innerHTML =
-                `<div><strong>Umgebung</strong></div>` +
-                `<div>href: ${escapeHtml(locationInfo.href)}</div>` +
-                `<div>origin: ${escapeHtml(locationInfo.origin)}</div>` +
-                `<div>path: ${escapeHtml(locationInfo.pathname + locationInfo.search + locationInfo.hash)}</div>` +
-                `<div>referrer: ${escapeHtml(locationInfo.referrer || 'leer')}</div>` +
-                `<div>baseURI: ${escapeHtml(locationInfo.baseURI || 'leer')}</div>` +
-                `<div>UA: ${escapeHtml(locationInfo.userAgent)}</div>` +
-                `<div style="margin-top:6px"><strong>Prüfe ${candidates.length} Stream-Routen …</strong></div>`;
-
-            const results = [];
-
-            for (const url of candidates) {
-                const controller = new AbortController();
-                const timer = setTimeout(() => controller.abort(), 5000);
-                const started = performance.now();
-
-                try {
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        cache: 'no-store',
-                        credentials: 'include',
-                        redirect: 'follow',
-                        signal: controller.signal
-                    });
-
-                    const contentType = response.headers.get('content-type') || '';
-                    const contentLength = response.headers.get('content-length') || '';
-                    const elapsed = Math.round(performance.now() - started);
-
-                    const usable =
-                        response.status === 200 &&
-                        contentType.toLowerCase().includes('multipart/x-mixed-replace');
-
-                    try {
-                        await response.body?.cancel();
-                    } catch (e) {}
-
-                    results.push({
-                        url,
-                        finalUrl: response.url || url,
-                        status: response.status,
-                        statusText: response.statusText || '',
-                        redirected: response.redirected === true,
-                        type: response.type || '',
-                        contentType,
-                        contentLength,
-                        elapsed,
-                        usable
-                    });
-
-                    if (usable) {
-                        clearTimeout(timer);
-                        controller.abort();
-                        break;
-                    }
-                } catch (e) {
-                    results.push({
-                        url,
-                        finalUrl: '',
-                        status: 0,
-                        statusText: '',
-                        redirected: false,
-                        type: '',
-                        contentType: '',
-                        contentLength: '',
-                        elapsed: Math.round(performance.now() - started),
-                        usable: false,
-                        error: e?.name === 'AbortError'
-                            ? 'Timeout'
-                            : String(e?.message || e)
-                    });
-                } finally {
-                    clearTimeout(timer);
-                }
-            }
-
-            const winner = results.find(result => result.usable);
-
-            streamStatus.innerHTML += results.map(result => {
-                const details = result.error
-                    ? result.error
-                    : `${result.status} ${result.statusText} · ${result.contentType || 'kein Content-Type'} · type=${result.type || '-'}${result.redirected ? ' · redirect' : ''}`;
-                const finalInfo =
-                    result.finalUrl && result.finalUrl !== result.url
-                        ? `<div>→ ${escapeHtml(result.finalUrl)}</div>`
-                        : '';
-
-                return (
-                    `<div style="margin-top:5px">` +
-                    `<strong>${result.usable ? 'OK' : 'Fehler'}</strong> · ${escapeHtml(result.url)}<br>` +
-                    `${escapeHtml(details)} · ${result.elapsed} ms` +
-                    finalInfo +
-                    `</div>`
-                );
-            }).join('');
-
-            if (winner) {
-                const streamImg = controlBody.querySelector('.stream-view img');
-                if (streamImg && streamImg.src !== winner.finalUrl) {
-                    streamImg.src = winner.finalUrl || winner.url;
-                }
-
-                streamStatus.innerHTML +=
-                    `<div style="margin-top:6px"><strong>Verwendet:</strong> ${escapeHtml(winner.finalUrl || winner.url)}</div>`;
-            } else {
-                streamStatus.innerHTML +=
-                    `<div style="margin-top:6px"><strong>Kein nutzbarer MJPEG-Proxy gefunden.</strong></div>`;
-            }
-        };
-
-        checkBtn?.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            checkStreamConnection();
-        });
 
         const expandBtn = controlBody.querySelector('[data-stream-expand]');
         expandBtn?.addEventListener('click', () => {
