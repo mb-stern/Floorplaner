@@ -5602,6 +5602,8 @@ class Floorplaner extends IPSModuleStrict
             </div>
         `;
 
+        let streamSmallPosition = null;
+
         const fitStreamDialogIntoViewport = () => {
             const dialog = controlModal.querySelector('.control-modal');
             if (!dialog) return;
@@ -5630,11 +5632,56 @@ class Floorplaner extends IPSModuleStrict
             });
         };
 
+        const restoreSmallStreamPosition = () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            if (!dialog || !streamSmallPosition) return;
+
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = streamSmallPosition.left;
+                let top = streamSmallPosition.top;
+
+                // Nur falls sich die Kachel/Viewport-Größe inzwischen geändert hat,
+                // die ursprüngliche Position so weit wie nötig innerhalb halten.
+                left = Math.max(
+                    margin,
+                    Math.min(left, window.innerWidth - rect.width - margin)
+                );
+                top = Math.max(
+                    margin,
+                    Math.min(top, window.innerHeight - rect.height - margin)
+                );
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        };
+
         const expandBtn = controlBody.querySelector('[data-stream-expand]');
         expandBtn?.addEventListener('click', () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            const wasExpanded = controlModal.classList.contains('stream-expanded');
+
+            if (!wasExpanded && dialog) {
+                const rect = dialog.getBoundingClientRect();
+                streamSmallPosition = {
+                    left: rect.left,
+                    top: rect.top
+                };
+            }
+
             const expanded = controlModal.classList.toggle('stream-expanded');
             expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
-            fitStreamDialogIntoViewport();
+
+            if (expanded) {
+                fitStreamDialogIntoViewport();
+            } else {
+                restoreSmallStreamPosition();
+            }
         });
 
         controlModal.classList.add('open');
