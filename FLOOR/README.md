@@ -73,6 +73,14 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ## 📝 Änderungen
 
+### 1.8
+
+- Fenster und Türen sind nun umfassend konfigurierbar.
+- Videofenster wird nicht mehr durch den Rand der Kachel abgeschnitten.
+- Es können nun Formen wie Rechtecke, Kreise oder Linien erstellt werden.
+- Der grösste Teil des Codes wird nun über einen Webhook bereitgestellt, um die Output-Buffer Meldungen von Symcon zu verhindern.
+- Diverse kleinere Anpassungen.
+
 ### 1.7
 
 - Der farbige Statusring funktioniert nun auch im hellen Theme.

@@ -21,6 +21,11 @@ class Floorplaner extends IPSModuleStrict
     {
         parent::Create();
 
+        // Easy-Floorplan bleibt als eigene Originaldatei im Modulbaum und wird
+        // wie beim Energiefluss-Modul über einen instanzspezifischen WebHook
+        // ausgeliefert. Dadurch muss die große JS-Datei nicht in die HTML-Ausgabe.
+        $this->RegisterHook($this->GetVisualizationWebHookBaseAddress());
+
         $this->RegisterPropertyInteger('GridSize', 20);
         $this->RegisterPropertyInteger('SnapSize', 20);
         $this->RegisterPropertyString('BackgroundColor', '#303030');
@@ -195,6 +200,8 @@ class Floorplaner extends IPSModuleStrict
     {
         $project = $this->GetProject();
 
+        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
+
         /*
          * Raster- und Anzeigeeinstellungen gehören zum gespeicherten Floorplan.
          * Sie dürfen beim Laden der HTML-SDK-Kachel nicht mehr durch die alten
@@ -215,6 +222,7 @@ class Floorplaner extends IPSModuleStrict
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <script src="/icons.js"></script>
+    <script type="module" src="__EASY_FLOORPLAN_MODULE_URL__"></script>
     <style>
         :root {
             --fp-bg: transparent;
@@ -390,6 +398,28 @@ class Floorplaner extends IPSModuleStrict
             vector-effect: non-scaling-stroke;
             stroke-dasharray: 7 4;
             pointer-events: none;
+        }
+
+        .drawing-shape {
+            fill: none;
+            stroke: var(--fp-text);
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+            cursor: move;
+        }
+
+        /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
+           mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
+        .drawing-shape-hit {
+            fill: none;
+            stroke: transparent;
+            stroke-width: 7;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+            cursor: move;
+        }
+        .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
         }
 
         .wall {
@@ -702,15 +732,27 @@ class Floorplaner extends IPSModuleStrict
 
         .device-label {
             pointer-events: none;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
         }
 
-        .device text,
+        .device-label,
+        .runtime-value,
         .plan-text {
             fill: white;
             font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+            line-height: 1;
             paint-order: stroke;
             stroke: rgba(0,0,0,.35);
             stroke-width: 2px;
+            text-rendering: geometricPrecision;
         }
 
         .grid-line {
@@ -921,6 +963,11 @@ class Floorplaner extends IPSModuleStrict
 
         .runtime-value {
             fill: #d7e9ff !important;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
         }
 
         .runtime-value-frame {
@@ -1085,6 +1132,24 @@ class Floorplaner extends IPSModuleStrict
 
 
 
+        .grid-editor-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            width: auto;
+            flex: 0 0 auto;
+        }
+
+        .grid-size-input {
+            width: 4.5ch;
+            min-width: 4.5ch;
+            max-width: 4.5ch;
+            box-sizing: content-box;
+            padding-left: 4px;
+            padding-right: 2px;
+            flex: 0 0 auto;
+        }
+
         .view-mode .grid-editor-controls {
             display: none !important;
         }
@@ -1122,6 +1187,20 @@ class Floorplaner extends IPSModuleStrict
 
         html[data-theme="light"] .wall {
             stroke: #181818;
+        }
+
+        /* Gezeichnete Formen im hellen Theme an die übrigen Konturlinien
+           angleichen. Im dunklen Theme bleibt die bestehende Darstellung
+           über var(--fp-text) unverändert. */
+        html[data-theme="light"] .drawing-shape {
+            /* Gleiche sichtbare Linienfarbe wie Tür/Fenster im hellen Theme.
+               #252525 war deutlich dunkler als die späteren Light-Theme-Regeln
+               für Wand (#4a4a4a) und Öffnung (#5f5f5f). */
+            stroke: #5f5f5f;
+        }
+
+        html[data-theme="light"] .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
         }
 
         html[data-theme="light"] .furniture {
@@ -1294,7 +1373,7 @@ class Floorplaner extends IPSModuleStrict
             color: #303030;
             stroke: none !important;
             paint-order: normal !important;
-            text-rendering: optimizeLegibility;
+            text-rendering: geometricPrecision;
         }
 
         /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
@@ -1323,13 +1402,16 @@ class Floorplaner extends IPSModuleStrict
         .stream-popup-body {
             display: grid;
             gap: 8px;
+            width: min(320px, calc(100vw - 32px));
+            max-width: 100%;
         }
 
         .stream-view {
-            width: 320px;
-            height: 180px;
-            max-width: min(72vw, 640px);
-            max-height: min(60vh, 360px);
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            height: auto;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
             overflow: hidden;
             border-radius: 7px;
             background: #000;
@@ -1338,16 +1420,24 @@ class Floorplaner extends IPSModuleStrict
         .stream-view img {
             width: 100%;
             height: 100%;
+            max-width: 100%;
+            max-height: 100%;
             display: block;
             object-fit: contain;
             background: #000;
         }
 
+        #controlModal.stream-expanded .stream-popup-body {
+            width: min(960px, calc(100vw - 32px));
+            max-width: 100%;
+        }
+
         #controlModal.stream-expanded .stream-view {
-            width: min(78vw, 960px);
-            height: min(68vh, 540px);
-            max-width: none;
-            max-height: none;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
         }
 
         .stream-popup-actions {
@@ -1382,6 +1472,10 @@ class Floorplaner extends IPSModuleStrict
             position: fixed;
             margin: 0;
             pointer-events: auto;
+            max-width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         /* Einheitlicher Cursor für den Grundriss:
@@ -1545,19 +1639,24 @@ class Floorplaner extends IPSModuleStrict
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
                 Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
-                Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
-                Verschieben: Werkzeug wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
+                Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
+                Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
+                Formen: Linie, Rechteck oder Kreis im Dropdown wählen und mit der Maus aufziehen.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
                 − / +: manuell heraus- oder hineinzoomen.<br>
-                Start: jederzeit auf die ursprüngliche 1:1-Startansicht der aktuellen Etage zurück.<br>
                 Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
             </div>
         </aside>
     </div>
     <div class="toolbar">
         <div class="group">
-            <button data-tool="select" class="active">Auswahl</button>
             <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
+            <select id="shapeToolSelect" title="Form zeichnen">
+                <option value="" disabled selected>Formen</option>
+                <option value="shape-line">Linie</option>
+                <option value="shape-rect">Rechteck</option>
+                <option value="shape-circle">Kreis</option>
+            </select>
             <button data-tool="wall">Wand</button>
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
@@ -1587,9 +1686,8 @@ class Floorplaner extends IPSModuleStrict
         <div class="group">
             <button id="zoomOutBtn" type="button" title="Herauszoomen">−</button>
             <button id="zoomInBtn" type="button" title="Hineinzoomen">+</button>
-            <button id="homeViewBtn" type="button" title="Zur Startansicht dieser Etage">Start</button>
             <button id="fitBtn">Einpassen</button>
-            <button id="finishBtn">Fertig / Bedienen</button>
+            <button id="finishBtn">Live-Ansicht</button>
         </div>
 
         <div class="spacer"></div>
@@ -1671,7 +1769,7 @@ class Floorplaner extends IPSModuleStrict
     let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
-    let tool = 'select';
+    let tool = '';
     let selected = null;
     let wallStart = null;
     let preview = null;
@@ -1804,6 +1902,7 @@ class Floorplaner extends IPSModuleStrict
             texts: [],
             furniture: [],
             areas: [],
+            shapes: [],
             trackers: []
         }];
 
@@ -1830,6 +1929,16 @@ class Floorplaner extends IPSModuleStrict
                 }
                 if (!opening.shutterValueMap || typeof opening.shutterValueMap !== 'object' || Array.isArray(opening.shutterValueMap)) {
                     opening.shutterValueMap = {};
+                }
+                if (typeof opening.shutterSideInvert !== 'boolean') {
+                    opening.shutterSideInvert = false;
+                }
+                if (typeof opening.doorSideInvert !== 'boolean') {
+                    opening.doorSideInvert = false;
+                }
+                opening.openStatusColor = normalizeStatusColor(opening.openStatusColor || '#4da3ff');
+                if (typeof opening.openStatusColorManual !== 'boolean') {
+                    opening.openStatusColorManual = false;
                 }
             }
             floor.items = Array.isArray(floor.items) ? floor.items : [];
@@ -1945,6 +2054,13 @@ class Floorplaner extends IPSModuleStrict
         document.querySelectorAll('[data-tool]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
+        const shapeSelect = document.getElementById('shapeToolSelect');
+        if (shapeSelect) {
+            // Die Box soll immer "Formen" anzeigen. Die gewählte Form ist nur
+            // das aktive Werkzeug und wird nicht als dauerhafte Beschriftung
+            // im Dropdown stehen gelassen.
+            shapeSelect.value = '';
+        }
         render();
     }
 
@@ -2768,10 +2884,34 @@ class Floorplaner extends IPSModuleStrict
         // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
         // zuverlässig anklickbar.
         const shutterControlParts = [];
+        // Nur die sichtbaren Flügel geöffneter Türen/Fenster werden zusätzlich
+        // gesammelt und nach den Möbeln nochmals gezeichnet.
+        // Keine Hitboxen, Wandöffnungen oder Bedienlogik werden dupliziert.
+        const openOpeningTopParts = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
         const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
         const openingGapThickness = wallThickness + 4;
+
+        for (const shape of floor.shapes || []) {
+            const sel = selected?.type === 'shape' && selected.id === shape.id;
+            const cls = sel ? ' selection-shape' : '';
+            if (shape.kind === 'line') {
+                parts.push(`<line class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
+                parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
+                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+            } else if (shape.kind === 'rect') {
+                const x=Math.min(shape.x1,shape.x2), y=Math.min(shape.y1,shape.y2), w=Math.abs(shape.x2-shape.x1), h=Math.abs(shape.y2-shape.y1);
+                parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
+                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
+                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+            } else if (shape.kind === 'circle') {
+                const r=Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1);
+                parts.push(`<circle class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
+                parts.push(`<circle class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
+                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+            }
+        }
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
@@ -2803,6 +2943,7 @@ class Floorplaner extends IPSModuleStrict
             const amount = openingState(o);
             const isOpen = amount > 0.02;
             const stateClass = isOpen ? ' opening-state-open' : '';
+            const openingColor = effectiveOpeningStatusColor(o);
 
             parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}" style="cursor:${state.mode === 'view' ? 'default' : 'pointer'}">`);
             parts.push(`<line class="opening-hit" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
@@ -2811,20 +2952,48 @@ class Floorplaner extends IPSModuleStrict
             if (o.type === 'door') {
                 const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
                 const angle = amount * Math.PI / 2;
-                const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * leafLength * Math.sin(angle);
-                const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * leafLength * Math.sin(angle);
+                const doorSide = o.doorSideInvert === true ? -1 : 1;
+                const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * doorSide * leafLength * Math.sin(angle);
+                const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * doorSide * leafLength * Math.sin(angle);
 
-                parts.push(`<line class="opening-line${stateClass}" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
+                parts.push(
+                    `<line class="opening-line${stateClass}" ${isOpen ? `style="stroke:${openingColor}" ` : ''}` +
+                    `x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`
+                );
 
                 if (isOpen) {
-                    const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * leafLength * .28 * amount;
-                    const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * leafLength * .28 * amount;
-                    parts.push(`<path class="opening-line${stateClass}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
+                    const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * doorSide * leafLength * .28 * amount;
+                    const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * doorSide * leafLength * .28 * amount;
+                    parts.push(`<path class="opening-line${stateClass}" style="stroke:${openingColor}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
+
+                    openOpeningTopParts.push(
+                        `<g pointer-events="none">` +
+                        `<line class="opening-line${stateClass}" style="stroke:${openingColor}" ` +
+                        `x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>` +
+                        `<path class="opening-line${stateClass}" style="stroke:${openingColor}" ` +
+                        `d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>` +
+                        `</g>`
+                    );
                 }
             } else {
                 if (!isOpen) {
-                    parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
-                    parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
+                    // Fenster immer exakt mittig im Mauerwerk darstellen.
+                    // Die beiden Fensterlinien liegen symmetrisch links/rechts
+                    // der Wandmittellinie und sind damit unabhängig vom Rollo.
+                    const windowHalfOffset = 2;
+
+                    const wx1a = geom.x1 - geom.nx * windowHalfOffset;
+                    const wy1a = geom.y1 - geom.ny * windowHalfOffset;
+                    const wx2a = geom.x2 - geom.nx * windowHalfOffset;
+                    const wy2a = geom.y2 - geom.ny * windowHalfOffset;
+
+                    const wx1b = geom.x1 + geom.nx * windowHalfOffset;
+                    const wy1b = geom.y1 + geom.ny * windowHalfOffset;
+                    const wx2b = geom.x2 + geom.nx * windowHalfOffset;
+                    const wy2b = geom.y2 + geom.ny * windowHalfOffset;
+
+                    parts.push(`<line class="opening-line" x1="${wx1a}" y1="${wy1a}" x2="${wx2a}" y2="${wy2a}"/>`);
+                    parts.push(`<line class="opening-line" x1="${wx1b}" y1="${wy1b}" x2="${wx2b}" y2="${wy2b}"/>`);
                 } else {
                     // Geöffnetes Fenster nicht mehr schräg nach außen darstellen.
                     // Der komplette Flügel bleibt parallel zur Wand und wird mit
@@ -2837,18 +3006,24 @@ class Floorplaner extends IPSModuleStrict
                     const ix2 = geom.x2 - geom.nx * inset;
                     const iy2 = geom.y2 - geom.ny * inset;
 
-                    parts.push(`<line class="opening-line opening-state-open" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
+                    parts.push(`<line class="opening-line opening-state-open" style="stroke:${openingColor}" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
+
+                    openOpeningTopParts.push(
+                        `<line class="opening-line opening-state-open" pointer-events="none" ` +
+                        `style="stroke:${openingColor}" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`
+                    );
                 }
             }
 
-            if (o.shutterVariableID) {
+            if (o.type === 'window' && o.shutterVariableID) {
                 const shutterOpen = shutterState(o);
                 const closed = 1 - shutterOpen;
                 const shutterOffset = 8;
-                const sx1 = geom.x1 - geom.nx * shutterOffset;
-                const sy1 = geom.y1 - geom.ny * shutterOffset;
-                const sx2 = geom.x2 - geom.nx * shutterOffset;
-                const sy2 = geom.y2 - geom.ny * shutterOffset;
+                const shutterSide = o.shutterSideInvert === true ? 1 : -1;
+                const sx1 = geom.x1 + geom.nx * shutterSide * shutterOffset;
+                const sy1 = geom.y1 + geom.ny * shutterSide * shutterOffset;
+                const sx2 = geom.x2 + geom.nx * shutterSide * shutterOffset;
+                const sy2 = geom.y2 + geom.ny * shutterSide * shutterOffset;
 
                 if ((o.shutterStyle || 'roll') === 'roll') {
                     if (closed > 0.01) {
@@ -2871,8 +3046,8 @@ class Floorplaner extends IPSModuleStrict
                 } else {
                     const panel = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1) * .24 * closed;
                     if (panel > .5) {
-                        parts.push(`<line class="opening-shutter" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x1 - geom.nx * panel}" y2="${geom.y1 - geom.ny * panel}"/>`);
-                        parts.push(`<line class="opening-shutter" x1="${geom.x2}" y1="${geom.y2}" x2="${geom.x2 - geom.nx * panel}" y2="${geom.y2 - geom.ny * panel}"/>`);
+                        parts.push(`<line class="opening-shutter" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x1 + geom.nx * shutterSide * panel}" y2="${geom.y1 + geom.ny * shutterSide * panel}"/>`);
+                        parts.push(`<line class="opening-shutter" x1="${geom.x2}" y1="${geom.y2}" x2="${geom.x2 + geom.nx * shutterSide * panel}" y2="${geom.y2 + geom.ny * shutterSide * panel}"/>`);
                     }
                 }
             }
@@ -2891,9 +3066,12 @@ class Floorplaner extends IPSModuleStrict
             // Rollladen-Bedienung wird in der Mitte direkt AUF dem Rollladen platziert.
             // Sie wird separat gesammelt und erst nach Möbeln/Geräten gerendert,
             // damit kein anderes SVG-Element den Klick abfangen kann.
-            const shutterField =
-                Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
-                (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '');
+            const shutterField = o.type === 'window'
+                ? (
+                    Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
+                    (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '')
+                )
+                : '';
 
             if (shutterField) {
                 const sx = geom.cx;
@@ -2943,6 +3121,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(`</g>`);
         }
+
+        // Geöffnete Türen/Fenster liegen optisch immer über Möbeln.
+        // Die ursprünglichen Openings bleiben für Auswahl und Bedienung unverändert.
+        parts.push(...openOpeningTopParts);
 
         for (const item of floor.items) {
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
@@ -3026,6 +3208,12 @@ class Floorplaner extends IPSModuleStrict
             if (showName && valuePosition === namePosition) {
                 valueExtra += Math.max(labelSize, valueSize) + 3;
             }
+
+            // Wertebox minimal weiter vom Geräte-Icon abrücken.
+            // Nur die Position wird verändert; Boxgröße, Schrift und sonstige Abstände bleiben gleich.
+            const valueIconGap = 4;
+            valueExtra += valueIconGap;
+
             const valuePlace = deviceTextPlacement(valuePosition, valueSize, valueExtra);
             const statusOnlyClass = item._canAction === true ? '' : ' status-only';
             const valueFrameWidth = Math.max(26, valueText.length * valueSize * 0.62 + 12);
@@ -3127,6 +3315,38 @@ class Floorplaner extends IPSModuleStrict
         return onAssociation
             ? symconAssociationColorToCss(onAssociation.color)
             : '';
+    }
+
+    function automaticOpeningStatusColor(opening) {
+        if (!opening) return '#4da3ff';
+
+        // Neue Bool-Darstellung: dieselbe GLOW_COLOR wie bei Geräten.
+        const glow = String(opening._glowColor || '');
+        if (
+            opening._hasNewPresentation === true &&
+            /^#[0-9a-f]{6}$/i.test(glow)
+        ) {
+            return glow;
+        }
+
+        // Legacy: Farbe der EIN/Offen-Assoziation.
+        const legacyDirect = String(opening._legacyColorOn || '');
+        if (/^#[0-9a-f]{6}$/i.test(legacyDirect)) {
+            return legacyDirect;
+        }
+
+        const legacyFromProfile = legacyBoolOnColorFromProfile(opening._profile);
+        if (legacyFromProfile) {
+            return legacyFromProfile;
+        }
+
+        return '#4da3ff';
+    }
+
+    function effectiveOpeningStatusColor(opening) {
+        return opening?.openStatusColorManual === true
+            ? normalizeStatusColor(opening.openStatusColor || '#4da3ff')
+            : automaticOpeningStatusColor(opening);
     }
 
     function supportsStatusColor(item) {
@@ -3372,6 +3592,7 @@ class Floorplaner extends IPSModuleStrict
         if (type === 'item') return floor.items.find(v => v.id === id);
         if (type === 'furniture') return (floor.furniture || []).find(v => v.id === id);
         if (type === 'text') return floor.texts.find(v => v.id === id);
+        if (type === 'shape') return (floor.shapes || []).find(v => v.id === id);
         return null;
     }
 
@@ -3390,6 +3611,8 @@ class Floorplaner extends IPSModuleStrict
             floor.furniture = (floor.furniture || []).filter(v => v.id !== selected.id);
         } else if (selected.type === 'text') {
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
+        } else if (selected.type === 'shape') {
+            floor.shapes = (floor.shapes || []).filter(v => v.id !== selected.id);
         }
 
         selected = null;
@@ -3539,48 +3762,134 @@ class Floorplaner extends IPSModuleStrict
             `;
         } else if (selected.type === 'opening') {
             propTitle.textContent = obj.type === 'door' ? 'Tür' : 'Fenster';
-            properties.innerHTML = `
-                <div class="field">
-                    <label>Typ</label>
-                    <select data-field="type">
-                        <option value="door"${obj.type === 'door' ? ' selected' : ''}>Tür</option>
-                        <option value="window"${obj.type === 'window' ? ' selected' : ''}>Fenster</option>
-                    </select>
-                </div>
-                <div class="field"><label>Länge</label><input data-field="length" type="number" min="20" value="${obj.length || 80}"></div>
-                <div class="field"><label>Position auf Wand (0–1)</label><input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}"></div>
 
-                <div class="field">
-                    <label>${obj.type === 'door' ? 'Türkontakt / Türposition' : 'Fensterkontakt / Fensterposition'}</label>
-                    <input class="variable-select-field" data-variable-field="variableID" readonly
-                        value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
-                </div>
-
-                <div class="field">
-                    <label>Rollo / Rollladen (optional)</label>
-                    <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
-                        value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
-                </div>
-
-                ${obj.shutterVariableID ? `
+            if (obj.type === 'window') {
+                properties.innerHTML = `
                     <div class="field">
-                        <label>Rollo-Typ</label>
-                        <select data-field="shutterStyle">
-                            <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
-                            <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
-                        </select>
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 120}">
                     </div>
+
                     <div class="field">
-                        <label><input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}> Rollo-Animation invertieren</label>
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
                     </div>
-                ` : ''}
 
-                <div class="field">
-                    <label><input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}> ${obj.type === 'door' ? 'Tür' : 'Fenster'}-Animation invertieren</label>
-                </div>
+                    <div class="field">
+                        <label>Fensterkontakt / Fensterposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
 
-                ${obj.shutterVariableID ? shutterValueMappingHtml(obj) : ''}
-            `;
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    <div class="field">
+                        <label>Rollo / Rollladen (optional)</label>
+                        <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
+                            value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label>Rollo-Typ</label>
+                            <select data-field="shutterStyle">
+                                <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
+                                <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
+                            </select>
+                        </div>
+
+                    ` : ''}
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Fensterzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterSideInvert" type="checkbox"${obj.shutterSideInvert === true ? ' checked' : ''}>
+                                Rollo innen / außen tauschen
+                            </label>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}>
+                                Rollo-Status invertieren
+                            </label>
+                        </div>
+
+                        ${shutterValueMappingHtml(obj)}
+                    ` : ''}
+
+                `;
+            } else {
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 80}">
+                    </div>
+
+                    <div class="field">
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
+                    </div>
+
+                    <div class="field">
+                        <label>Türkontakt / Türposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
+                                Öffnungsseite innen / außen tauschen
+                            </label>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Türzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
+                `;
+            }
+
         } else if (selected.type === 'item') {
             propTitle.textContent = 'Gerät';
             const kind = obj.kind || 'generic';
@@ -3764,6 +4073,10 @@ class Floorplaner extends IPSModuleStrict
                     obj.statusColorManual = true;
                 }
 
+                if (selected.type === 'opening' && fieldName === 'openStatusColor') {
+                    obj.openStatusColorManual = true;
+                }
+
                 if (selected.type === 'opening' && fieldName === 'shutterValueMappingEnabled') {
                     if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
                         obj.shutterValueMap = {};
@@ -3893,6 +4206,26 @@ class Floorplaner extends IPSModuleStrict
             }));
         });
 
+        properties.querySelectorAll('.refreshOpeningVariableSettings').forEach(button => {
+            button.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                if (!selected || selected.type !== 'opening') return;
+                const floor = currentFloor();
+                const opening = floor?.openings?.find(o => o.id === selected.id);
+                if (!opening || Number(opening.variableID || 0) <= 0) return;
+
+                statusEl.textContent = 'Variableneinstellungen werden aktualisiert …';
+                requestAction('refreshVariableSettings', JSON.stringify({
+                    floorId: state.activeFloor,
+                    openingId: opening.id,
+                    entityType: 'opening',
+                    variableID: Number(opening.variableID)
+                }));
+            });
+        });
+
         properties.querySelectorAll('[data-project]').forEach(input => {
             input.addEventListener('change', () => {
                 if (input.dataset.project === 'floorName') {
@@ -3947,13 +4280,18 @@ class Floorplaner extends IPSModuleStrict
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
 
+    document.getElementById('shapeToolSelect')?.addEventListener('change', evt => {
+        const next = evt.target.value;
+        if (!next) return;
+        setTool(next);
+    });
+
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
     document.getElementById('undoBtn').addEventListener('click', () => restoreHistory(historyIndex - 1));
     document.getElementById('redoBtn').addEventListener('click', () => restoreHistory(historyIndex + 1));
     document.getElementById('fitBtn').addEventListener('click', fit);
     document.getElementById('zoomOutBtn').addEventListener('click', () => zoomManual(1 / 1.2));
     document.getElementById('zoomInBtn').addEventListener('click', () => zoomManual(1.2));
-    document.getElementById('homeViewBtn').addEventListener('click', resetCurrentFloorView);
 
     function scheduleResponsiveFit() {
         if (resizeFitTimer) {
@@ -4154,6 +4492,7 @@ class Floorplaner extends IPSModuleStrict
             texts: [],
             furniture: [],
             areas: [],
+            shapes: [],
             trackers: []
         };
         rememberCurrentFloorView(false);
@@ -4333,7 +4672,10 @@ class Floorplaner extends IPSModuleStrict
         const p = svgPoint(evt);
         const floor = currentFloor();
 
-        if (state.mode !== 'view' && tool === 'pan') {
+        if (state.mode !== 'view' && tool === 'pan' && !target) {
+            // Im Verschieben-Modus bewegt ein Klick auf freie Fläche den ganzen Plan.
+            // Ein Klick direkt auf ein Element fällt bewusst weiter zur Elementauswahl
+            // durch, damit kein separater Auswahl-Button benötigt wird.
             drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
             svg.setPointerCapture(evt.pointerId);
             evt.preventDefault();
@@ -4423,21 +4765,39 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
-        if (tool === 'select') {
-            if (target) {
-                selected = {type: target.dataset.type, id: target.dataset.id};
-                const obj = findEntity(selected.type, selected.id);
+        // Auswahl braucht kein eigenes Werkzeug: vorhandene Elemente können
+        // im Editor jederzeit direkt angeklickt und verschoben werden.
+        if (state.mode !== 'view' && target &&
+            !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            selected = {type: target.dataset.type, id: target.dataset.id};
+            const obj = findEntity(selected.type, selected.id);
+            if (obj) {
                 drag = {
                     mode: 'move',
                     type: selected.type,
                     id: selected.id,
                     start: p,
-                    original: obj ? structuredClone(obj) : null
+                    original: structuredClone(obj)
                 };
                 svg.setPointerCapture(evt.pointerId);
-            } else {
-                selected = null;
+                evt.preventDefault();
+                render();
+                return;
             }
+        }
+
+        if (tool === 'shape-line' || tool === 'shape-rect' || tool === 'shape-circle') {
+            const shape = {
+                id: uid('shape'),
+                kind: tool === 'shape-line' ? 'line' : (tool === 'shape-rect' ? 'rect' : 'circle'),
+                x1: p.x, y1: p.y, x2: p.x, y2: p.y
+            };
+            floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
+            floor.shapes.push(shape);
+            selected = {type:'shape', id:shape.id};
+            drag = {mode:'draw-shape', type:'shape', id:shape.id, start:p, original:structuredClone(shape)};
+            svg.setPointerCapture(evt.pointerId);
+            evt.preventDefault();
             render();
             return;
         }
@@ -4480,15 +4840,19 @@ class Floorplaner extends IPSModuleStrict
                 shutterSecondaryVariableID: 0,
                 shutterStyle: 'roll',
                 shutterInvert: false,
+                shutterSideInvert: false,
                 shutterValueMappingEnabled: false,
                 shutterValueMap: {},
-                invert: false
+                invert: false,
+                doorSideInvert: false,
+                openStatusColor: '#4da3ff',
+                openStatusColorManual: false
             };
             floor.openings.push(o);
             selected = {type: 'opening', id: o.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             render();
             return;
         }
@@ -4524,7 +4888,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'item', id: item.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             render();
             return;
         }
@@ -4547,7 +4911,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'furniture', id: furniture.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             renderAll();
             return;
         }
@@ -4564,7 +4928,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'text', id: t.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             render();
         }
     });
@@ -4598,6 +4962,15 @@ class Floorplaner extends IPSModuleStrict
             panY = drag.panY + (evt.clientY - drag.y);
             rememberCurrentFloorView(false);
             setTransform();
+            render();
+            return;
+        }
+
+        if (drag.mode === 'draw-shape') {
+            const obj = findEntity('shape', drag.id);
+            if (!obj) return;
+            obj.x2 = p.x;
+            obj.y2 = p.y;
             render();
             return;
         }
@@ -4639,6 +5012,11 @@ class Floorplaner extends IPSModuleStrict
 
                 position = Math.max(edge, Math.min(1 - edge, position));
                 obj.position = Math.round(position * 10000) / 10000;
+            } else if (drag.type === 'shape') {
+                obj.x1 = snapValue(drag.original.x1 + dx);
+                obj.y1 = snapValue(drag.original.y1 + dy);
+                obj.x2 = snapValue(drag.original.x2 + dx);
+                obj.y2 = snapValue(drag.original.y2 + dy);
             } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture') {
                 obj.x = snapValue(drag.original.x + dx);
                 obj.y = snapValue(drag.original.y + dy);
@@ -4678,6 +5056,9 @@ class Floorplaner extends IPSModuleStrict
                     obj.x2 = snapValue(p.x);
                     obj.y2 = snapValue(p.y);
                 }
+            } else if (drag.type === 'shape') {
+                obj.x2 = p.x;
+                obj.y2 = p.y;
             } else if (drag.type === 'furniture') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
@@ -4755,13 +5136,22 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
-        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate') {
+        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate' || drag.mode === 'draw-shape') {
             pushHistory();
             markDirty();
         }
 
+        const finishedShape = drag.mode === 'draw-shape';
+
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
         drag = null;
+
+        // Formen sind bewusst Einmal-Werkzeuge:
+        // Nach jeder gezeichneten Form zurück in den normalen Auswahl-/Verschiebemodus.
+        // Für eine weitere Form muss Linie/Rechteck/Kreis erneut gewählt werden.
+        if (finishedShape) {
+            setTool('');
+        }
     });
 
     svg.addEventListener('pointercancel', evt => {
@@ -4798,7 +5188,7 @@ class Floorplaner extends IPSModuleStrict
             wallStart = null;
             preview = null;
             selected = null;
-            setTool('select');
+            setTool('pan');
         }
 
         if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {
@@ -5234,6 +5624,31 @@ class Floorplaner extends IPSModuleStrict
             entity.statusColor = String(node.glowColor);
         }
 
+        // Tür/Fenster: Beim bewussten Zuordnen der Kontakt-/Positionsvariable
+        // die Symcon-Farbe für den geöffneten Zustand übernehmen.
+        if (entityType === 'opening' && field === 'variableID') {
+            entity.openStatusColorManual = false;
+
+            if (
+                Number(node?.variableType) === 0 &&
+                node?.hasNewPresentation === true &&
+                /^#[0-9a-f]{6}$/i.test(String(node?.glowColor || ''))
+            ) {
+                entity.openStatusColor = String(node.glowColor);
+            } else if (Number(node?.variableType) === 0 && node?.hasLegacyProfile === true) {
+                const legacyOpeningColor =
+                    /^#[0-9a-f]{6}$/i.test(String(node?.legacyColorOn || ''))
+                        ? String(node.legacyColorOn)
+                        : legacyBoolOnColorFromProfile(node?.profile);
+
+                if (legacyOpeningColor) {
+                    entity.openStatusColor = legacyOpeningColor;
+                }
+            } else if (!node) {
+                entity.openStatusColor = '#4da3ff';
+            }
+        }
+
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
@@ -5359,10 +5774,86 @@ class Floorplaner extends IPSModuleStrict
             </div>
         `;
 
+        let streamSmallPosition = null;
+
+        const fitStreamDialogIntoViewport = () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            if (!dialog) return;
+
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = rect.left;
+                let top = rect.top;
+
+                if (rect.right > window.innerWidth - margin) {
+                    left -= rect.right - (window.innerWidth - margin);
+                }
+                if (rect.bottom > window.innerHeight - margin) {
+                    top -= rect.bottom - (window.innerHeight - margin);
+                }
+
+                left = Math.max(margin, left);
+                top = Math.max(margin, top);
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        };
+
+        const restoreSmallStreamPosition = () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            if (!dialog || !streamSmallPosition) return;
+
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = streamSmallPosition.left;
+                let top = streamSmallPosition.top;
+
+                // Nur falls sich die Kachel/Viewport-Größe inzwischen geändert hat,
+                // die ursprüngliche Position so weit wie nötig innerhalb halten.
+                left = Math.max(
+                    margin,
+                    Math.min(left, window.innerWidth - rect.width - margin)
+                );
+                top = Math.max(
+                    margin,
+                    Math.min(top, window.innerHeight - rect.height - margin)
+                );
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        };
+
         const expandBtn = controlBody.querySelector('[data-stream-expand]');
         expandBtn?.addEventListener('click', () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            const wasExpanded = controlModal.classList.contains('stream-expanded');
+
+            if (!wasExpanded && dialog) {
+                const rect = dialog.getBoundingClientRect();
+                streamSmallPosition = {
+                    left: rect.left,
+                    top: rect.top
+                };
+            }
+
             const expanded = controlModal.classList.toggle('stream-expanded');
             expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
+
+            if (expanded) {
+                fitStreamDialogIntoViewport();
+            } else {
+                restoreSmallStreamPosition();
+            }
         });
 
         controlModal.classList.add('open');
@@ -5592,6 +6083,63 @@ class Floorplaner extends IPSModuleStrict
                 renderProperties();
                 return;
             }
+            if (
+                data?.type === 'refreshedVariableSettings' &&
+                data.entityType === 'opening' &&
+                data.openingId &&
+                data.meta
+            ) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const opening = floor?.openings?.find(o => o.id === data.openingId);
+                if (!opening) return;
+
+                const meta = data.meta || {};
+
+                // Explizites Aktualisieren: manuelle Farbübersteuerung bewusst
+                // aufheben und die aktuelle Symcon-Darstellung neu übernehmen.
+                opening.openStatusColorManual = false;
+
+                for (const [key, value] of Object.entries(meta)) {
+                    if (!key.startsWith('_')) continue;
+                    opening[key] = value;
+                }
+
+                opening.openStatusColor = automaticOpeningStatusColor(opening);
+
+                pushHistory();
+                markDirty();
+                render();
+
+                // Den bereits sichtbaren Farbwähler sofort auf die neu aus Symcon
+                // geladene Farbe setzen. Manche Browser/WebViews behalten den
+                // bestehenden <input type="color">-DOM-Wert trotz Neuaufbau kurz fest.
+                const refreshedOpeningColor = effectiveOpeningStatusColor(opening);
+                const openingColorInput = properties.querySelector(
+                    'input[data-field="openStatusColor"]'
+                );
+                if (openingColorInput instanceof HTMLInputElement) {
+                    openingColorInput.value = refreshedOpeningColor;
+                }
+
+                // Danach die Eigenschaftenleiste zusätzlich sauber neu aufbauen.
+                propertiesControlActive = false;
+                propertiesSelectOpen = false;
+                setTimeout(() => {
+                    renderProperties();
+
+                    // Zweite Absicherung nach dem Neuaufbau des DOM.
+                    const rebuiltOpeningColorInput = properties.querySelector(
+                        'input[data-field="openStatusColor"]'
+                    );
+                    if (rebuiltOpeningColorInput instanceof HTMLInputElement) {
+                        rebuiltOpeningColorInput.value = refreshedOpeningColor;
+                    }
+                }, 0);
+
+                statusEl.textContent = 'Variableneinstellungen aktualisiert';
+                return;
+            }
+
             if (data?.type === 'refreshedVariableSettings' && data.itemId && data.meta) {
                 const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
                 const item = floor?.items?.find(i => i.id === data.itemId);
@@ -5720,6 +6268,13 @@ class Floorplaner extends IPSModuleStrict
                                     : key;
                                 opening[targetKey] = value;
                             }
+
+                            if (
+                                field === 'variableID' &&
+                                opening.openStatusColorManual !== true
+                            ) {
+                                opening.openStatusColor = automaticOpeningStatusColor(opening);
+                            }
                         }
                     }
                 }
@@ -5829,10 +6384,98 @@ class Floorplaner extends IPSModuleStrict
 HTML;
 
         return str_replace(
-            ['__INITIAL_PROJECT__', '__INSTANCE_ID__'],
-            [$initial, (string) $this->InstanceID],
+            ['__INITIAL_PROJECT__', '__INSTANCE_ID__', '__EASY_FLOORPLAN_MODULE_URL__'],
+            [
+                $initial,
+                (string) $this->InstanceID,
+                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            ],
             $html
         );
+    }
+
+    private function GetVisualizationWebHookAssets(): array
+    {
+        return [
+            'easy-floorplan.js'
+        ];
+    }
+
+    private function GetVisualizationWebHookBaseAddress(): string
+    {
+        return 'floorplaner-assets-' . $this->InstanceID;
+    }
+
+    private function GetVisualizationModuleWebHookUrl(string $asset): string
+    {
+        if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
+            throw new InvalidArgumentException('Unbekanntes Visualisierungs-Asset: ' . $asset);
+        }
+
+        return '/hook/'
+            . $this->GetVisualizationWebHookBaseAddress()
+            . '?asset='
+            . rawurlencode($asset);
+    }
+
+    protected function ProcessHookData(): void
+    {
+        try {
+            $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+            $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?? '');
+            $hookPath = '/hook/' . $this->GetVisualizationWebHookBaseAddress();
+
+            // Nur exakt den WebHook dieser Instanz bedienen.
+            if ($requestPath !== $hookPath) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Not found';
+                return;
+            }
+
+            $asset = isset($_GET['asset']) ? (string) $_GET['asset'] : '';
+            if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Not found';
+                return;
+            }
+
+            /*
+             * Bestehende Originaldatei im Modulbaum.
+             * Keine Laufzeitkopie in /user/ und keine zusätzliche generierte Datei.
+             */
+            $path = __DIR__
+                . DIRECTORY_SEPARATOR
+                . 'assets'
+                . DIRECTORY_SEPARATOR
+                . 'vendor'
+                . DIRECTORY_SEPARATOR
+                . $asset;
+
+            if (!is_file($path)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Asset not found';
+                return;
+            }
+
+            $source = file_get_contents($path);
+            if ($source === false) {
+                throw new RuntimeException('Visualisierungsdatei konnte nicht gelesen werden: ' . $asset);
+            }
+
+            header('Content-Type: text/javascript; charset=utf-8');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: no-cache');
+            header('Content-Length: ' . strlen($source));
+            echo $source;
+        } catch (Throwable $e) {
+            $this->LogMessage('ProcessHookData: ' . $e->getMessage(), KL_ERROR);
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Internal server error';
+        }
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
@@ -5896,10 +6539,12 @@ HTML;
 
                 $message = json_encode(
                     [
-                        'type'    => 'refreshedVariableSettings',
-                        'floorId' => (string) ($request['floorId'] ?? ''),
-                        'itemId'  => (string) ($request['itemId'] ?? ''),
-                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
+                        'type'       => 'refreshedVariableSettings',
+                        'floorId'    => (string) ($request['floorId'] ?? ''),
+                        'itemId'     => (string) ($request['itemId'] ?? ''),
+                        'openingId'  => (string) ($request['openingId'] ?? ''),
+                        'entityType' => (string) ($request['entityType'] ?? 'item'),
+                        'meta'       => $this->GetVariableRuntimeMeta($variableID)
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
@@ -6149,7 +6794,7 @@ HTML;
             $floor['name'] = (string) ($floor['name'] ?? ('Etage ' . ($index + 1)));
             $floor['wallThickness'] = max(1, min(60, (int) ($floor['wallThickness'] ?? 12)));
 
-            foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'trackers'] as $key) {
+            foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'shapes', 'trackers'] as $key) {
                 if (!isset($floor[$key]) || !is_array($floor[$key])) {
                     $floor[$key] = [];
                 }
@@ -6218,6 +6863,7 @@ HTML;
             'texts'     => [],
             'furniture' => [],
             'areas'     => [],
+            'shapes'    => [],
             'trackers'  => []
         ];
     }
