@@ -5113,8 +5113,17 @@ class Floorplaner extends IPSModuleStrict
             markDirty();
         }
 
+        const finishedShape = drag.mode === 'draw-shape';
+
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
         drag = null;
+
+        // Formen sind bewusst Einmal-Werkzeuge:
+        // Nach jeder gezeichneten Form zurück in den normalen Auswahl-/Verschiebemodus.
+        // Für eine weitere Form muss Linie/Rechteck/Kreis erneut gewählt werden.
+        if (finishedShape) {
+            setTool('pan');
+        }
     });
 
     svg.addEventListener('pointercancel', evt => {
