@@ -77,6 +77,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 - Umfassende Konfigurationsmöglichkeiten der Fenster und Türen, zb. wird nun wie bei den Icons, die Farbe aus der Variable übernommen, oder diese kann definiert werden. Die Öffnungsseite der Türe und Anordnung der Rollos kann invertiert werden.
 - Videofenster wird nicht mehr durch den Rand der Kachel abgeschnitten.
+- Es können nun Formen wie Rechtecke, Kreise oder Linien erstellt werden.
 
 ### 1.7
 
