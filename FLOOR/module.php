@@ -1854,6 +1854,10 @@ class Floorplaner extends IPSModuleStrict
                 if (typeof opening.doorSideInvert !== 'boolean') {
                     opening.doorSideInvert = false;
                 }
+                opening.openStatusColor = normalizeStatusColor(opening.openStatusColor || '#4da3ff');
+                if (typeof opening.openStatusColorManual !== 'boolean') {
+                    opening.openStatusColorManual = false;
+                }
             }
             floor.items = Array.isArray(floor.items) ? floor.items : [];
             for (const item of floor.items) {
@@ -2826,6 +2830,7 @@ class Floorplaner extends IPSModuleStrict
             const amount = openingState(o);
             const isOpen = amount > 0.02;
             const stateClass = isOpen ? ' opening-state-open' : '';
+            const openingColor = effectiveOpeningStatusColor(o);
 
             parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}" style="cursor:${state.mode === 'view' ? 'default' : 'pointer'}">`);
             parts.push(`<line class="opening-hit" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
@@ -2838,12 +2843,15 @@ class Floorplaner extends IPSModuleStrict
                 const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * doorSide * leafLength * Math.sin(angle);
                 const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * doorSide * leafLength * Math.sin(angle);
 
-                parts.push(`<line class="opening-line${stateClass}" x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`);
+                parts.push(
+                    `<line class="opening-line${stateClass}" ${isOpen ? `style="stroke:${openingColor}" ` : ''}` +
+                    `x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`
+                );
 
                 if (isOpen) {
                     const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * doorSide * leafLength * .28 * amount;
                     const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * doorSide * leafLength * .28 * amount;
-                    parts.push(`<path class="opening-line${stateClass}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
+                    parts.push(`<path class="opening-line${stateClass}" style="stroke:${openingColor}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
                 }
             } else {
                 if (!isOpen) {
@@ -2872,7 +2880,7 @@ class Floorplaner extends IPSModuleStrict
                     const ix2 = geom.x2 - geom.nx * inset;
                     const iy2 = geom.y2 - geom.ny * inset;
 
-                    parts.push(`<line class="opening-line opening-state-open" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
+                    parts.push(`<line class="opening-line opening-state-open" style="stroke:${openingColor}" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
                 }
             }
 
@@ -3166,6 +3174,38 @@ class Floorplaner extends IPSModuleStrict
         return onAssociation
             ? symconAssociationColorToCss(onAssociation.color)
             : '';
+    }
+
+    function automaticOpeningStatusColor(opening) {
+        if (!opening) return '#4da3ff';
+
+        // Neue Bool-Darstellung: dieselbe GLOW_COLOR wie bei Geräten.
+        const glow = String(opening._glowColor || '');
+        if (
+            opening._hasNewPresentation === true &&
+            /^#[0-9a-f]{6}$/i.test(glow)
+        ) {
+            return glow;
+        }
+
+        // Legacy: Farbe der EIN/Offen-Assoziation.
+        const legacyDirect = String(opening._legacyColorOn || '');
+        if (/^#[0-9a-f]{6}$/i.test(legacyDirect)) {
+            return legacyDirect;
+        }
+
+        const legacyFromProfile = legacyBoolOnColorFromProfile(opening._profile);
+        if (legacyFromProfile) {
+            return legacyFromProfile;
+        }
+
+        return '#4da3ff';
+    }
+
+    function effectiveOpeningStatusColor(opening) {
+        return opening?.openStatusColorManual === true
+            ? normalizeStatusColor(opening.openStatusColor || '#4da3ff')
+            : automaticOpeningStatusColor(opening);
     }
 
     function supportsStatusColor(item) {
@@ -3597,6 +3637,14 @@ class Floorplaner extends IPSModuleStrict
                             value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
                     </div>
 
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                    ` : ''}
+
                     <div class="field">
                         <label>Rollo / Rollladen (optional)</label>
                         <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
@@ -3653,6 +3701,14 @@ class Floorplaner extends IPSModuleStrict
                         <input class="variable-select-field" data-variable-field="variableID" readonly
                             value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
                     </div>
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                    ` : ''}
 
                     <div class="field">
                         <label class="check">
@@ -3851,6 +3907,10 @@ class Floorplaner extends IPSModuleStrict
 
                 if (selected.type === 'item' && fieldName === 'statusColor') {
                     obj.statusColorManual = true;
+                }
+
+                if (selected.type === 'opening' && fieldName === 'openStatusColor') {
+                    obj.openStatusColorManual = true;
                 }
 
                 if (selected.type === 'opening' && fieldName === 'shutterValueMappingEnabled') {
@@ -4573,7 +4633,9 @@ class Floorplaner extends IPSModuleStrict
                 shutterValueMappingEnabled: false,
                 shutterValueMap: {},
                 invert: false,
-                doorSideInvert: false
+                doorSideInvert: false,
+                openStatusColor: '#4da3ff',
+                openStatusColorManual: false
             };
             floor.openings.push(o);
             selected = {type: 'opening', id: o.id};
@@ -5325,6 +5387,31 @@ class Floorplaner extends IPSModuleStrict
             entity.statusColor = String(node.glowColor);
         }
 
+        // Tür/Fenster: Beim bewussten Zuordnen der Kontakt-/Positionsvariable
+        // die Symcon-Farbe für den geöffneten Zustand übernehmen.
+        if (entityType === 'opening' && field === 'variableID') {
+            entity.openStatusColorManual = false;
+
+            if (
+                Number(node?.variableType) === 0 &&
+                node?.hasNewPresentation === true &&
+                /^#[0-9a-f]{6}$/i.test(String(node?.glowColor || ''))
+            ) {
+                entity.openStatusColor = String(node.glowColor);
+            } else if (Number(node?.variableType) === 0 && node?.hasLegacyProfile === true) {
+                const legacyOpeningColor =
+                    /^#[0-9a-f]{6}$/i.test(String(node?.legacyColorOn || ''))
+                        ? String(node.legacyColorOn)
+                        : legacyBoolOnColorFromProfile(node?.profile);
+
+                if (legacyOpeningColor) {
+                    entity.openStatusColor = legacyOpeningColor;
+                }
+            } else if (!node) {
+                entity.openStatusColor = '#4da3ff';
+            }
+        }
+
         if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
             entity.showDirectSlider = false;
         }
@@ -5810,6 +5897,13 @@ class Floorplaner extends IPSModuleStrict
                                     ? `_${prefix}${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}`
                                     : key;
                                 opening[targetKey] = value;
+                            }
+
+                            if (
+                                field === 'variableID' &&
+                                opening.openStatusColorManual !== true
+                            ) {
+                                opening.openStatusColor = automaticOpeningStatusColor(opening);
                             }
                         }
                     }

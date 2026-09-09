@@ -73,6 +73,11 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ## 📝 Änderungen
 
+### 1.8
+
+- Überflüssige Konfiguration bie Fenster und Tür entfernt, dafür kann nun die Öffnungsrichtung der Tür und die Anordnung der Rollos invertiert werden.
+- Schriftarten und Grössen vereinheitlicht.
+
 ### 1.7
 
 - Der farbige Statusring funktioniert nun auch im hellen Theme.
