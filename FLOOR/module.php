@@ -1378,9 +1378,21 @@ class Floorplaner extends IPSModuleStrict
             max-height: calc(100vh - 120px);
         }
 
+        .stream-popup-status {
+            min-height: 16px;
+            max-height: min(34vh, 260px);
+            overflow: auto;
+            font-size: 11px;
+            line-height: 1.3;
+            color: var(--fp-muted);
+            word-break: break-word;
+        }
+
         .stream-popup-actions {
             display: flex;
             justify-content: flex-end;
+            gap: 6px;
+            flex-wrap: wrap;
         }
 
         .stream-popup-actions button {
@@ -1558,6 +1570,17 @@ class Floorplaner extends IPSModuleStrict
             font-size: 11px;
         }
 
+        .outside-area {
+            stroke: var(--fp-text);
+            stroke-width: 1.2;
+            vector-effect: non-scaling-stroke;
+            cursor: move;
+        }
+        .outside-area.selected {
+            stroke-width: 2;
+            stroke-dasharray: 5 3;
+        }
+
 </style>
 </head>
 <body>
@@ -1577,8 +1600,8 @@ class Floorplaner extends IPSModuleStrict
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
                 Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
-                Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
-                Verschieben: Werkzeug wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
+                Außenfläche: Typ wählen und Fläche mit gedrückter linker Maustaste aufziehen.<br>
+                Vorhandene Elemente: direkt anklicken und verschieben; ein separates Auswahl-Werkzeug ist nicht nötig.<br>Geräte/Möbel/Außenflächen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
                 − / +: manuell heraus- oder hineinzoomen.<br>
                 Start: jederzeit auf die ursprüngliche 1:1-Startansicht der aktuellen Etage zurück.<br>
@@ -1588,8 +1611,15 @@ class Floorplaner extends IPSModuleStrict
     </div>
     <div class="toolbar">
         <div class="group">
-            <button data-tool="select" class="active">Auswahl</button>
-            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
+            <select id="areaTypeSelect" title="Art der Außenfläche">
+                <option value="lawn">Rasen</option>
+                <option value="bed">Beet</option>
+                <option value="gravel">Kies</option>
+                <option value="terrace">Terrasse</option>
+                <option value="paving">Pflaster</option>
+                <option value="water">Wasser</option>
+            </select>
+            <button data-tool="area" class="active" title="Außenfläche aufziehen">Außenfläche</button>
             <button data-tool="wall">Wand</button>
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
@@ -1703,7 +1733,7 @@ class Floorplaner extends IPSModuleStrict
     let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
-    let tool = 'select';
+    let tool = 'area';
     let selected = null;
     let wallStart = null;
     let preview = null;
@@ -2183,6 +2213,15 @@ class Floorplaner extends IPSModuleStrict
         const addBox = (minX, minY, maxX, maxY) => {
             points.push([minX, minY], [maxX, maxY]);
         };
+
+        // Außenflächen werden beim Einpassen mit berücksichtigt.
+        for (const area of floor.areas || []) {
+            const x = Number(area.x) || 0;
+            const y = Number(area.y) || 0;
+            const width = Math.max(8, Number(area.width) || 120);
+            const height = Math.max(8, Number(area.height) || 80);
+            addBox(x, y, x + width, y + height);
+        }
 
         // Hauptreferenz bleibt der eigentliche Grundriss.
         for (const w of floor.walls || []) {
@@ -2814,6 +2853,31 @@ class Floorplaner extends IPSModuleStrict
         const bounds = visibleWorldBounds(120);
         const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
         const openingGapThickness = wallThickness + 4;
+
+        // Monochrome Außenflächen; Farbe bleibt ausschließlich Zuständen/Variablen vorbehalten.
+        parts.push(`
+            <defs>
+                <pattern id="fp-area-lawn" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M3 12 l2 -5 M7 12 l0 -6 M11 12 l-2 -5" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".42"/></pattern>
+                <pattern id="fp-area-bed" width="12" height="12" patternUnits="userSpaceOnUse"><path d="M-2 12 L12 -2 M4 14 L14 4" fill="none" stroke="var(--fp-text)" stroke-width=".7" opacity=".34"/></pattern>
+                <pattern id="fp-area-gravel" width="13" height="13" patternUnits="userSpaceOnUse"><circle cx="3" cy="4" r="1" fill="var(--fp-text)" opacity=".34"/><circle cx="10" cy="9" r="1.2" fill="var(--fp-text)" opacity=".28"/></pattern>
+                <pattern id="fp-area-terrace" width="24" height="12" patternUnits="userSpaceOnUse"><path d="M0 0 H24 M0 12 H24 M0 0 V12 M12 0 V12 M24 0 V12" fill="none" stroke="var(--fp-text)" stroke-width=".65" opacity=".32"/></pattern>
+                <pattern id="fp-area-paving" width="20" height="12" patternUnits="userSpaceOnUse"><path d="M0 0 H20 M0 12 H20 M0 0 V12 M10 0 V6 M5 6 V12 M15 6 V12 M0 6 H20" fill="none" stroke="var(--fp-text)" stroke-width=".65" opacity=".32"/></pattern>
+                <pattern id="fp-area-water" width="22" height="12" patternUnits="userSpaceOnUse"><path d="M0 4 Q5 1 11 4 T22 4 M0 10 Q5 7 11 10 T22 10" fill="none" stroke="var(--fp-text)" stroke-width=".8" opacity=".38"/></pattern>
+            </defs>
+        `);
+
+        for (const area of floor.areas || []) {
+            const x = Number(area.x) || 0;
+            const y = Number(area.y) || 0;
+            const width = Math.max(8, Number(area.width) || 120);
+            const height = Math.max(8, Number(area.height) || 80);
+            const areaType = ['lawn','bed','gravel','terrace','paving','water'].includes(area.areaType) ? area.areaType : 'lawn';
+            const sel = selected?.type === 'area' && selected.id === area.id ? ' selected' : '';
+            parts.push(`<rect class="outside-area${sel}" data-type="area" data-id="${area.id}" x="${x}" y="${y}" width="${width}" height="${height}" rx="2" fill="url(#fp-area-${areaType})"/>`);
+            if (state.mode !== 'view' && selected?.type === 'area' && selected.id === area.id) {
+                parts.push(`<circle class="resize-handle" data-resize-type="area" data-id="${area.id}" cx="${x + width}" cy="${y + height}" r="2.8"/>`);
+            }
+        }
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
@@ -3476,6 +3540,7 @@ class Floorplaner extends IPSModuleStrict
         if (type === 'item') return floor.items.find(v => v.id === id);
         if (type === 'furniture') return (floor.furniture || []).find(v => v.id === id);
         if (type === 'text') return floor.texts.find(v => v.id === id);
+        if (type === 'area') return (floor.areas || []).find(v => v.id === id);
         return null;
     }
 
@@ -3494,6 +3559,8 @@ class Floorplaner extends IPSModuleStrict
             floor.furniture = (floor.furniture || []).filter(v => v.id !== selected.id);
         } else if (selected.type === 'text') {
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
+        } else if (selected.type === 'area') {
+            floor.areas = (floor.areas || []).filter(v => v.id !== selected.id);
         }
 
         selected = null;
@@ -3932,6 +3999,13 @@ class Floorplaner extends IPSModuleStrict
                 </div>
                 <div class="field"><label>Schriftgröße</label><input data-field="size" type="number" min="8" max="100" value="${obj.size || 18}"></div>
             `;
+        } else if (selected.type === 'area') {
+            const names = {lawn:'Rasen',bed:'Beet',gravel:'Kies',terrace:'Terrasse',paving:'Pflaster',water:'Wasser'};
+            propTitle.textContent = 'Außenfläche';
+            properties.innerHTML = `
+                <div class="field"><label>Typ</label><input value="${names[obj.areaType] || 'Rasen'}" disabled></div>
+                <div class="field"><label>Größe</label><input value="${Math.round(Number(obj.width)||0)} × ${Math.round(Number(obj.height)||0)}" disabled></div>
+            `;
         }
 
         bindPropertyInputs();
@@ -4159,6 +4233,16 @@ class Floorplaner extends IPSModuleStrict
 
     document.querySelectorAll('[data-tool]').forEach(btn => {
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
+    });
+
+    document.getElementById('areaTypeSelect')?.addEventListener('change', evt => {
+        if (selected?.type !== 'area') return;
+        const area = findEntity('area', selected.id);
+        if (!area) return;
+        area.areaType = evt.target.value || 'lawn';
+        pushHistory();
+        markDirty();
+        renderAll();
     });
 
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
@@ -4637,21 +4721,27 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
-        if (tool === 'select') {
-            if (target) {
-                selected = {type: target.dataset.type, id: target.dataset.id};
-                const obj = findEntity(selected.type, selected.id);
-                drag = {
-                    mode: 'move',
-                    type: selected.type,
-                    id: selected.id,
-                    start: p,
-                    original: obj ? structuredClone(obj) : null
-                };
-                svg.setPointerCapture(evt.pointerId);
-            } else {
-                selected = null;
-            }
+        // Bestehende Elemente brauchen kein separates Auswahl-Werkzeug.
+        if (target && !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            selected = {type: target.dataset.type, id: target.dataset.id};
+            const obj = findEntity(selected.type, selected.id);
+            drag = {mode:'move', type:selected.type, id:selected.id, start:p, original:obj ? structuredClone(obj) : null};
+            svg.setPointerCapture(evt.pointerId);
+            evt.preventDefault();
+            evt.stopPropagation();
+            render();
+            return;
+        }
+
+        if (tool === 'area') {
+            const areaType = document.getElementById('areaTypeSelect')?.value || 'lawn';
+            const area = {id:uid('area'), areaType, x:p.x, y:p.y, width:8, height:8};
+            floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
+            floor.areas.push(area);
+            selected = {type:'area', id:area.id};
+            drag = {mode:'draw-area', type:'area', id:area.id, start:p, original:structuredClone(area)};
+            svg.setPointerCapture(evt.pointerId);
+            evt.preventDefault();
             render();
             return;
         }
@@ -4820,6 +4910,17 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
+        if (drag.mode === 'draw-area' && drag.original) {
+            const obj = findEntity('area', drag.id);
+            if (!obj) return;
+            const x1=snapValue(drag.start.x), y1=snapValue(drag.start.y);
+            const x2=snapValue(p.x), y2=snapValue(p.y);
+            obj.x=Math.min(x1,x2); obj.y=Math.min(y1,y2);
+            obj.width=Math.max(8,Math.abs(x2-x1)); obj.height=Math.max(8,Math.abs(y2-y1));
+            render();
+            return;
+        }
+
         if (drag.mode === 'move' && drag.original) {
             const obj = findEntity(drag.type, drag.id);
             if (!obj) return;
@@ -4857,7 +4958,7 @@ class Floorplaner extends IPSModuleStrict
 
                 position = Math.max(edge, Math.min(1 - edge, position));
                 obj.position = Math.round(position * 10000) / 10000;
-            } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture') {
+            } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture' || drag.type === 'area') {
                 obj.x = snapValue(drag.original.x + dx);
                 obj.y = snapValue(drag.original.y + dy);
             }
@@ -4896,6 +4997,11 @@ class Floorplaner extends IPSModuleStrict
                     obj.x2 = snapValue(p.x);
                     obj.y2 = snapValue(p.y);
                 }
+            } else if (drag.type === 'area') {
+                const originX = Number(drag.original.x) || 0;
+                const originY = Number(drag.original.y) || 0;
+                obj.width = Math.max(8, snapValue(p.x) - originX);
+                obj.height = Math.max(8, snapValue(p.y) - originY);
             } else if (drag.type === 'furniture') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
@@ -4973,7 +5079,7 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
-        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate') {
+        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate' || drag.mode === 'draw-area') {
             pushHistory();
             markDirty();
         }
@@ -5590,13 +5696,29 @@ class Floorplaner extends IPSModuleStrict
         controlModal.classList.remove('stream-expanded');
         controlTitle.textContent = item.name || 'Kamera';
 
-        const streamUrl = `/proxy/${mediaID}`;
+        const getStreamProxyUrl = mediaID => {
+            const currentOrigin = window.location.origin;
+            const currentHost = String(window.location.hostname || '').toLowerCase();
+
+            // In der IP-Symcon App kann die Visualisierung über eine ipmagic-Adresse
+            // geöffnet sein. In diesem Fall muss auch der Medienproxy über genau
+            // diesen Origin laufen. Im Browser/WLAN bleibt der aktuelle Origin erhalten.
+            if (currentHost.includes('ipmagic')) {
+                return new URL(`/proxy/${mediaID}`, currentOrigin).toString();
+            }
+
+            return new URL(`/proxy/${mediaID}`, currentOrigin).toString();
+        };
+
+        const streamUrl = getStreamProxyUrl(mediaID);
         controlBody.innerHTML = `
             <div class="stream-popup-body">
                 <div class="stream-view">
                     <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(item.name || 'Stream')}">
                 </div>
+                <div class="stream-popup-status" data-stream-status></div>
                 <div class="stream-popup-actions">
+                    <button type="button" data-stream-check>Verbindung prüfen</button>
                     <button type="button" data-stream-expand>Vergrößern</button>
                 </div>
             </div>
@@ -5660,6 +5782,170 @@ class Floorplaner extends IPSModuleStrict
                 dialog.style.bottom = '';
             });
         };
+
+        const streamStatus = controlBody.querySelector('[data-stream-status]');
+        const checkBtn = controlBody.querySelector('[data-stream-check]');
+
+        const checkStreamConnection = async () => {
+            if (!streamStatus) return;
+
+            const origin = window.location.origin;
+            const locationInfo = {
+                href: window.location.href,
+                origin: window.location.origin,
+                protocol: window.location.protocol,
+                host: window.location.host,
+                hostname: window.location.hostname,
+                port: window.location.port,
+                pathname: window.location.pathname,
+                search: window.location.search,
+                hash: window.location.hash,
+                referrer: document.referrer || '',
+                baseURI: document.baseURI || '',
+                userAgent: navigator.userAgent || ''
+            };
+
+            const pathCandidates = [
+                `/proxy/${mediaID}`,
+                `/visu/proxy/${mediaID}`,
+                `/preview/proxy/${mediaID}`
+            ];
+
+            const visuMatch = window.location.pathname.match(/\/visu\/(\d+)(?:\/|$)/i);
+            if (visuMatch) {
+                pathCandidates.splice(1, 0, `/visu/${visuMatch[1]}/proxy/${mediaID}`);
+            }
+
+            // Zusätzlich Pfade relativ zum tatsächlich geladenen Dokument testen.
+            // Das ist für App-/Connect-WebViews interessant, wenn vor dem eigentlichen
+            // WebFront noch ein Routing-Präfix liegt.
+            const relativeCandidates = [
+                `proxy/${mediaID}`,
+                `./proxy/${mediaID}`,
+                `../proxy/${mediaID}`
+            ];
+
+            const candidates = [...new Set([
+                ...pathCandidates.map(path => new URL(path, origin).toString()),
+                ...relativeCandidates.map(path => new URL(path, window.location.href).toString())
+            ])];
+
+            streamStatus.innerHTML =
+                `<div><strong>Umgebung</strong></div>` +
+                `<div>href: ${escapeHtml(locationInfo.href)}</div>` +
+                `<div>origin: ${escapeHtml(locationInfo.origin)}</div>` +
+                `<div>path: ${escapeHtml(locationInfo.pathname + locationInfo.search + locationInfo.hash)}</div>` +
+                `<div>referrer: ${escapeHtml(locationInfo.referrer || 'leer')}</div>` +
+                `<div>baseURI: ${escapeHtml(locationInfo.baseURI || 'leer')}</div>` +
+                `<div>UA: ${escapeHtml(locationInfo.userAgent)}</div>` +
+                `<div style="margin-top:6px"><strong>Prüfe ${candidates.length} Stream-Routen …</strong></div>`;
+
+            const results = [];
+
+            for (const url of candidates) {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 5000);
+                const started = performance.now();
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        cache: 'no-store',
+                        credentials: 'include',
+                        redirect: 'follow',
+                        signal: controller.signal
+                    });
+
+                    const contentType = response.headers.get('content-type') || '';
+                    const contentLength = response.headers.get('content-length') || '';
+                    const elapsed = Math.round(performance.now() - started);
+
+                    const usable =
+                        response.status === 200 &&
+                        contentType.toLowerCase().includes('multipart/x-mixed-replace');
+
+                    try {
+                        await response.body?.cancel();
+                    } catch (e) {}
+
+                    results.push({
+                        url,
+                        finalUrl: response.url || url,
+                        status: response.status,
+                        statusText: response.statusText || '',
+                        redirected: response.redirected === true,
+                        type: response.type || '',
+                        contentType,
+                        contentLength,
+                        elapsed,
+                        usable
+                    });
+
+                    if (usable) {
+                        clearTimeout(timer);
+                        controller.abort();
+                        break;
+                    }
+                } catch (e) {
+                    results.push({
+                        url,
+                        finalUrl: '',
+                        status: 0,
+                        statusText: '',
+                        redirected: false,
+                        type: '',
+                        contentType: '',
+                        contentLength: '',
+                        elapsed: Math.round(performance.now() - started),
+                        usable: false,
+                        error: e?.name === 'AbortError'
+                            ? 'Timeout'
+                            : String(e?.message || e)
+                    });
+                } finally {
+                    clearTimeout(timer);
+                }
+            }
+
+            const winner = results.find(result => result.usable);
+
+            streamStatus.innerHTML += results.map(result => {
+                const details = result.error
+                    ? result.error
+                    : `${result.status} ${result.statusText} · ${result.contentType || 'kein Content-Type'} · type=${result.type || '-'}${result.redirected ? ' · redirect' : ''}`;
+                const finalInfo =
+                    result.finalUrl && result.finalUrl !== result.url
+                        ? `<div>→ ${escapeHtml(result.finalUrl)}</div>`
+                        : '';
+
+                return (
+                    `<div style="margin-top:5px">` +
+                    `<strong>${result.usable ? 'OK' : 'Fehler'}</strong> · ${escapeHtml(result.url)}<br>` +
+                    `${escapeHtml(details)} · ${result.elapsed} ms` +
+                    finalInfo +
+                    `</div>`
+                );
+            }).join('');
+
+            if (winner) {
+                const streamImg = controlBody.querySelector('.stream-view img');
+                if (streamImg && streamImg.src !== winner.finalUrl) {
+                    streamImg.src = winner.finalUrl || winner.url;
+                }
+
+                streamStatus.innerHTML +=
+                    `<div style="margin-top:6px"><strong>Verwendet:</strong> ${escapeHtml(winner.finalUrl || winner.url)}</div>`;
+            } else {
+                streamStatus.innerHTML +=
+                    `<div style="margin-top:6px"><strong>Kein nutzbarer MJPEG-Proxy gefunden.</strong></div>`;
+            }
+        };
+
+        checkBtn?.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            checkStreamConnection();
+        });
 
         const expandBtn = controlBody.querySelector('[data-stream-expand]');
         expandBtn?.addEventListener('click', () => {
