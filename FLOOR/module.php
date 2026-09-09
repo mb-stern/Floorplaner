@@ -1178,6 +1178,17 @@ class Floorplaner extends IPSModuleStrict
             stroke: #181818;
         }
 
+        /* Gezeichnete Formen im hellen Theme an die übrigen Konturlinien
+           angleichen. Im dunklen Theme bleibt die bestehende Darstellung
+           über var(--fp-text) unverändert. */
+        html[data-theme="light"] .drawing-shape {
+            stroke: #252525;
+        }
+
+        html[data-theme="light"] .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
+        }
+
         html[data-theme="light"] .furniture {
             color: #222222;
         }
