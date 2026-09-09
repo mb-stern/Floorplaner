@@ -75,8 +75,8 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ### 1.8
 
-- Umfassende Konfigurationsmöglichkeiten der Fenster und Türen, zb. wird nun wie bei den Icons die Farbe aus der Variable übernommen, oder diese kann definiert werden. Die Öffnungsseite der Türe und Anordnung der Rollos kann invertiert werden.
-- Schriftarten und Grössen vereinheitlicht.
+- Umfassende Konfigurationsmöglichkeiten der Fenster und Türen, zb. wird nun wie bei den Icons, die Farbe aus der Variable übernommen, oder diese kann definiert werden. Die Öffnungsseite der Türe und Anordnung der Rollos kann invertiert werden.
+- Kleine Änderungen an weiteren Details.
 
 ### 1.7
 
