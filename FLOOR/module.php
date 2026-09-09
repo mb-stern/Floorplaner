@@ -392,6 +392,17 @@ class Floorplaner extends IPSModuleStrict
             pointer-events: none;
         }
 
+        .drawing-shape {
+            fill: none;
+            stroke: var(--fp-text);
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+            cursor: move;
+        }
+        .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
+        }
+
         .wall {
             stroke: #ececec;
             stroke-width: 12;
@@ -1577,19 +1588,24 @@ class Floorplaner extends IPSModuleStrict
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
                 Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
-                Auswahl: Element anklicken und mit der Maus verschieben.<br>Geräte/Möbel: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
-                Verschieben: Werkzeug wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
+                Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
+                Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
+                Formen: Linie, Rechteck oder Kreis im Dropdown wählen und mit der Maus aufziehen.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
                 − / +: manuell heraus- oder hineinzoomen.<br>
-                Start: jederzeit auf die ursprüngliche 1:1-Startansicht der aktuellen Etage zurück.<br>
                 Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
             </div>
         </aside>
     </div>
     <div class="toolbar">
         <div class="group">
-            <button data-tool="select" class="active">Auswahl</button>
-            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
+            <button data-tool="pan" class="active" title="Grundriss mit der Maus verschieben">Verschieben</button>
+            <select id="shapeToolSelect" title="Form zeichnen">
+                <option value="">Formen</option>
+                <option value="shape-line">Linie</option>
+                <option value="shape-rect">Rechteck</option>
+                <option value="shape-circle">Kreis</option>
+            </select>
             <button data-tool="wall">Wand</button>
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
@@ -1619,7 +1635,6 @@ class Floorplaner extends IPSModuleStrict
         <div class="group">
             <button id="zoomOutBtn" type="button" title="Herauszoomen">−</button>
             <button id="zoomInBtn" type="button" title="Hineinzoomen">+</button>
-            <button id="homeViewBtn" type="button" title="Zur Startansicht dieser Etage">Start</button>
             <button id="fitBtn">Einpassen</button>
             <button id="finishBtn">Fertig / Bedienen</button>
         </div>
@@ -1703,7 +1718,7 @@ class Floorplaner extends IPSModuleStrict
     let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
-    let tool = 'select';
+    let tool = 'pan';
     let selected = null;
     let wallStart = null;
     let preview = null;
@@ -1836,6 +1851,7 @@ class Floorplaner extends IPSModuleStrict
             texts: [],
             furniture: [],
             areas: [],
+            shapes: [],
             trackers: []
         }];
 
@@ -1987,6 +2003,10 @@ class Floorplaner extends IPSModuleStrict
         document.querySelectorAll('[data-tool]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
+        const shapeSelect = document.getElementById('shapeToolSelect');
+        if (shapeSelect) {
+            shapeSelect.value = tool.startsWith('shape-') ? tool : '';
+        }
         render();
     }
 
@@ -2819,6 +2839,23 @@ class Floorplaner extends IPSModuleStrict
         const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
         const openingGapThickness = wallThickness + 4;
 
+        for (const shape of floor.shapes || []) {
+            const sel = selected?.type === 'shape' && selected.id === shape.id;
+            const cls = sel ? ' selection-shape' : '';
+            if (shape.kind === 'line') {
+                parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
+                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+            } else if (shape.kind === 'rect') {
+                const x=Math.min(shape.x1,shape.x2), y=Math.min(shape.y1,shape.y2), w=Math.abs(shape.x2-shape.x1), h=Math.abs(shape.y2-shape.y1);
+                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
+                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+            } else if (shape.kind === 'circle') {
+                const r=Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1);
+                parts.push(`<circle class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
+                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+            }
+        }
+
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
             parts.push(
@@ -3498,6 +3535,7 @@ class Floorplaner extends IPSModuleStrict
         if (type === 'item') return floor.items.find(v => v.id === id);
         if (type === 'furniture') return (floor.furniture || []).find(v => v.id === id);
         if (type === 'text') return floor.texts.find(v => v.id === id);
+        if (type === 'shape') return (floor.shapes || []).find(v => v.id === id);
         return null;
     }
 
@@ -3516,6 +3554,8 @@ class Floorplaner extends IPSModuleStrict
             floor.furniture = (floor.furniture || []).filter(v => v.id !== selected.id);
         } else if (selected.type === 'text') {
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
+        } else if (selected.type === 'shape') {
+            floor.shapes = (floor.shapes || []).filter(v => v.id !== selected.id);
         }
 
         selected = null;
@@ -4183,13 +4223,18 @@ class Floorplaner extends IPSModuleStrict
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
 
+    document.getElementById('shapeToolSelect')?.addEventListener('change', evt => {
+        const next = evt.target.value;
+        if (!next) return;
+        setTool(next);
+    });
+
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
     document.getElementById('undoBtn').addEventListener('click', () => restoreHistory(historyIndex - 1));
     document.getElementById('redoBtn').addEventListener('click', () => restoreHistory(historyIndex + 1));
     document.getElementById('fitBtn').addEventListener('click', fit);
     document.getElementById('zoomOutBtn').addEventListener('click', () => zoomManual(1 / 1.2));
     document.getElementById('zoomInBtn').addEventListener('click', () => zoomManual(1.2));
-    document.getElementById('homeViewBtn').addEventListener('click', resetCurrentFloorView);
 
     function scheduleResponsiveFit() {
         if (resizeFitTimer) {
@@ -4390,6 +4435,7 @@ class Floorplaner extends IPSModuleStrict
             texts: [],
             furniture: [],
             areas: [],
+            shapes: [],
             trackers: []
         };
         rememberCurrentFloorView(false);
@@ -4659,21 +4705,39 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
-        if (tool === 'select') {
-            if (target) {
-                selected = {type: target.dataset.type, id: target.dataset.id};
-                const obj = findEntity(selected.type, selected.id);
+        // Auswahl braucht kein eigenes Werkzeug: vorhandene Elemente können
+        // im Editor jederzeit direkt angeklickt und verschoben werden.
+        if (state.mode !== 'view' && target && tool !== 'pan' &&
+            !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            selected = {type: target.dataset.type, id: target.dataset.id};
+            const obj = findEntity(selected.type, selected.id);
+            if (obj) {
                 drag = {
                     mode: 'move',
                     type: selected.type,
                     id: selected.id,
                     start: p,
-                    original: obj ? structuredClone(obj) : null
+                    original: structuredClone(obj)
                 };
                 svg.setPointerCapture(evt.pointerId);
-            } else {
-                selected = null;
+                evt.preventDefault();
+                render();
+                return;
             }
+        }
+
+        if (tool === 'shape-line' || tool === 'shape-rect' || tool === 'shape-circle') {
+            const shape = {
+                id: uid('shape'),
+                kind: tool === 'shape-line' ? 'line' : (tool === 'shape-rect' ? 'rect' : 'circle'),
+                x1: p.x, y1: p.y, x2: p.x, y2: p.y
+            };
+            floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
+            floor.shapes.push(shape);
+            selected = {type:'shape', id:shape.id};
+            drag = {mode:'draw-shape', type:'shape', id:shape.id, start:p, original:structuredClone(shape)};
+            svg.setPointerCapture(evt.pointerId);
+            evt.preventDefault();
             render();
             return;
         }
@@ -4728,7 +4792,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'opening', id: o.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             render();
             return;
         }
@@ -4764,7 +4828,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'item', id: item.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             render();
             return;
         }
@@ -4787,7 +4851,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'furniture', id: furniture.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             renderAll();
             return;
         }
@@ -4804,7 +4868,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'text', id: t.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('pan');
             render();
         }
     });
@@ -4838,6 +4902,15 @@ class Floorplaner extends IPSModuleStrict
             panY = drag.panY + (evt.clientY - drag.y);
             rememberCurrentFloorView(false);
             setTransform();
+            render();
+            return;
+        }
+
+        if (drag.mode === 'draw-shape') {
+            const obj = findEntity('shape', drag.id);
+            if (!obj) return;
+            obj.x2 = p.x;
+            obj.y2 = p.y;
             render();
             return;
         }
@@ -4879,6 +4952,11 @@ class Floorplaner extends IPSModuleStrict
 
                 position = Math.max(edge, Math.min(1 - edge, position));
                 obj.position = Math.round(position * 10000) / 10000;
+            } else if (drag.type === 'shape') {
+                obj.x1 = snapValue(drag.original.x1 + dx);
+                obj.y1 = snapValue(drag.original.y1 + dy);
+                obj.x2 = snapValue(drag.original.x2 + dx);
+                obj.y2 = snapValue(drag.original.y2 + dy);
             } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture') {
                 obj.x = snapValue(drag.original.x + dx);
                 obj.y = snapValue(drag.original.y + dy);
@@ -4918,6 +4996,9 @@ class Floorplaner extends IPSModuleStrict
                     obj.x2 = snapValue(p.x);
                     obj.y2 = snapValue(p.y);
                 }
+            } else if (drag.type === 'shape') {
+                obj.x2 = p.x;
+                obj.y2 = p.y;
             } else if (drag.type === 'furniture') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
@@ -4995,7 +5076,7 @@ class Floorplaner extends IPSModuleStrict
             return;
         }
 
-        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate') {
+        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate' || drag.mode === 'draw-shape') {
             pushHistory();
             markDirty();
         }
@@ -5038,7 +5119,7 @@ class Floorplaner extends IPSModuleStrict
             wallStart = null;
             preview = null;
             selected = null;
-            setTool('select');
+            setTool('pan');
         }
 
         if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {
@@ -6556,7 +6637,7 @@ HTML;
             $floor['name'] = (string) ($floor['name'] ?? ('Etage ' . ($index + 1)));
             $floor['wallThickness'] = max(1, min(60, (int) ($floor['wallThickness'] ?? 12)));
 
-            foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'trackers'] as $key) {
+            foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'shapes', 'trackers'] as $key) {
                 if (!isset($floor[$key]) || !is_array($floor[$key])) {
                     $floor[$key] = [];
                 }
@@ -6625,6 +6706,7 @@ HTML;
             'texts'     => [],
             'furniture' => [],
             'areas'     => [],
+            'shapes'    => [],
             'trackers'  => []
         ];
     }
