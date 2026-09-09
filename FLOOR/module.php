@@ -5846,7 +5846,18 @@ class Floorplaner extends IPSModuleStrict
                 pushHistory();
                 markDirty();
                 render();
-                renderProperties();
+
+                // Der Refresh kann über einen Button ausgelöst werden, während
+                // die Eigenschaftenleiste noch als "aktiv" markiert ist.
+                // Dann würde renderProperties() den alten Color-Input stehen lassen.
+                // Deshalb den Bedienstatus gezielt freigeben und die Leiste
+                // im nächsten Event-Zyklus sicher neu aufbauen.
+                propertiesControlActive = false;
+                propertiesSelectOpen = false;
+                setTimeout(() => {
+                    renderProperties();
+                }, 0);
+
                 statusEl.textContent = 'Variableneinstellungen aktualisiert';
                 return;
             }
