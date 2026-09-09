@@ -702,15 +702,27 @@ class Floorplaner extends IPSModuleStrict
 
         .device-label {
             pointer-events: none;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
         }
 
-        .device text,
+        .device-label,
+        .runtime-value,
         .plan-text {
             fill: white;
             font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+            line-height: 1;
             paint-order: stroke;
             stroke: rgba(0,0,0,.35);
             stroke-width: 2px;
+            text-rendering: geometricPrecision;
         }
 
         .grid-line {
@@ -921,6 +933,11 @@ class Floorplaner extends IPSModuleStrict
 
         .runtime-value {
             fill: #d7e9ff !important;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
         }
 
         .runtime-value-frame {
@@ -1294,7 +1311,7 @@ class Floorplaner extends IPSModuleStrict
             color: #303030;
             stroke: none !important;
             paint-order: normal !important;
-            text-rendering: optimizeLegibility;
+            text-rendering: geometricPrecision;
         }
 
         /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
