@@ -2855,19 +2855,23 @@ class Floorplaner extends IPSModuleStrict
                 }
             } else {
                 if (!isOpen) {
-                    // Das Fenster besitzt bewusst eine leicht versetzte zweite Linie.
-                    // Dieselbe innen/außen-Auswahl wie beim Rollo bestimmt nun auch,
-                    // auf welcher Mauerseite dieser Fenster-Versatz liegt.
-                    // false = bisherige Darstellung (+4), true = gespiegelt (-4).
-                    const windowSide = o.shutterSideInvert === true ? -1 : 1;
-                    const windowOffset = 4 * windowSide;
-                    const wx1 = geom.x1 + geom.nx * windowOffset;
-                    const wy1 = geom.y1 + geom.ny * windowOffset;
-                    const wx2 = geom.x2 + geom.nx * windowOffset;
-                    const wy2 = geom.y2 + geom.ny * windowOffset;
+                    // Fenster immer exakt mittig im Mauerwerk darstellen.
+                    // Die beiden Fensterlinien liegen symmetrisch links/rechts
+                    // der Wandmittellinie und sind damit unabhängig vom Rollo.
+                    const windowHalfOffset = 2;
 
-                    parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
-                    parts.push(`<line class="opening-line" x1="${wx1}" y1="${wy1}" x2="${wx2}" y2="${wy2}"/>`);
+                    const wx1a = geom.x1 - geom.nx * windowHalfOffset;
+                    const wy1a = geom.y1 - geom.ny * windowHalfOffset;
+                    const wx2a = geom.x2 - geom.nx * windowHalfOffset;
+                    const wy2a = geom.y2 - geom.ny * windowHalfOffset;
+
+                    const wx1b = geom.x1 + geom.nx * windowHalfOffset;
+                    const wy1b = geom.y1 + geom.ny * windowHalfOffset;
+                    const wx2b = geom.x2 + geom.nx * windowHalfOffset;
+                    const wy2b = geom.y2 + geom.ny * windowHalfOffset;
+
+                    parts.push(`<line class="opening-line" x1="${wx1a}" y1="${wy1a}" x2="${wx2a}" y2="${wy2a}"/>`);
+                    parts.push(`<line class="opening-line" x1="${wx1b}" y1="${wy1b}" x2="${wx2b}" y2="${wy2b}"/>`);
                 } else {
                     // Geöffnetes Fenster nicht mehr schräg nach außen darstellen.
                     // Der komplette Flügel bleibt parallel zur Wand und wird mit
