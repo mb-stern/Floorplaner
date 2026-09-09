@@ -1831,11 +1831,11 @@ class Floorplaner extends IPSModuleStrict
                 if (!opening.shutterValueMap || typeof opening.shutterValueMap !== 'object' || Array.isArray(opening.shutterValueMap)) {
                     opening.shutterValueMap = {};
                 }
-                if (typeof opening.doorSideInvert !== 'boolean') {
-                    opening.doorSideInvert = false;
-                }
                 if (typeof opening.shutterSideInvert !== 'boolean') {
                     opening.shutterSideInvert = false;
+                }
+                if (typeof opening.doorSideInvert !== 'boolean') {
+                    opening.doorSideInvert = false;
                 }
             }
             floor.items = Array.isArray(floor.items) ? floor.items : [];
@@ -3396,7 +3396,7 @@ class Floorplaner extends IPSModuleStrict
         } else if (selected.type === 'opening') {
             propTitle.textContent = obj.type === 'door' ? 'Tür' : 'Fenster';
 
-            const openingSpecificFields = obj.type === 'window'
+            const typeSpecificHtml = obj.type === 'window'
                 ? `
                     <div class="field">
                         <label>Rollo / Rollladen (optional)</label>
@@ -3412,18 +3412,21 @@ class Floorplaner extends IPSModuleStrict
                                 <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
                             </select>
                         </div>
+
                         <div class="field">
                             <label class="check">
                                 <input data-field="shutterSideInvert" type="checkbox"${obj.shutterSideInvert === true ? ' checked' : ''}>
                                 Rollo innen/außen tauschen
                             </label>
                         </div>
+
                         <div class="field">
                             <label class="check">
                                 <input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}>
                                 Rollo-Status invertieren
                             </label>
                         </div>
+
                         ${shutterValueMappingHtml(obj)}
                     ` : ''}
                 `
@@ -3437,8 +3440,15 @@ class Floorplaner extends IPSModuleStrict
                 `;
 
             properties.innerHTML = `
-                <div class="field"><label>Länge</label><input data-field="length" type="number" min="20" value="${obj.length || 80}"></div>
-                <div class="field"><label>Position auf Wand (0–1)</label><input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}"></div>
+                <div class="field">
+                    <label>Länge</label>
+                    <input data-field="length" type="number" min="20" value="${obj.length || 80}">
+                </div>
+
+                <div class="field">
+                    <label>Position auf Wand (0–1)</label>
+                    <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
+                </div>
 
                 <div class="field">
                     <label>${obj.type === 'door' ? 'Türkontakt / Türposition' : 'Fensterkontakt / Fensterposition'}</label>
@@ -3446,7 +3456,7 @@ class Floorplaner extends IPSModuleStrict
                         value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
                 </div>
 
-                ${openingSpecificFields}
+                ${typeSpecificHtml}
 
                 <div class="field">
                     <label class="check">
