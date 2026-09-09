@@ -1340,13 +1340,16 @@ class Floorplaner extends IPSModuleStrict
         .stream-popup-body {
             display: grid;
             gap: 8px;
+            width: min(320px, calc(100vw - 32px));
+            max-width: 100%;
         }
 
         .stream-view {
-            width: 320px;
-            height: 180px;
-            max-width: min(72vw, 640px);
-            max-height: min(60vh, 360px);
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            height: auto;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
             overflow: hidden;
             border-radius: 7px;
             background: #000;
@@ -1355,16 +1358,24 @@ class Floorplaner extends IPSModuleStrict
         .stream-view img {
             width: 100%;
             height: 100%;
+            max-width: 100%;
+            max-height: 100%;
             display: block;
             object-fit: contain;
             background: #000;
         }
 
+        #controlModal.stream-expanded .stream-popup-body {
+            width: min(960px, calc(100vw - 32px));
+            max-width: 100%;
+        }
+
         #controlModal.stream-expanded .stream-view {
-            width: min(78vw, 960px);
-            height: min(68vh, 540px);
-            max-width: none;
-            max-height: none;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
         }
 
         .stream-popup-actions {
@@ -1399,6 +1410,10 @@ class Floorplaner extends IPSModuleStrict
             position: fixed;
             margin: 0;
             pointer-events: auto;
+            max-width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         /* Einheitlicher Cursor für den Grundriss:
@@ -5587,10 +5602,39 @@ class Floorplaner extends IPSModuleStrict
             </div>
         `;
 
+        const fitStreamDialogIntoViewport = () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            if (!dialog) return;
+
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = rect.left;
+                let top = rect.top;
+
+                if (rect.right > window.innerWidth - margin) {
+                    left -= rect.right - (window.innerWidth - margin);
+                }
+                if (rect.bottom > window.innerHeight - margin) {
+                    top -= rect.bottom - (window.innerHeight - margin);
+                }
+
+                left = Math.max(margin, left);
+                top = Math.max(margin, top);
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        };
+
         const expandBtn = controlBody.querySelector('[data-stream-expand]');
         expandBtn?.addEventListener('click', () => {
             const expanded = controlModal.classList.toggle('stream-expanded');
             expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
+            fitStreamDialogIntoViewport();
         });
 
         controlModal.classList.add('open');
