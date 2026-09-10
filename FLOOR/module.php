@@ -1138,7 +1138,7 @@ class Floorplaner extends IPSModuleStrict
             }
         }
             .device-glyph {
-            color: var(--device-icon-color, currentColor);
+            color: currentColor;
             pointer-events: none;
         }
         .device-glyph * {
@@ -1379,7 +1379,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         html[data-theme="light"] .device-glyph {
-            color: var(--device-icon-color, #555555);
+            color: #555555;
         }
 
         html[data-theme="light"] .runtime-value {
@@ -1515,13 +1515,13 @@ class Floorplaner extends IPSModuleStrict
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--device-icon-color, var(--fp-text));
+            color: var(--fp-text);
             line-height: 1;
             pointer-events: none;
         }
 
         html[data-theme="light"] .device-icon-html {
-            color: var(--device-icon-color, #4f4f4f);
+            color: #4f4f4f;
         }
 
         .icon-select-button {
@@ -2807,7 +2807,7 @@ class Floorplaner extends IPSModuleStrict
             ? svgHtml
             : `<i class="${escapeHtml(parsed.cls)}"></i>`;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
-            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px;color:var(--device-icon-color,var(--fp-text))">${content}</div></foreignObject>`;
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
 
 
@@ -3388,9 +3388,9 @@ class Floorplaner extends IPSModuleStrict
                 : 7;
             const icon = effectiveItemIcon(item);
             const integerStatusColor = integerStatusColorFromProfile(item);
-            const integerIconStyle = integerStatusColor !== ''
-                ? `--device-icon-color:${integerStatusColor};`
-                : '';
+            const effectiveStatusColor = integerStatusColor !== ''
+                ? integerStatusColor
+                : statusColor;
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3447,7 +3447,7 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;${integerIconStyle}--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
