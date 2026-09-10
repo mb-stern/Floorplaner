@@ -2650,16 +2650,40 @@ class Floorplaner extends IPSModuleStrict
 
     function fontAwesomeSvgHtml(icon) {
         const parsed = parseSymconIcon(icon);
+
         try {
             if (window.FontAwesome && typeof window.FontAwesome.icon === 'function') {
-                const rendered = window.FontAwesome.icon({ prefix: parsed.prefix, iconName: parsed.iconName });
-                if (rendered && Array.isArray(rendered.html) && rendered.html.length > 0) {
-                    return rendered.html.join('');
+                // Zuerst genau den gelieferten Stil versuchen.
+                const prefixes = [parsed.prefix];
+
+                // Die zusätzlichen visuellen Einstellungen der neuen Symcon-
+                // Visualisierung liefern auch Symcon-eigene Icons, z.B.
+                // window-left-open, volant-open, marquee-half usw.
+                // Diese liegen in /icons.js als Kit-Icons (fak) und NICHT als
+                // normale FontAwesome-Light-Icons (fal). Der bisherige Code
+                // hat daraus fa-light fa-... gemacht -> Fragezeichen.
+                if (!prefixes.includes('fak')) prefixes.push('fak');
+                if (!prefixes.includes('fal')) prefixes.push('fal');
+
+                for (const prefix of prefixes) {
+                    const rendered = window.FontAwesome.icon({
+                        prefix,
+                        iconName: parsed.iconName
+                    });
+
+                    if (
+                        rendered &&
+                        Array.isArray(rendered.html) &&
+                        rendered.html.length > 0
+                    ) {
+                        return rendered.html.join('');
+                    }
                 }
             }
         } catch (e) {
             // Fallback weiter unten.
         }
+
         return '';
     }
 
