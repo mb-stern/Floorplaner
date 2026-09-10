@@ -3268,14 +3268,22 @@ class Floorplaner extends IPSModuleStrict
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
             const isBooleanDevice = Number(item._variableType) === 0;
+            const isIntegerDevice = Number(item._variableType) === 1;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+
+            const legacyIntegerColor = isIntegerDevice
+                ? legacyIntegerCurrentColor(item)
+                : '';
+            const hasLegacyIntegerColor = /^#[0-9a-f]{6}$/i.test(legacyIntegerColor);
+
             const statusRingEnabled = supportsStatusColor(item);
             const symconGlowColor = String(item._glowColor || '').trim();
             const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
-            const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
-            const numericClass = numericLevel !== null ? ' numeric-status' : '';
+            const numericLevel = numericStatusLevel(item);
+            const numericRingVisible = numericLevel !== null || hasLegacyIntegerColor;
+            const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
@@ -3307,6 +3315,9 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
+            const effectiveStatusColor = hasLegacyIntegerColor
+                ? legacyIntegerColor
+                : statusColor;
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3363,10 +3374,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasLegacyIntegerColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
-                      (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                      (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
                       `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
@@ -3455,6 +3466,35 @@ class Floorplaner extends IPSModuleStrict
             : '';
     }
 
+    function legacyIntegerCurrentColor(item) {
+        if (Number(item?._variableType) !== 1 || item?._hasLegacyProfile !== true) {
+            return '';
+        }
+
+        const direct = String(item?._legacyCurrentColor || '').trim();
+        if (/^#[0-9a-f]{6}$/i.test(direct)) {
+            return direct;
+        }
+
+        const raw = Number(item?._rawValue);
+        if (!Number.isFinite(raw)) {
+            return '';
+        }
+
+        const associations = Array.isArray(item?._profile?.associations)
+            ? item._profile.associations
+            : [];
+
+        const association = associations.find(entry => {
+            const value = Number(entry?.value);
+            return Number.isFinite(value) && Math.abs(value - raw) < 0.000001;
+        });
+
+        return association
+            ? symconAssociationColorToCss(association.color)
+            : '';
+    }
+
     function automaticOpeningStatusColor(opening) {
         if (!opening) return '#4da3ff';
 
@@ -3492,7 +3532,10 @@ class Floorplaner extends IPSModuleStrict
         // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
         const type = Number(item?._variableType);
         if (type === 0) return true;
-        if (type === 1 || type === 2) return numericStatusLevel(item) !== null;
+        if (type === 1) {
+            return legacyIntegerCurrentColor(item) !== '' || numericStatusLevel(item) !== null;
+        }
+        if (type === 2) return numericStatusLevel(item) !== null;
         return false;
     }
 
@@ -7494,6 +7537,7 @@ HTML;
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                     $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
+                    $node['legacyCurrentColor'] = (string) ($meta['_legacyCurrentColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -7768,6 +7812,7 @@ HTML;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
         $legacyColorOn = '';
+        $legacyCurrentColor = '';
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -7816,10 +7861,21 @@ HTML;
                 $profileSummary = implode(' · ', $parts);
 
                 foreach ($associations as $association) {
-                    if ((float) $association['value'] === (float) $rawValue && $association['name'] !== '') {
-                        $valueText = $association['name'];
-                        break;
+                    if ((float) $association['value'] !== (float) $rawValue) {
+                        continue;
                     }
+
+                    if ($association['name'] !== '') {
+                        $valueText = $association['name'];
+                    }
+
+                    // Aktuelle Farbe der passenden Legacy-Assoziation.
+                    // Keine Änderung am Icon oder an der Variablenauswahl.
+                    $associationColor = (int) ($association['color'] ?? -1);
+                    if ($hasLegacyProfile && $associationColor >= 0) {
+                        $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
+                    }
+                    break;
                 }
 
                 if ($valueText === $this->FormatRawValue($rawValue)) {
@@ -7860,6 +7916,7 @@ HTML;
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_legacyColorOn'        => $legacyColorOn,
+            '_legacyCurrentColor'   => $legacyCurrentColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
