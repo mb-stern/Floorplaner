@@ -2609,88 +2609,7 @@ class Floorplaner extends IPSModuleStrict
         'gear': 'fa-light fa-gear',
         'cog': 'fa-light fa-gear',
         'home': 'fa-light fa-house',
-        'house': 'fa-light fa-house',
-
-        // Häufige echte IP-Symcon Legacy-Icons, insbesondere bei Integer-Profilen.
-        'intensity': 'fa-light fa-sun-bright',
-        'jalousie': 'fa-light fa-blinds',
-        'raffstore': 'fa-light fa-blinds',
-        'shutter': 'fa-light fa-blinds',
-        'speedo': 'fa-light fa-gauge-high',
-        'windspeed': 'fa-light fa-wind',
-        'winddirection': 'fa-light fa-compass',
-        'energystorage': 'fa-light fa-battery-half',
-        'energyproduction': 'fa-light fa-bolt',
-        'energysolar': 'fa-light fa-solar-panel',
-        'floorlamp': 'fa-light fa-lamp-floor',
-        'radiator': 'fa-light fa-radiator',
-        'ventilation': 'fa-light fa-fan',
-        'garage': 'fa-light fa-garage',
-        'gauge': 'fa-light fa-gauge',
-        'drops': 'fa-light fa-droplet',
-        'snow': 'fa-light fa-snowflake',
-        'snowflake': 'fa-light fa-snowflake',
-        'sun': 'fa-light fa-sun',
-        'sunny': 'fa-light fa-sun-bright',
-        'cloud': 'fa-light fa-cloud',
-        'cloudy': 'fa-light fa-clouds',
-        'sleet': 'fa-light fa-cloud-sleet',
-        'thunder': 'fa-light fa-cloud-bolt',
-        'fog': 'fa-light fa-smog',
-        'flame': 'fa-light fa-fire-flame-simple',
-        'plug': 'fa-light fa-plug',
-        'network': 'fa-light fa-network-wired',
-        'internet': 'fa-light fa-globe',
-        'telephone': 'fa-light fa-phone',
-        'mobile': 'fa-light fa-mobile-screen',
-        'mail': 'fa-light fa-envelope',
-        'key': 'fa-light fa-key',
-        'lockclosed': 'fa-light fa-lock',
-        'lockopen': 'fa-light fa-lock-open',
-        'eyes': 'fa-light fa-eye',
-        'sofa': 'fa-light fa-couch',
-        'kitchen': 'fa-light fa-kitchen-set',
-        'shower': 'fa-light fa-shower',
-        'sink': 'fa-light fa-sink',
-        'bath': 'fa-light fa-bath',
-        'wc': 'fa-light fa-toilet',
-        'tree': 'fa-light fa-tree',
-        'leaf': 'fa-light fa-leaf',
-        'flower': 'fa-light fa-flower',
-        'distance': 'fa-light fa-ruler',
-        'graph': 'fa-light fa-chart-line',
-        'factory': 'fa-light fa-industry',
-        'recycling': 'fa-light fa-recycle',
-        'robot': 'fa-light fa-robot',
-        'rocket': 'fa-light fa-rocket',
-        'star': 'fa-light fa-star',
-        'stars': 'fa-light fa-stars',
-        'moon': 'fa-light fa-moon',
-        'umbrella': 'fa-light fa-umbrella',
-        'wellness': 'fa-light fa-spa',
-        'aircraft': 'fa-light fa-plane',
-        'execute': 'fa-light fa-play',
-        'script': 'fa-light fa-file-code',
-        'edit': 'fa-light fa-pen',
-        'paintbrush': 'fa-light fa-paintbrush',
-        'image': 'fa-light fa-image',
-        'title': 'fa-light fa-heading',
-        'plus': 'fa-light fa-plus',
-        'minus': 'fa-light fa-minus',
-        'ok': 'fa-light fa-check',
-        'cross': 'fa-light fa-xmark',
-        'close': 'fa-light fa-xmark',
-        'closeall': 'fa-light fa-xmarks-lines',
-        'help': 'fa-light fa-circle-question',
-        'download': 'fa-light fa-download',
-        'return': 'fa-light fa-arrow-turn-down-left',
-        'repeat': 'fa-light fa-repeat',
-        'shuffle': 'fa-light fa-shuffle',
-        'turnleft': 'fa-light fa-arrow-turn-up',
-        'turnright': 'fa-light fa-arrow-turn-down',
-        'arrowright': 'fa-light fa-arrow-right',
-        'caret': 'fa-light fa-caret-right',
-        'hourglass': 'fa-light fa-hourglass-half'
+        'house': 'fa-light fa-house'
     };
 
     function normalizeSymconIcon(icon) {
@@ -3349,14 +3268,22 @@ class Floorplaner extends IPSModuleStrict
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
             const isBooleanDevice = Number(item._variableType) === 0;
+            const isIntegerDevice = Number(item._variableType) === 1;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+
+            const legacyIntegerColor = isIntegerDevice
+                ? legacyIntegerCurrentColor(item)
+                : '';
+            const hasLegacyIntegerColor = /^#[0-9a-f]{6}$/i.test(legacyIntegerColor);
+
             const statusRingEnabled = supportsStatusColor(item);
             const symconGlowColor = String(item._glowColor || '').trim();
             const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
-            const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
-            const numericClass = numericLevel !== null ? ' numeric-status' : '';
+            const numericLevel = numericStatusLevel(item);
+            const numericRingVisible = numericLevel !== null || hasLegacyIntegerColor;
+            const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
@@ -3388,6 +3315,9 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
+            const effectiveStatusColor = hasLegacyIntegerColor
+                ? legacyIntegerColor
+                : statusColor;
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3444,10 +3374,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasLegacyIntegerColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
-                      (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                      (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
                       `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
@@ -3536,6 +3466,35 @@ class Floorplaner extends IPSModuleStrict
             : '';
     }
 
+    function legacyIntegerCurrentColor(item) {
+        if (Number(item?._variableType) !== 1 || item?._hasLegacyProfile !== true) {
+            return '';
+        }
+
+        const direct = String(item?._legacyCurrentColor || '').trim();
+        if (/^#[0-9a-f]{6}$/i.test(direct)) {
+            return direct;
+        }
+
+        const raw = Number(item?._rawValue);
+        if (!Number.isFinite(raw)) {
+            return '';
+        }
+
+        const associations = Array.isArray(item?._profile?.associations)
+            ? item._profile.associations
+            : [];
+
+        const association = associations.find(entry => {
+            const value = Number(entry?.value);
+            return Number.isFinite(value) && Math.abs(value - raw) < 0.000001;
+        });
+
+        return association
+            ? symconAssociationColorToCss(association.color)
+            : '';
+    }
+
     function automaticOpeningStatusColor(opening) {
         if (!opening) return '#4da3ff';
 
@@ -3573,7 +3532,10 @@ class Floorplaner extends IPSModuleStrict
         // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
         const type = Number(item?._variableType);
         if (type === 0) return true;
-        if (type === 1 || type === 2) return numericStatusLevel(item) !== null;
+        if (type === 1) {
+            return legacyIntegerCurrentColor(item) !== '' || numericStatusLevel(item) !== null;
+        }
+        if (type === 2) return numericStatusLevel(item) !== null;
         return false;
     }
 
@@ -6195,7 +6157,7 @@ class Floorplaner extends IPSModuleStrict
 
                     if (entity.iconManual !== true) {
                         entity.icon = Number(node.variableType) === 1
-                            ? (node.legacyCurrentIcon || node.objectIcon || 'fa-light fa-circle')
+                            ? (node.presentationIcon || node.objectIcon || 'fa-light fa-circle')
                             : (node.objectIcon || 'fa-light fa-circle');
                         entity.iconSvg = '';
                     }
@@ -6581,7 +6543,7 @@ class Floorplaner extends IPSModuleStrict
                     item.icon = meta._hasLegacyProfile === true
                         ? (
                             Number(meta._variableType) === 1
-                                ? (meta._legacyCurrentIcon || meta._objectIcon || 'fa-light fa-circle')
+                                ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
                                 : (meta._objectIcon || 'fa-light fa-circle')
                         )
                         : (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle');
@@ -6685,7 +6647,7 @@ class Floorplaner extends IPSModuleStrict
                     }
                 } else if (meta._hasLegacyProfile === true) {
                     item.icon = Number(meta._variableType) === 1
-                        ? (meta._legacyCurrentIcon || meta._objectIcon || 'fa-light fa-circle')
+                        ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
                         : (meta._objectIcon || 'fa-light fa-circle');
 
                     if (Number(meta._variableType) === 0) {
@@ -6734,7 +6696,7 @@ class Floorplaner extends IPSModuleStrict
                                 // Funktionierenden Legacy-Weg nicht verändern.
                                 if (!manualIcon && meta._objectIcon !== undefined) {
                                     item.icon = Number(meta._variableType) === 1
-                                        ? (meta._legacyCurrentIcon || meta._objectIcon || 'fa-light fa-circle')
+                                        ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
                                         : (meta._objectIcon || 'fa-light fa-circle');
                                     item.iconSvg = '';
                                 }
@@ -7585,7 +7547,7 @@ HTML;
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                     $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
-                    $node['legacyCurrentIcon'] = (string) ($meta['_legacyCurrentIcon'] ?? '');
+                    $node['legacyCurrentColor'] = (string) ($meta['_legacyCurrentColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -7647,6 +7609,45 @@ HTML;
             }
         }
         return null;
+    }
+
+    private function GetVisualPresentationIcons(array $Presentation, int $VariableType): array
+    {
+        $result = ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
+
+        if ($Presentation === []) {
+            return $result;
+        }
+
+        $iconTrue = trim((string) ($this->FindPresentationValue($Presentation, 'ICON_TRUE') ?? ''));
+        $iconFalse = trim((string) ($this->FindPresentationValue($Presentation, 'ICON_FALSE') ?? ''));
+        $useIconFalseRaw = $this->FindPresentationValue($Presentation, 'USE_ICON_FALSE');
+        $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
+
+        if ($VariableType === 0 && $iconTrue !== '') {
+            $result['on'] = $iconTrue;
+            $result['off'] = ($useIconFalse && $iconFalse !== '') ? $iconFalse : $iconTrue;
+        } else {
+            $icon = trim((string) ($this->FindPresentationValue($Presentation, 'ICON') ?? ''));
+            if ($icon !== '') {
+                $result['icon'] = $icon;
+            }
+        }
+
+        $glowColorRaw = $this->FindPresentationValue($Presentation, 'GLOW_COLOR');
+        if ($glowColorRaw !== null && is_numeric($glowColorRaw)) {
+            $glowColor = (int) $glowColorRaw;
+            if ($glowColor >= 0) {
+                $result['glowColor'] = sprintf('#%06X', $glowColor & 0xFFFFFF);
+            }
+        }
+
+        $glowIntensityRaw = $this->FindPresentationValue($Presentation, 'GLOW_INTENSITY');
+        if ($glowIntensityRaw !== null && is_numeric($glowIntensityRaw)) {
+            $result['glowIntensity'] = max(0, min(100, (int) $glowIntensityRaw));
+        }
+
+        return $result;
     }
 
     private function GetNewPresentationIcons(int $VariableID, int $VariableType, mixed $RawValue, array $Variable): array
@@ -7853,14 +7854,35 @@ HTML;
             $hasNewPresentation = $fallbackHasPresentation;
         }
 
-        $presentationIcons = $hasNewPresentation
-            ? $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable)
-            : ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
+        // ICON / ICON_TRUE / ICON_FALSE gehören zu den zusätzlichen visuellen
+        // Einstellungen der Variable. Diese Werte können auch vorhanden sein,
+        // wenn die eigentliche Darstellung weiterhin ein Legacy-Profil nutzt.
+        // Darum NICHT vom Legacy-Profil-Icon ableiten.
+        $presentationIcons = $this->GetVisualPresentationIcons(
+            (array) ($activePresentation['parameters'] ?? []),
+            $variableType
+        );
+
+        // Fallback für Systeme, bei denen IPS_GetVariablePresentation() keine
+        // vollständigen Parameter liefert, aber eine neue Darstellung aktiv ist.
+        if (
+            $hasNewPresentation &&
+            $presentationIcons['icon'] === '' &&
+            $presentationIcons['off'] === '' &&
+            $presentationIcons['on'] === ''
+        ) {
+            $presentationIcons = $this->GetNewPresentationIcons(
+                $VariableID,
+                $variableType,
+                $rawValue,
+                $variable
+            );
+        }
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
         $legacyColorOn = '';
-        $legacyCurrentIcon = '';
+        $legacyCurrentColor = '';
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -7878,7 +7900,6 @@ HTML;
 
                 $profile = [
                     'name'         => $profileName,
-                    'icon'         => (string) ($p['Icon'] ?? ''),
                     'min'          => $p['MinValue'] ?? null,
                     'max'          => $p['MaxValue'] ?? null,
                     'step'         => $p['StepSize'] ?? null,
@@ -7918,20 +7939,13 @@ HTML;
                         $valueText = $association['name'];
                     }
 
-                    if ($hasLegacyProfile && trim((string) ($association['icon'] ?? '')) !== '') {
-                        $legacyCurrentIcon = trim((string) $association['icon']);
+                    // Aktuelle Farbe der passenden Legacy-Assoziation.
+                    // Keine Änderung am Icon oder an der Variablenauswahl.
+                    $associationColor = (int) ($association['color'] ?? -1);
+                    if ($hasLegacyProfile && $associationColor >= 0) {
+                        $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
                     }
                     break;
-                }
-
-                // Hat die aktuelle Assoziation kein eigenes Icon, verwendet
-                // IP-Symcon bei Legacy-Profilen das Standard-Icon des Profils.
-                if (
-                    $hasLegacyProfile &&
-                    $legacyCurrentIcon === '' &&
-                    trim((string) ($p['Icon'] ?? '')) !== ''
-                ) {
-                    $legacyCurrentIcon = trim((string) $p['Icon']);
                 }
 
                 if ($valueText === $this->FormatRawValue($rawValue)) {
@@ -7972,7 +7986,7 @@ HTML;
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_legacyColorOn'        => $legacyColorOn,
-            '_legacyCurrentIcon'    => $legacyCurrentIcon,
+            '_legacyCurrentColor'   => $legacyCurrentColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
