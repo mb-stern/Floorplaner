@@ -1515,13 +1515,13 @@ class Floorplaner extends IPSModuleStrict
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--fp-text);
+            color: var(--device-icon-color, var(--fp-text));
             line-height: 1;
             pointer-events: none;
         }
 
         html[data-theme="light"] .device-icon-html {
-            color: #4f4f4f;
+            color: var(--device-icon-color, #4f4f4f);
         }
 
         .icon-select-button {
