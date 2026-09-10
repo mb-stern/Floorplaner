@@ -2317,13 +2317,16 @@ class Floorplaner extends IPSModuleStrict
             );
         }
 
-        // Gezeichnete Formen gehören immer zum sichtbaren Etageninhalt.
-        // Besonders wichtig bei Etagen ohne Wände: "Formen + eine Variable"
-        // darf beim Einpassen nicht nur auf die Variable zoomen.
+        /*
+         * Formen sind vollwertiger Bestandteil des Grundrisses und müssen
+         * unabhängig davon, ob Wände existieren, in die Fit-Grenzen einfließen.
+         * Dieser Block verwendet exakt die Datenstruktur der bereits
+         * funktionierenden Formen-Version: x1/y1/x2/y2 + kind.
+         */
         for (const shape of floor.shapes || []) {
-            const type = String(shape.type || shape.kind || '').toLowerCase();
+            const kind = shape.kind || 'line';
 
-            if (type === 'line') {
+            if (kind === 'line') {
                 points.push(
                     [Number(shape.x1) || 0, Number(shape.y1) || 0],
                     [Number(shape.x2) || 0, Number(shape.y2) || 0]
@@ -2331,53 +2334,60 @@ class Floorplaner extends IPSModuleStrict
                 continue;
             }
 
-            const cx = Number(shape.x) || 0;
-            const cy = Number(shape.y) || 0;
-            const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
-            const cos = Math.cos(rotation);
-            const sin = Math.sin(rotation);
+            if (kind === 'rect') {
+                const x1 = Number(shape.x1) || 0;
+                const y1 = Number(shape.y1) || 0;
+                const x2 = Number(shape.x2) || 0;
+                const y2 = Number(shape.y2) || 0;
+                const minX = Math.min(x1, x2);
+                const minY = Math.min(y1, y2);
+                const maxX = Math.max(x1, x2);
+                const maxY = Math.max(y1, y2);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
 
-            if (type === 'ellipse' || type === 'circle') {
-                const rx = Math.max(
-                    1,
-                    Number(shape.rx) ||
-                    ((Number(shape.width) || Number(shape.w) || Number(shape.size) || 40) / 2)
-                );
-                const ry = type === 'circle'
-                    ? rx
-                    : Math.max(
-                        1,
-                        Number(shape.ry) ||
-                        ((Number(shape.height) || Number(shape.h) || Number(shape.size) || 40) / 2)
-                    );
-
-                const extentX = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
-                const extentY = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
-                addBox(cx - extentX, cy - extentY, cx + extentX, cy + extentY);
+                for (const [px, py] of [
+                    [minX, minY], [maxX, minY],
+                    [maxX, maxY], [minX, maxY]
+                ]) {
+                    const dx = px - cx;
+                    const dy = py - cy;
+                    points.push([
+                        cx + dx * cos - dy * sin,
+                        cy + dx * sin + dy * cos
+                    ]);
+                }
                 continue;
             }
 
-            const halfW = Math.max(
-                1,
-                (Number(shape.width) || Number(shape.w) || Number(shape.size) || 40) / 2
-            );
-            const halfH = Math.max(
-                1,
-                (Number(shape.height) || Number(shape.h) || Number(shape.size) || 40) / 2
-            );
+            if (kind === 'circle') {
+                const cx = Number(shape.x1) || 0;
+                const cy = Number(shape.y1) || 0;
+                const fallbackDiameter = Math.max(
+                    1,
+                    Math.hypot(
+                        (Number(shape.x2) || 0) - cx,
+                        (Number(shape.y2) || 0) - cy
+                    ) * 2
+                );
+                const rx = Math.max(0.5, (Number(shape.width) || fallbackDiameter) / 2);
+                const ry = Math.max(0.5, (Number(shape.height) || fallbackDiameter) / 2);
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
 
-            const corners = [
-                [-halfW, -halfH],
-                [ halfW, -halfH],
-                [ halfW,  halfH],
-                [-halfW,  halfH]
-            ].map(([dx, dy]) => [
-                cx + dx * cos - dy * sin,
-                cy + dx * sin + dy * cos
-            ]);
+                const extentX = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
+                const extentY = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
 
-            for (const point of corners) {
-                points.push(point);
+                addBox(
+                    cx - extentX,
+                    cy - extentY,
+                    cx + extentX,
+                    cy + extentY
+                );
             }
         }
 
