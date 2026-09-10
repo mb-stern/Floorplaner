@@ -6214,20 +6214,12 @@ class Floorplaner extends IPSModuleStrict
         if (entityType === 'item' && field === 'variableID') {
             if (node) {
                 entity.statusColorManual = false;
-
-                const selectedVariableIsBool = Number(node.variableType) === 0;
-                const preservedEntityIcon = entity.icon;
-                const preservedEntityIconSvg = entity.iconSvg;
-                const preservedEntityIconManual = entity.iconManual;
-
-                if (selectedVariableIsBool) {
-                    entity.iconManual = false;
-                    entity.iconOffManual = false;
-                    entity.iconOnManual = false;
-                    entity.iconSvg = '';
-                    entity.iconOffSvg = '';
-                    entity.iconOnSvg = '';
-                }
+                entity.iconManual = false;
+                entity.iconOffManual = false;
+                entity.iconOnManual = false;
+                entity.iconSvg = '';
+                entity.iconOffSvg = '';
+                entity.iconOnSvg = '';
 
                 if (node.hasNewPresentation === true) {
                     if (Number(node.variableType) === 0) {
@@ -6241,11 +6233,7 @@ class Floorplaner extends IPSModuleStrict
                             entity.statusColor = String(node.glowColor);
                         }
                     } else {
-                        // Integer/Float/String: vorhandenes, funktionierendes Icon
-                        // samt persistiertem SVG beibehalten.
-                        entity.icon = preservedEntityIcon || entity.icon || node.objectIcon || 'fa-light fa-circle';
-                        entity.iconSvg = typeof preservedEntityIconSvg === 'string' ? preservedEntityIconSvg : '';
-                        entity.iconManual = preservedEntityIconManual === true;
+                        entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
                     }
                 } else if (node.hasLegacyProfile === true) {
                     if (Number(node.variableType) === 0) {
@@ -6253,15 +6241,11 @@ class Floorplaner extends IPSModuleStrict
                         if (legacyOnColor) {
                             entity.statusColor = legacyOnColor;
                         }
+                    }
 
-                        if (entity.iconManual !== true) {
-                            entity.icon = node.objectIcon || 'fa-light fa-circle';
-                            entity.iconSvg = '';
-                        }
-                    } else {
-                        entity.icon = preservedEntityIcon || entity.icon || node.objectIcon || 'fa-light fa-circle';
-                        entity.iconSvg = typeof preservedEntityIconSvg === 'string' ? preservedEntityIconSvg : '';
-                        entity.iconManual = preservedEntityIconManual === true;
+                    if (entity.iconManual !== true) {
+                        entity.icon = node.objectIcon || 'fa-light fa-circle';
+                        entity.iconSvg = '';
                     }
                     // Für Bool immer zwei wählbare Zustände anbieten, ohne den
                     // funktionierenden Legacy-Autoweg zu verändern.
@@ -6276,14 +6260,10 @@ class Floorplaner extends IPSModuleStrict
                         }
                     }
                 } else {
+                    entity.icon = node.objectIcon || 'fa-light fa-circle';
                     if (Number(node.variableType) === 0) {
-                        entity.icon = node.objectIcon || 'fa-light fa-circle';
                         entity.iconOff = entity.icon;
                         entity.iconOn = entity.icon;
-                    } else {
-                        entity.icon = preservedEntityIcon || entity.icon || node.objectIcon || 'fa-light fa-circle';
-                        entity.iconSvg = typeof preservedEntityIconSvg === 'string' ? preservedEntityIconSvg : '';
-                        entity.iconManual = preservedEntityIconManual === true;
                     }
                 }
             } else if (entity.iconManual !== true) {
@@ -6726,34 +6706,28 @@ class Floorplaner extends IPSModuleStrict
 
                 const meta = data.meta || {};
 
-                // Variableneinstellungen aktualisieren:
-                // Bei Bool dürfen die Symcon-Icons wie bisher neu übernommen werden.
-                // Bei Integer/Float/String bleibt das bereits funktionierende Geräte-Icon
-                // inklusive gespeichertem SVG vollständig erhalten. Nur Status-/Profil-
-                // Metadaten werden aktualisiert.
-                const previousType = Number(item._variableType);
-                const newType = Number(meta._variableType);
-                const isBool = newType === 0;
+                // Für Nicht-Bool nur die visuelle Icon-Darstellung sichern.
+                // Alle Variablen-/Profil-/Wert-Metadaten werden danach weiterhin
+                // vollständig wie bisher aktualisiert.
+                const preserveNonBoolVisualIcon = Number(meta._variableType) !== 0;
+                const preservedVisualIcon = preserveNonBoolVisualIcon ? item.icon : '';
+                const preservedVisualIconSvg = preserveNonBoolVisualIcon ? item.iconSvg : '';
+                const preservedVisualIconManual = preserveNonBoolVisualIcon ? item.iconManual : false;
 
-                const preservedIcon = item.icon;
-                const preservedIconSvg = item.iconSvg;
-                const preservedIconManual = item.iconManual;
-
+                // Explizites Aktualisieren bedeutet: aktuelle Symcon-Einstellungen
+                // vollständig übernehmen, keine alten manuellen Icon-Overrides behalten.
                 item.statusColorManual = false;
-
-                if (isBool) {
-                    item.iconManual = false;
-                    item.iconOffManual = false;
-                    item.iconOnManual = false;
-                    item.iconSvg = '';
-                    item.iconOffSvg = '';
-                    item.iconOnSvg = '';
-                }
+                item.iconManual = false;
+                item.iconOffManual = false;
+                item.iconOnManual = false;
+                item.iconSvg = '';
+                item.iconOffSvg = '';
+                item.iconOnSvg = '';
 
                 Object.assign(item, meta);
 
-                if (isBool) {
-                    if (meta._hasNewPresentation === true) {
+                if (meta._hasNewPresentation === true) {
+                    if (Number(meta._variableType) === 0) {
                         item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
                         item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
                         item.icon = meta._objectIcon || item.iconOff || 'fa-light fa-circle';
@@ -6761,8 +6735,13 @@ class Floorplaner extends IPSModuleStrict
                         if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
                             item.statusColor = String(meta._glowColor);
                         }
-                    } else if (meta._hasLegacyProfile === true) {
-                        item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    } else {
+                        item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                    }
+                } else if (meta._hasLegacyProfile === true) {
+                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+
+                    if (Number(meta._variableType) === 0) {
                         item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
                         item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
 
@@ -6770,15 +6749,19 @@ class Floorplaner extends IPSModuleStrict
                         if (legacyOnColor) {
                             item.statusColor = legacyOnColor;
                         }
-                    } else {
-                        item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    }
+                } else {
+                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    if (Number(meta._variableType) === 0) {
                         item.iconOff = item.icon;
                         item.iconOn = item.icon;
                     }
-                } else {
-                    item.icon = preservedIcon || item.icon || 'fa-light fa-circle';
-                    item.iconSvg = typeof preservedIconSvg === 'string' ? preservedIconSvg : '';
-                    item.iconManual = preservedIconManual === true;
+                }
+
+                if (preserveNonBoolVisualIcon) {
+                    item.icon = preservedVisualIcon || item.icon || 'fa-light fa-circle';
+                    item.iconSvg = typeof preservedVisualIconSvg === 'string' ? preservedVisualIconSvg : '';
+                    item.iconManual = preservedVisualIconManual === true;
                 }
 
                 pushHistory();
@@ -6799,6 +6782,12 @@ class Floorplaner extends IPSModuleStrict
                             const manualIcon = item.iconManual === true;
                             const manualStatusColor = item.statusColorManual === true;
                             const preservedStatusColor = item.statusColor;
+
+                            const preserveRuntimeNonBoolIcon = Number(meta._variableType) !== 0;
+                            const preservedRuntimeIcon = preserveRuntimeNonBoolIcon ? item.icon : '';
+                            const preservedRuntimeIconSvg = preserveRuntimeNonBoolIcon ? item.iconSvg : '';
+                            const preservedRuntimeIconManual = preserveRuntimeNonBoolIcon ? item.iconManual : false;
+
                             Object.assign(item, meta);
 
                             if (manualStatusColor) {
@@ -6832,11 +6821,13 @@ class Floorplaner extends IPSModuleStrict
                                 ) {
                                     item.statusColor = String(meta._glowColor);
                                 }
-                            } else {
-                                // Integer/Float/String: Runtime-Updates dürfen das
-                                // Geräte-Icon überhaupt nicht verändern. Genau dadurch
-                                // bleibt auch ein bereits gerendertes/persistiertes SVG
-                                // erhalten und es kann kein '?' durch Neuauflösung entstehen.
+                            } else if (preserveRuntimeNonBoolIcon) {
+                                // Wert/Profil/Status wurden oben mit Object.assign()
+                                // aktualisiert. Nur das funktionierende visuelle Icon
+                                // wird danach wiederhergestellt.
+                                item.icon = preservedRuntimeIcon || item.icon || 'fa-light fa-circle';
+                                item.iconSvg = typeof preservedRuntimeIconSvg === 'string' ? preservedRuntimeIconSvg : '';
+                                item.iconManual = preservedRuntimeIconManual === true;
                             }
                         }
                     }
