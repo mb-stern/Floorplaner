@@ -3638,6 +3638,28 @@ class Floorplaner extends IPSModuleStrict
         return /^#[0-9a-f]{6}$/i.test(color) ? color : '';
     }
 
+    function hasAutomaticIntegerStatusColor(item) {
+        return Number(item?._variableType) === 1 &&
+            newIntegerPresentationColor(item) !== '';
+    }
+
+    function canConfigureStatusColor(item) {
+        if (!supportsStatusColor(item)) {
+            return false;
+        }
+
+        // Neue Integer-Darstellung mit eigener Farbe (OPTIONS / INTERVALS /
+        // COLOR): Farbe kommt vollständig aus IP-Symcon und darf hier nicht
+        // scheinbar überschreibbar angeboten werden.
+        if (hasAutomaticIntegerStatusColor(item)) {
+            return false;
+        }
+
+        // Bool sowie numerische Integer/Float-Werte ohne eigene
+        // Präsentationsfarbe behalten die manuelle Floorplaner-Farbe.
+        return true;
+    }
+
     function supportsStatusColor(item) {
         // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
         // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
@@ -4197,13 +4219,19 @@ class Floorplaner extends IPSModuleStrict
                         ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
                         : ''}
                 </div>
-                ${supportsStatusColor(obj) ? `
+                ${canConfigureStatusColor(obj) ? `
                     <div class="field">
                         <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
                         <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
                         ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
                     </div>
-                ` : ''}
+                ` : (
+                    hasAutomaticIntegerStatusColor(obj)
+                        ? `<div class="field">
+                            <div class="profile-hint">Statusfarbe wird automatisch aus der IP-Symcon-Variablendarstellung übernommen.</div>
+                           </div>`
+                        : ''
+                )}
 
                 ${Number(obj._variableType) === 0 ? `
                     <div class="field">
