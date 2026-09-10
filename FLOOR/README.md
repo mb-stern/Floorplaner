@@ -77,7 +77,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 - Einige Sichtbarkeits-Verbesserungen im Bearbeitungsmodus des Light-Theme.
 - Die Formen sind nun analog den Möbel konfigurierbar und es kann nach Wunsch eine Füllung ausgewählt werden.
-- Integerfarben sind nun unterstützt. So kann ein Icon den Zustand auch ohne angezeigten Wert wiedergeben. Die Farbe und das Icon wird aus dem Varaiabelprofil übernommen.
+- Integerfarben sind nun unterstützt. So kann ein Icon den Zustand auch ohne angezeigten Wert wiedergeben. Die Farbe und das Icon wird aus dem Variabelprofil übernommen.
 
 ### 1.8
 
