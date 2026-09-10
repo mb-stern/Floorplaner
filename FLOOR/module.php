@@ -3477,13 +3477,11 @@ class Floorplaner extends IPSModuleStrict
         }
 
         const raw = Number(item?._rawValue);
-        if (!Number.isFinite(raw)) {
-            return '';
-        }
-
         const associations = Array.isArray(item?._profile?.associations)
             ? item._profile.associations
             : [];
+
+        if (!Number.isFinite(raw)) return '';
 
         const association = associations.find(entry => {
             const value = Number(entry?.value);
@@ -6156,7 +6154,9 @@ class Floorplaner extends IPSModuleStrict
                     }
 
                     if (entity.iconManual !== true) {
-                        entity.icon = node.objectIcon || 'fa-light fa-circle';
+                        entity.icon = Number(node.variableType) === 1
+                            ? (node.legacyCurrentIcon || node.objectIcon || 'fa-light fa-circle')
+                            : (node.objectIcon || 'fa-light fa-circle');
                         entity.iconSvg = '';
                     }
                     // Für Bool immer zwei wählbare Zustände anbieten, ohne den
@@ -6640,7 +6640,9 @@ class Floorplaner extends IPSModuleStrict
                         item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
                     }
                 } else if (meta._hasLegacyProfile === true) {
-                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    item.icon = Number(meta._variableType) === 1
+                        ? (meta._legacyCurrentIcon || meta._objectIcon || 'fa-light fa-circle')
+                        : (meta._objectIcon || 'fa-light fa-circle');
 
                     if (Number(meta._variableType) === 0) {
                         item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
@@ -6687,7 +6689,9 @@ class Floorplaner extends IPSModuleStrict
                             if (meta._hasLegacyProfile === true) {
                                 // Funktionierenden Legacy-Weg nicht verändern.
                                 if (!manualIcon && meta._objectIcon !== undefined) {
-                                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                                    item.icon = Number(meta._variableType) === 1
+                                        ? (meta._legacyCurrentIcon || meta._objectIcon || 'fa-light fa-circle')
+                                        : (meta._objectIcon || 'fa-light fa-circle');
                                     item.iconSvg = '';
                                 }
                                 if (Number(meta._variableType) === 0) {
@@ -7537,6 +7541,7 @@ HTML;
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                     $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
+                    $node['legacyCurrentIcon'] = (string) ($meta['_legacyCurrentIcon'] ?? '');
                     $node['legacyCurrentColor'] = (string) ($meta['_legacyCurrentColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
@@ -7812,6 +7817,7 @@ HTML;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
         $legacyColorOn = '';
+        $legacyCurrentIcon = '';
         $legacyCurrentColor = '';
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
@@ -7869,11 +7875,15 @@ HTML;
                         $valueText = $association['name'];
                     }
 
-                    // Aktuelle Farbe der passenden Legacy-Assoziation.
-                    // Keine Änderung am Icon oder an der Variablenauswahl.
-                    $associationColor = (int) ($association['color'] ?? -1);
-                    if ($hasLegacyProfile && $associationColor >= 0) {
-                        $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
+                    // Bei Legacy-Integer kommt Icon + Farbe direkt aus der
+                    // zum aktuellen Wert passenden Profil-Assoziation.
+                    if ($hasLegacyProfile && $variableType === 1) {
+                        $legacyCurrentIcon = trim((string) ($association['icon'] ?? ''));
+
+                        $associationColor = (int) ($association['color'] ?? -1);
+                        if ($associationColor >= 0) {
+                            $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
+                        }
                     }
                     break;
                 }
@@ -7916,6 +7926,7 @@ HTML;
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_legacyColorOn'        => $legacyColorOn,
+            '_legacyCurrentIcon'    => $legacyCurrentIcon,
             '_legacyCurrentColor'   => $legacyCurrentColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
