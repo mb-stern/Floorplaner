@@ -1985,6 +1985,11 @@ class Floorplaner extends IPSModuleStrict
             floor.texts = Array.isArray(floor.texts) ? floor.texts : [];
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
+            floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
+            for (const shape of floor.shapes) {
+                if (typeof shape.fillEnabled !== 'boolean') shape.fillEnabled = false;
+                if (!['light', 'hatch', 'tiles'].includes(shape.fillMode)) shape.fillMode = 'light';
+            }
             floor.trackers = Array.isArray(floor.trackers) ? floor.trackers : [];
         }
         q.defaultFloor ||= q.floors[0].id;
@@ -2902,6 +2907,22 @@ class Floorplaner extends IPSModuleStrict
     function render() {
         const floor = currentFloor();
         const parts = [];
+
+        // Dezente Füllmuster für Formen. Bewusst nur eine kleine Auswahl.
+        parts.push(`
+            <defs>
+                <pattern id="shapePatternHatch" width="8" height="8" patternUnits="userSpaceOnUse">
+                    <path d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6"
+                          fill="none" stroke="var(--fp-text)" stroke-opacity=".28"
+                          stroke-width="1" vector-effect="non-scaling-stroke"/>
+                </pattern>
+                <pattern id="shapePatternTiles" width="18" height="12" patternUnits="userSpaceOnUse">
+                    <path d="M0,0 H18 V12 H0 Z M9,0 V12"
+                          fill="none" stroke="var(--fp-text)" stroke-opacity=".24"
+                          stroke-width="1" vector-effect="non-scaling-stroke"/>
+                </pattern>
+            </defs>
+        `);
         // Rollladen-Bedienelemente werden separat gesammelt und ganz zum Schluss
         // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
         // zuverlässig anklickbar.
@@ -2915,6 +2936,14 @@ class Floorplaner extends IPSModuleStrict
         const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
         const openingGapThickness = wallThickness + 4;
 
+        function shapeFillAttribute(shape) {
+            if (shape.fillEnabled !== true) return 'fill="none"';
+            const mode = shape.fillMode || 'light';
+            if (mode === 'hatch') return 'fill="url(#shapePatternHatch)"';
+            if (mode === 'tiles') return 'fill="url(#shapePatternTiles)"';
+            return 'fill="rgba(150,160,175,.18)"';
+        }
+
         for (const shape of floor.shapes || []) {
             const sel = selected?.type === 'shape' && selected.id === shape.id;
             const cls = sel ? ' selection-shape' : '';
@@ -2927,7 +2956,7 @@ class Floorplaner extends IPSModuleStrict
                 const cx=x+w/2, cy=y+h/2, rotation=Number(shape.rotation)||0;
                 const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
                 parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"${transform}/>`);
-                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"${transform}/>`);
+                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}" ${shapeFillAttribute(shape)}${transform}/>`);
                 if (sel) {
                     const rad=rotation*Math.PI/180;
                     const hx=cx+(w/2)*Math.cos(rad)-(h/2)*Math.sin(rad);
@@ -2937,7 +2966,7 @@ class Floorplaner extends IPSModuleStrict
             } else if (shape.kind === 'circle') {
                 const r=Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1);
                 parts.push(`<circle class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
-                parts.push(`<circle class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
+                parts.push(`<circle class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}" ${shapeFillAttribute(shape)}/>`);
                 if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
             }
         }
@@ -4141,6 +4170,16 @@ class Floorplaner extends IPSModuleStrict
                         <label>Drehung</label>
                         <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
                     </div>
+                    <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
+                    ${obj.fillEnabled === true ? `
+                    <div class="field">
+                        <label>Muster</label>
+                        <select data-field="fillMode">
+                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                        </select>
+                    </div>` : ''}
                 `;
             } else {
                 const radius = Math.hypot(Number(obj.x2) - Number(obj.x1), Number(obj.y2) - Number(obj.y1));
@@ -4163,6 +4202,16 @@ class Floorplaner extends IPSModuleStrict
                         <label>Durchmesser</label>
                         <input data-field="shapeDiameter" type="number" min="1" step="1" value="${Math.round(radius * 2)}">
                     </div>
+                    <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
+                    ${obj.fillEnabled === true ? `
+                    <div class="field">
+                        <label>Muster</label>
+                        <select data-field="fillMode">
+                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                        </select>
+                    </div>` : ''}
                 `;
             }
         } else if (selected.type === 'text') {
@@ -4257,6 +4306,10 @@ class Floorplaner extends IPSModuleStrict
                     }
                 } else {
                     obj[fieldName] = value;
+                }
+
+                if (selected.type === 'shape' && fieldName === 'fillEnabled') {
+                    refreshPropertiesAfterStructuralChange();
                 }
 
                 if (selected.type === 'item' && fieldName === 'statusColor') {
