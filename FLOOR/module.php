@@ -1137,13 +1137,8 @@ class Floorplaner extends IPSModuleStrict
                 border-top: 1px solid var(--fp-border);
             }
         }
-            .device-glyph {
-            color: currentColor;
-            pointer-events: none;
-        }
-        .device-glyph * {
-            vector-effect: non-scaling-stroke;
-        }
+            .device-glyph { color: currentColor; pointer-events: none; }
+        .device-glyph * { vector-effect: non-scaling-stroke; }
 
 
 
@@ -2323,81 +2318,6 @@ class Floorplaner extends IPSModuleStrict
         }
 
         /*
-         * Formen sind vollwertiger Bestandteil des Grundrisses und müssen
-         * unabhängig davon, ob Wände existieren, in die Fit-Grenzen einfließen.
-         * Ohne diesen Block orientiert sich eine Etage mit Formen + Gerät beim
-         * Einpassen nur am Gerät.
-         */
-        for (const shape of floor.shapes || []) {
-            const kind = shape.kind || 'line';
-
-            if (kind === 'line') {
-                points.push(
-                    [Number(shape.x1) || 0, Number(shape.y1) || 0],
-                    [Number(shape.x2) || 0, Number(shape.y2) || 0]
-                );
-                continue;
-            }
-
-            if (kind === 'rect') {
-                const x1 = Number(shape.x1) || 0;
-                const y1 = Number(shape.y1) || 0;
-                const x2 = Number(shape.x2) || 0;
-                const y2 = Number(shape.y2) || 0;
-                const minX = Math.min(x1, x2);
-                const minY = Math.min(y1, y2);
-                const maxX = Math.max(x1, x2);
-                const maxY = Math.max(y1, y2);
-                const cx = (minX + maxX) / 2;
-                const cy = (minY + maxY) / 2;
-                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
-                const cos = Math.cos(rotation);
-                const sin = Math.sin(rotation);
-
-                for (const [px, py] of [
-                    [minX, minY], [maxX, minY],
-                    [maxX, maxY], [minX, maxY]
-                ]) {
-                    const dx = px - cx;
-                    const dy = py - cy;
-                    points.push([
-                        cx + dx * cos - dy * sin,
-                        cy + dx * sin + dy * cos
-                    ]);
-                }
-                continue;
-            }
-
-            if (kind === 'circle') {
-                const cx = Number(shape.x1) || 0;
-                const cy = Number(shape.y1) || 0;
-                const fallbackDiameter = Math.max(
-                    1,
-                    Math.hypot(
-                        (Number(shape.x2) || 0) - cx,
-                        (Number(shape.y2) || 0) - cy
-                    ) * 2
-                );
-                const rx = Math.max(0.5, (Number(shape.width) || fallbackDiameter) / 2);
-                const ry = Math.max(0.5, (Number(shape.height) || fallbackDiameter) / 2);
-                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
-                const cos = Math.cos(rotation);
-                const sin = Math.sin(rotation);
-
-                // Bounding-Box einer ggf. gedrehten Ellipse.
-                const extentX = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
-                const extentY = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
-
-                addBox(
-                    cx - extentX,
-                    cy - extentY,
-                    cx + extentX,
-                    cy + extentY
-                );
-            }
-        }
-
-        /*
          * Geräte werden zusätzlich mit ihrer EFFEKTIV sichtbaren Größe
          * berücksichtigt. Befindet sich ein Gerät innerhalb des Grundrisses,
          * verändert es die Bounds nicht. Steht es z.B. auf einer Terrasse
@@ -3348,27 +3268,14 @@ class Floorplaner extends IPSModuleStrict
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
             const isBooleanDevice = Number(item._variableType) === 0;
-            const isIntegerDevice = Number(item._variableType) === 1;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
-
-            // Integer mit Profil-/Darstellungsfarbe funktioniert wie Bool:
-            // Der aktuelle Status bekommt direkt einen farbigen Ring.
-            // Dafür ist KEIN Zahlenbereich und KEINE Bedienbarkeit erforderlich.
-            const integerStatusColor = isIntegerDevice
-                ? integerStatusColorFromProfile(item)
-                : '';
-            const hasIntegerStatusColor = /^#[0-9a-f]{6}$/i.test(integerStatusColor);
-
-            const statusRingEnabled = supportsStatusColor(item) || hasIntegerStatusColor;
+            const statusRingEnabled = supportsStatusColor(item);
             const symconGlowColor = String(item._glowColor || '').trim();
             const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
-            // Zahlenbereich: bisherige stufenlose Ring-Deckkraft.
-            // Integer-Assoziation: voller Ring wie bei Bool.
-            const numericLevel = supportsStatusColor(item) ? numericStatusLevel(item) : null;
-            const numericRingVisible = numericLevel !== null || hasIntegerStatusColor;
-            const numericClass = numericRingVisible ? ' numeric-status' : '';
+            const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
+            const numericClass = numericLevel !== null ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
@@ -3400,9 +3307,6 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
-            const effectiveStatusColor = hasIntegerStatusColor
-                ? integerStatusColor
-                : statusColor;
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3459,10 +3363,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerStatusColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
-                      (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                      (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
                       `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
@@ -3537,35 +3441,6 @@ class Floorplaner extends IPSModuleStrict
         return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
     }
 
-    function integerStatusColorFromProfile(item) {
-        if (Number(item?._variableType) !== 1) return '';
-
-        // Primär serverseitig aus der aktuell wirksamen IP-Symcon-Darstellung
-        // aufgelöst. Damit funktionieren Legacy-Profilfarben ebenso wie
-        // neue Wertanzeige-/Intervall-/Aufzählungsfarben.
-        const resolved = String(item?._integerStatusColor || '');
-        if (/^#[0-9a-f]{6}$/i.test(resolved)) {
-            return resolved;
-        }
-
-        // Fallback für bereits lokal vorhandene Legacy-Profil-Metadaten.
-        const raw = Number(item?._rawValue);
-        if (!Number.isFinite(raw)) return '';
-
-        const associations = Array.isArray(item?._profile?.associations)
-            ? item._profile.associations
-            : [];
-
-        const association = associations.find(entry => {
-            const value = Number(entry?.value);
-            return Number.isFinite(value) && Math.abs(value - raw) < 0.000001;
-        });
-
-        return association
-            ? symconAssociationColorToCss(association.color)
-            : '';
-    }
-
     function legacyBoolOnColorFromProfile(profile) {
         const associations = Array.isArray(profile?.associations)
             ? profile.associations
@@ -3613,15 +3488,11 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function supportsStatusColor(item) {
-        // Statusring ist unabhängig von der Bedienbarkeit.
-        // Bool: wie bisher.
-        // Integer: entweder aktuelle Profil-/Darstellungsfarbe oder Zahlenbereich.
+        // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
+        // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
         const type = Number(item?._variableType);
         if (type === 0) return true;
-        if (type === 1) {
-            return integerStatusColorFromProfile(item) !== '' || numericStatusLevel(item) !== null;
-        }
-        if (type === 2) return numericStatusLevel(item) !== null;
+        if (type === 1 || type === 2) return numericStatusLevel(item) !== null;
         return false;
     }
 
@@ -6146,7 +6017,6 @@ class Floorplaner extends IPSModuleStrict
         const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
         const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
         const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
-        const integerStatusColorKey = prefix ? `_${prefix}IntegerStatusColor` : '_integerStatusColor';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -6165,7 +6035,6 @@ class Floorplaner extends IPSModuleStrict
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
         entity[legacyColorOnKey] = node?.legacyColorOn || '';
-        entity[integerStatusColorKey] = node?.integerStatusColor || '';
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
         // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
@@ -6494,10 +6363,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (!html) {
-            // Integer-/Float-Variablen dürfen reine Statusquellen sein.
-            // Ohne Profil-Assoziationen oder gültigen Zahlenbereich gibt es
-            // deshalb bewusst KEIN Bedienfenster – analog zu reinen Bool-Statuswerten.
-            return;
+            html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
         }
 
         controlBody.innerHTML = html;
@@ -6706,14 +6572,6 @@ class Floorplaner extends IPSModuleStrict
 
                 const meta = data.meta || {};
 
-                // Für Nicht-Bool nur die visuelle Icon-Darstellung sichern.
-                // Alle Variablen-/Profil-/Wert-Metadaten werden danach weiterhin
-                // vollständig wie bisher aktualisiert.
-                const preserveNonBoolVisualIcon = Number(meta._variableType) !== 0;
-                const preservedVisualIcon = preserveNonBoolVisualIcon ? item.icon : '';
-                const preservedVisualIconSvg = preserveNonBoolVisualIcon ? item.iconSvg : '';
-                const preservedVisualIconManual = preserveNonBoolVisualIcon ? item.iconManual : false;
-
                 // Explizites Aktualisieren bedeutet: aktuelle Symcon-Einstellungen
                 // vollständig übernehmen, keine alten manuellen Icon-Overrides behalten.
                 item.statusColorManual = false;
@@ -6758,12 +6616,6 @@ class Floorplaner extends IPSModuleStrict
                     }
                 }
 
-                if (preserveNonBoolVisualIcon) {
-                    item.icon = preservedVisualIcon || item.icon || 'fa-light fa-circle';
-                    item.iconSvg = typeof preservedVisualIconSvg === 'string' ? preservedVisualIconSvg : '';
-                    item.iconManual = preservedVisualIconManual === true;
-                }
-
                 pushHistory();
                 markDirty();
                 render();
@@ -6782,12 +6634,6 @@ class Floorplaner extends IPSModuleStrict
                             const manualIcon = item.iconManual === true;
                             const manualStatusColor = item.statusColorManual === true;
                             const preservedStatusColor = item.statusColor;
-
-                            const preserveRuntimeNonBoolIcon = Number(meta._variableType) !== 0;
-                            const preservedRuntimeIcon = preserveRuntimeNonBoolIcon ? item.icon : '';
-                            const preservedRuntimeIconSvg = preserveRuntimeNonBoolIcon ? item.iconSvg : '';
-                            const preservedRuntimeIconManual = preserveRuntimeNonBoolIcon ? item.iconManual : false;
-
                             Object.assign(item, meta);
 
                             if (manualStatusColor) {
@@ -6821,13 +6667,9 @@ class Floorplaner extends IPSModuleStrict
                                 ) {
                                     item.statusColor = String(meta._glowColor);
                                 }
-                            } else if (preserveRuntimeNonBoolIcon) {
-                                // Wert/Profil/Status wurden oben mit Object.assign()
-                                // aktualisiert. Nur das funktionierende visuelle Icon
-                                // wird danach wiederhergestellt.
-                                item.icon = preservedRuntimeIcon || item.icon || 'fa-light fa-circle';
-                                item.iconSvg = typeof preservedRuntimeIconSvg === 'string' ? preservedRuntimeIconSvg : '';
-                                item.iconManual = preservedRuntimeIconManual === true;
+                            } else if (!manualIcon) {
+                                item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                                item.iconSvg = '';
                             }
                         }
                     }
@@ -7652,7 +7494,6 @@ HTML;
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                     $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
-                    $node['integerStatusColor'] = (string) ($meta['_integerStatusColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -7878,121 +7719,6 @@ HTML;
         }
     }
 
-    private function GetIntegerRuntimeColor(
-        int $VariableType,
-        mixed $RawValue,
-        array $Presentation,
-        ?array $LegacyProfile
-    ): string {
-        if ($VariableType !== 1 || !is_numeric($RawValue)) {
-            return '';
-        }
-
-        $raw = (float) $RawValue;
-
-        $toCss = static function (mixed $Color): string {
-            if (!is_numeric($Color)) {
-                return '';
-            }
-
-            $color = (int) $Color;
-            if ($color < 0) {
-                return '';
-            }
-
-            return sprintf('#%06X', $color & 0xFFFFFF);
-        };
-
-        // 1. Legacy-Profil: Farbe der exakt zum Integerwert passenden Assoziation.
-        if (is_array($LegacyProfile)) {
-            foreach (($LegacyProfile['associations'] ?? []) as $association) {
-                if (
-                    isset($association['value']) &&
-                    is_numeric($association['value']) &&
-                    abs((float) $association['value'] - $raw) < 0.000001
-                ) {
-                    $color = $toCss($association['color'] ?? -1);
-                    if ($color !== '') {
-                        return $color;
-                    }
-                }
-            }
-        }
-
-        // IPS_GetVariablePresentation() liefert OPTIONS / INTERVALS je nach
-        // Darstellung teilweise als JSON-String, teilweise bereits als Array.
-        $decodeList = static function (mixed $Value): array {
-            if (is_array($Value)) {
-                return $Value;
-            }
-
-            if (is_string($Value) && trim($Value) !== '') {
-                $decoded = json_decode($Value, true);
-                return is_array($decoded) ? $decoded : [];
-            }
-
-            return [];
-        };
-
-        // 2. Neue Aufzählungsdarstellung: Farbe der aktuellen Option.
-        foreach ($decodeList($Presentation['OPTIONS'] ?? []) as $option) {
-            $value = $option['Value'] ?? $option['value'] ?? null;
-            if (!is_numeric($value) || abs((float) $value - $raw) >= 0.000001) {
-                continue;
-            }
-
-            $active = $option['ColorActive'] ?? $option['COLOR_ACTIVE'] ?? true;
-            if ($active === false || $active === 0 || $active === '0') {
-                continue;
-            }
-
-            $color = $toCss(
-                $option['ColorValue']
-                ?? $option['Color']
-                ?? $option['COLOR']
-                ?? -1
-            );
-            if ($color !== '') {
-                return $color;
-            }
-        }
-
-        // 3. Neue Wertanzeige / Slider: Intervallfarbe für den aktuellen Wert.
-        $intervalsActive = $Presentation['INTERVALS_ACTIVE'] ?? false;
-        if ($intervalsActive === true || $intervalsActive === 1 || $intervalsActive === '1') {
-            foreach ($decodeList($Presentation['INTERVALS'] ?? []) as $interval) {
-                $min = $interval['IntervalMinValue'] ?? $interval['MIN'] ?? null;
-                $max = $interval['IntervalMaxValue'] ?? $interval['MAX'] ?? null;
-
-                if (!is_numeric($min) || !is_numeric($max)) {
-                    continue;
-                }
-
-                if ($raw < (float) $min || $raw > (float) $max) {
-                    continue;
-                }
-
-                $active = $interval['ColorActive'] ?? $interval['COLOR_ACTIVE'] ?? false;
-                if (!($active === true || $active === 1 || $active === '1')) {
-                    continue;
-                }
-
-                $color = $toCss(
-                    $interval['ColorValue']
-                    ?? $interval['Color']
-                    ?? $interval['COLOR']
-                    ?? -1
-                );
-                if ($color !== '') {
-                    return $color;
-                }
-            }
-        }
-
-        // 4. Standardfarbe der neuen Darstellung.
-        return $toCss($Presentation['COLOR'] ?? -1);
-    }
-
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -8104,13 +7830,6 @@ HTML;
             }
         }
 
-        $integerStatusColor = $this->GetIntegerRuntimeColor(
-            $variableType,
-            $rawValue,
-            (array) ($activePresentation['parameters'] ?? []),
-            is_array($profile) ? $profile : null
-        );
-
         $variableInfo = IPS_GetVariable($VariableID);
         $actionID = $this->GetEffectiveVariableActionID($variableInfo);
 
@@ -8141,7 +7860,6 @@ HTML;
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_legacyColorOn'        => $legacyColorOn,
-            '_integerStatusColor'   => $integerStatusColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
