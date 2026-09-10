@@ -1510,13 +1510,13 @@ class Floorplaner extends IPSModuleStrict
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--fp-text);
+            color: var(--device-icon-color, var(--fp-text));
             line-height: 1;
             pointer-events: none;
         }
 
         html[data-theme="light"] .device-icon-html {
-            color: #4f4f4f;
+            color: var(--device-icon-color, #4f4f4f);
         }
 
         .icon-select-button {
@@ -3307,6 +3307,10 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
+            const integerIconColor = integerAssociationIconColor(item);
+            const deviceIconColorStyle = integerIconColor !== ''
+                ? `--device-icon-color:${integerIconColor};`
+                : '';
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3363,7 +3367,7 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;${deviceIconColorStyle}--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
@@ -3439,6 +3443,35 @@ class Floorplaner extends IPSModuleStrict
         const color = Number(value);
         if (!Number.isFinite(color) || color < 0) return '';
         return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function integerAssociationIconColor(item) {
+        if (Number(item?._variableType) !== 1) return '';
+
+        const rawValue = Number(item?._rawValue);
+        if (!Number.isFinite(rawValue)) return '';
+
+        const profile = item?._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (!associations.length) return '';
+
+        const association = associations.find(entry => {
+            const value = Number(entry?.value);
+            return Number.isFinite(value) && Math.abs(value - rawValue) < 0.000001;
+        });
+
+        if (!association) return '';
+
+        const rawColor = association.color;
+
+        if (typeof rawColor === 'string' && /^#[0-9a-f]{6}$/i.test(rawColor.trim())) {
+            return rawColor.trim();
+        }
+
+        const color = Number(rawColor);
+        if (!Number.isFinite(color) || color < 0) return '';
+
+        return '#' + (Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase();
     }
 
     function legacyBoolOnColorFromProfile(profile) {
