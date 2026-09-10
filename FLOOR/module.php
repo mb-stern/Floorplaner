@@ -1092,8 +1092,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .control-associations button.current {
-            border-color: #74b9ff;
-            box-shadow: inset 0 0 0 1px #74b9ff;
+            outline: 2px solid var(--fp-text);
+            outline-offset: 2px;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55);
+            font-weight: 700;
         }
 
         .control-range {
@@ -3549,9 +3551,27 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function symconAssociationColorToCss(value) {
+        const direct = String(value ?? '').trim();
+        if (/^#[0-9a-f]{6}$/i.test(direct)) {
+            return direct.toUpperCase();
+        }
+
         const color = Number(value);
         if (!Number.isFinite(color) || color < 0) return '';
         return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function associationButtonStyle(value) {
+        const color = symconAssociationColorToCss(value);
+        if (!color) return '';
+
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+        const textColor = luminance > 165 ? '#111111' : '#FFFFFF';
+
+        return `background:${color};border-color:${color};color:${textColor};`;
     }
 
     function legacyBoolOnColorFromProfile(profile) {
@@ -5069,7 +5089,8 @@ class Floorplaner extends IPSModuleStrict
             for (const association of associations) {
                 const value = Number(association.value);
                 const current = Number.isFinite(raw) && raw === value ? ' current' : '';
-                html += `<button type="button" class="${current.trim()}" data-shutter-value="${value}">${escapeHtml(association.name || String(value))}</button>`;
+                const associationStyle = associationButtonStyle(association.color);
+                html += `<button type="button" class="${current.trim()}" data-shutter-value="${value}"${associationStyle ? ` style="${associationStyle}"` : ''}>${escapeHtml(association.name || String(value))}</button>`;
             }
             html += '</div>';
         }
@@ -6538,7 +6559,8 @@ class Floorplaner extends IPSModuleStrict
             for (const association of associations) {
                 const value = Number(association.value);
                 const current = Number.isFinite(raw) && raw === value ? ' current' : '';
-                html += `<button type="button" class="${current.trim()}" data-control-value="${value}">${escapeHtml(association.name || String(value))}</button>`;
+                const associationStyle = associationButtonStyle(association.color);
+                html += `<button type="button" class="${current.trim()}" data-control-value="${value}"${associationStyle ? ` style="${associationStyle}"` : ''}>${escapeHtml(association.name || String(value))}</button>`;
             }
             html += '</div>';
         }
