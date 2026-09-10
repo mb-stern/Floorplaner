@@ -1137,8 +1137,13 @@ class Floorplaner extends IPSModuleStrict
                 border-top: 1px solid var(--fp-border);
             }
         }
-            .device-glyph { color: currentColor; pointer-events: none; }
-        .device-glyph * { vector-effect: non-scaling-stroke; }
+            .device-glyph {
+            color: var(--device-icon-color, currentColor);
+            pointer-events: none;
+        }
+        .device-glyph * {
+            vector-effect: non-scaling-stroke;
+        }
 
 
 
@@ -1374,7 +1379,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         html[data-theme="light"] .device-glyph {
-            color: #555555;
+            color: var(--device-icon-color, #555555);
         }
 
         html[data-theme="light"] .runtime-value {
@@ -1510,13 +1515,13 @@ class Floorplaner extends IPSModuleStrict
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--device-icon-color, var(--fp-text));
+            color: var(--fp-text);
             line-height: 1;
             pointer-events: none;
         }
 
         html[data-theme="light"] .device-icon-html {
-            color: var(--device-icon-color, #4f4f4f);
+            color: #4f4f4f;
         }
 
         .icon-select-button {
@@ -2318,10 +2323,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         /*
-         * Formen gehören ebenfalls zum eigentlichen Grundriss und müssen
-         * IMMER in die Fit-Grenzen einfließen. Zuvor wurden sie hier gar nicht
-         * berücksichtigt. Sobald dann ein Gerät vorhanden war, konnte sich
-         * "Einpassen" praktisch nur noch am Gerät orientieren.
+         * Formen sind vollwertiger Bestandteil des Grundrisses und müssen
+         * unabhängig davon, ob Wände existieren, in die Fit-Grenzen einfließen.
+         * Ohne diesen Block orientiert sich eine Etage mit Formen + Gerät beim
+         * Einpassen nur am Gerät.
          */
         for (const shape of floor.shapes || []) {
             const kind = shape.kind || 'line';
@@ -2376,16 +2381,12 @@ class Floorplaner extends IPSModuleStrict
                 const rx = Math.max(0.5, (Number(shape.width) || fallbackDiameter) / 2);
                 const ry = Math.max(0.5, (Number(shape.height) || fallbackDiameter) / 2);
                 const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
 
-                // Achsenparallele Bounding-Box einer gedrehten Ellipse.
-                const extentX = Math.sqrt(
-                    rx * rx * Math.cos(rotation) * Math.cos(rotation) +
-                    ry * ry * Math.sin(rotation) * Math.sin(rotation)
-                );
-                const extentY = Math.sqrt(
-                    rx * rx * Math.sin(rotation) * Math.sin(rotation) +
-                    ry * ry * Math.cos(rotation) * Math.cos(rotation)
-                );
+                // Bounding-Box einer ggf. gedrehten Ellipse.
+                const extentX = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
+                const extentY = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
 
                 addBox(
                     cx - extentX,
@@ -3386,9 +3387,9 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
-            const integerIconColor = integerAssociationIconColor(item);
-            const deviceIconColorStyle = integerIconColor !== ''
-                ? `--device-icon-color:${integerIconColor};`
+            const integerStatusColor = integerStatusColorFromProfile(item);
+            const integerIconStyle = integerStatusColor !== ''
+                ? `--device-icon-color:${integerStatusColor};`
                 : '';
 
             const showName = item.showName === true;
@@ -3446,7 +3447,7 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;${deviceIconColorStyle}--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;${integerIconStyle}--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
@@ -3524,33 +3525,26 @@ class Floorplaner extends IPSModuleStrict
         return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
     }
 
-    function integerAssociationIconColor(item) {
+    function integerStatusColorFromProfile(item) {
         if (Number(item?._variableType) !== 1) return '';
 
-        const rawValue = Number(item?._rawValue);
-        if (!Number.isFinite(rawValue)) return '';
+        const raw = Number(item?._rawValue);
+        if (!Number.isFinite(raw)) return '';
 
-        const profile = item?._profile || {};
-        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        const associations = Array.isArray(item?._profile?.associations)
+            ? item._profile.associations
+            : [];
+
         if (!associations.length) return '';
 
         const association = associations.find(entry => {
             const value = Number(entry?.value);
-            return Number.isFinite(value) && Math.abs(value - rawValue) < 0.000001;
+            return Number.isFinite(value) && Math.abs(value - raw) < 0.000001;
         });
 
-        if (!association) return '';
-
-        const rawColor = association.color;
-
-        if (typeof rawColor === 'string' && /^#[0-9a-f]{6}$/i.test(rawColor.trim())) {
-            return rawColor.trim();
-        }
-
-        const color = Number(rawColor);
-        if (!Number.isFinite(color) || color < 0) return '';
-
-        return '#' + (Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase();
+        return association
+            ? symconAssociationColorToCss(association.color)
+            : '';
     }
 
     function legacyBoolOnColorFromProfile(profile) {
@@ -6475,7 +6469,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         if (!html) {
-            html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
+            // Integer-/Float-Variablen dürfen reine Statusquellen sein.
+            // Ohne Profil-Assoziationen oder gültigen Zahlenbereich gibt es
+            // deshalb bewusst KEIN Bedienfenster – analog zu reinen Bool-Statuswerten.
+            return;
         }
 
         controlBody.innerHTML = html;
@@ -6822,16 +6819,10 @@ class Floorplaner extends IPSModuleStrict
             }
 
             if (data?.type === 'project' && data.project) {
-                // Runtime-/Konfigurations-Updates dürfen weder Etage noch aktuelle
-                // Ansicht verändern. Das bisherige fit() hat nach jeder
-                // Variablenzuordnung neu auf den Inhalt gezoomt. Wenn auf einer
-                // Etage z.B. nur Formen + ein Gerät vorhanden waren, wurde dadurch
-                // praktisch nur noch das Gerät groß dargestellt.
+                // Runtime-Updates dürfen die im Live-Modus gewählte Etage
+                // nicht auf die im gespeicherten Projekt hinterlegte Etage zurücksetzen.
                 const currentFloorID = state?.activeFloor || '';
                 const currentMode = state?.mode || 'view';
-                const currentZoom = zoom;
-                const currentPanX = panX;
-                const currentPanY = panY;
 
                 state = normalizeProject(data.project);
 
@@ -6850,15 +6841,7 @@ class Floorplaner extends IPSModuleStrict
                 pushHistory();
                 updateModeUI();
                 renderAll();
-
-                // Exakt denselben Zoom/Pan wie vor dem Server-Echo wiederherstellen.
-                // Kein automatisches fit() bei der Auswahl einer Variable.
-                zoom = currentZoom;
-                panX = currentPanX;
-                panY = currentPanY;
-                rememberCurrentFloorView(false);
-                setTransform();
-                render();
+                fit();
             } else if (data?.type === 'objectTree' && Array.isArray(data.objects)) {
                 objectTree = data.objects;
                 variableSearch.value = '';
