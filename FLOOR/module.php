@@ -411,11 +411,11 @@ class Floorplaner extends IPSModuleStrict
         /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
            mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
         .drawing-shape-hit {
-            fill: none;
+            fill: transparent;
             stroke: transparent;
             stroke-width: 7;
             vector-effect: non-scaling-stroke;
-            pointer-events: stroke;
+            pointer-events: all;
             cursor: move;
         }
         .drawing-shape.selection-shape {
@@ -2937,11 +2937,11 @@ class Floorplaner extends IPSModuleStrict
         const openingGapThickness = wallThickness + 4;
 
         function shapeFillAttribute(shape) {
-            if (shape.fillEnabled !== true) return 'fill="none"';
+            if (shape.fillEnabled !== true) return 'style="fill:none"';
             const mode = shape.fillMode || 'light';
-            if (mode === 'hatch') return 'fill="url(#shapePatternHatch)"';
-            if (mode === 'tiles') return 'fill="url(#shapePatternTiles)"';
-            return 'fill="rgba(150,160,175,.18)"';
+            if (mode === 'hatch') return 'style="fill:url(#shapePatternHatch)"';
+            if (mode === 'tiles') return 'style="fill:url(#shapePatternTiles)"';
+            return 'style="fill:rgba(150,160,175,.18)"';
         }
 
         for (const shape of floor.shapes || []) {
