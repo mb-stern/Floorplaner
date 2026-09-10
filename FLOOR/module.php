@@ -411,11 +411,11 @@ class Floorplaner extends IPSModuleStrict
         /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
            mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
         .drawing-shape-hit {
-            fill: none;
+            fill: transparent;
             stroke: transparent;
             stroke-width: 7;
             vector-effect: non-scaling-stroke;
-            pointer-events: stroke;
+            pointer-events: all;
             cursor: move;
         }
         .drawing-shape.selection-shape {
@@ -646,6 +646,16 @@ class Floorplaner extends IPSModuleStrict
             fill: #ffffff;
             stroke: #74b9ff;
             stroke-width: 0.4;
+        }
+
+        /* Light-Theme: Resize-/Verschiebepunkte schwarz darstellen.
+           Im Dark-Theme bleiben sie weiß. */
+        html[data-theme="light"] .resize-handle {
+            fill: #111111;
+        }
+
+        html[data-theme="light"] .rotate-handle {
+            fill: #111111;
         }
 
         /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
@@ -1082,8 +1092,10 @@ class Floorplaner extends IPSModuleStrict
         }
 
         .control-associations button.current {
-            border-color: #74b9ff;
-            box-shadow: inset 0 0 0 1px #74b9ff;
+            outline: 2px solid var(--fp-text);
+            outline-offset: 2px;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55);
+            font-weight: 700;
         }
 
         .control-range {
@@ -1289,6 +1301,12 @@ class Floorplaner extends IPSModuleStrict
            bewusst weicher als reines Schwarz darstellen. */
         html[data-theme="light"] .wall {
             stroke: #4a4a4a;
+        }
+
+        /* Markierte Wände sollen auch im Light-Theme wie alle anderen
+           selektierten Elemente blau hervorgehoben werden. */
+        html[data-theme="light"] .wall.selected {
+            stroke: #74b9ff;
         }
 
         html[data-theme="light"] .opening-gap {
@@ -1796,6 +1814,15 @@ class Floorplaner extends IPSModuleStrict
     let propertiesSelectOpen = false;
     let propertiesControlActive = false;
 
+    function releasePropertiesControl() {
+        const active = document.activeElement;
+        if (active && properties.contains(active) && typeof active.blur === 'function') {
+            active.blur();
+        }
+        propertiesControlActive = false;
+        propertiesSelectOpen = false;
+    }
+
     function refreshPropertiesAfterStructuralChange() {
         // Änderungen wie Icon oder Variablenzuordnung können ganze
         // Eigenschaftsblöcke ein-/ausblenden (z.B. Statusfarbe).
@@ -1964,6 +1991,23 @@ class Floorplaner extends IPSModuleStrict
             floor.texts = Array.isArray(floor.texts) ? floor.texts : [];
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
+            floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
+            for (const shape of floor.shapes) {
+                if (typeof shape.fillEnabled !== 'boolean') shape.fillEnabled = false;
+                if (!['light', 'hatch', 'tiles'].includes(shape.fillMode)) shape.fillMode = 'light';
+                if (!Number.isFinite(Number(shape.rotation))) shape.rotation = 0;
+
+                if (shape.kind === 'circle') {
+                    const cx = Number(shape.x1) || 0;
+                    const cy = Number(shape.y1) || 0;
+                    const diameter = Math.max(
+                        1,
+                        Math.hypot((Number(shape.x2) || 0) - cx, (Number(shape.y2) || 0) - cy) * 2
+                    );
+                    if (!Number(shape.width)) shape.width = diameter;
+                    if (!Number(shape.height)) shape.height = diameter;
+                }
+            }
             floor.trackers = Array.isArray(floor.trackers) ? floor.trackers : [];
         }
         q.defaultFloor ||= q.floors[0].id;
@@ -2211,6 +2255,7 @@ class Floorplaner extends IPSModuleStrict
         if (!state.floors.some(f => f.id === nextFloorID)) return;
 
         rememberCurrentFloorView(false);
+        releasePropertiesControl();
         state.activeFloor = nextFloorID;
         rememberLastViewFloor();
         selected = null;
@@ -2272,6 +2317,80 @@ class Floorplaner extends IPSModuleStrict
                 [g.x1, g.y1], [g.x2, g.y2],
                 [g.wx1, g.wy1], [g.wx2, g.wy2]
             );
+        }
+
+        /*
+         * Formen sind vollwertiger Bestandteil des Grundrisses und müssen
+         * unabhängig davon, ob Wände existieren, in die Fit-Grenzen einfließen.
+         * Dieser Block verwendet exakt die Datenstruktur der bereits
+         * funktionierenden Formen-Version: x1/y1/x2/y2 + kind.
+         */
+        for (const shape of floor.shapes || []) {
+            const kind = shape.kind || 'line';
+
+            if (kind === 'line') {
+                points.push(
+                    [Number(shape.x1) || 0, Number(shape.y1) || 0],
+                    [Number(shape.x2) || 0, Number(shape.y2) || 0]
+                );
+                continue;
+            }
+
+            if (kind === 'rect') {
+                const x1 = Number(shape.x1) || 0;
+                const y1 = Number(shape.y1) || 0;
+                const x2 = Number(shape.x2) || 0;
+                const y2 = Number(shape.y2) || 0;
+                const minX = Math.min(x1, x2);
+                const minY = Math.min(y1, y2);
+                const maxX = Math.max(x1, x2);
+                const maxY = Math.max(y1, y2);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
+
+                for (const [px, py] of [
+                    [minX, minY], [maxX, minY],
+                    [maxX, maxY], [minX, maxY]
+                ]) {
+                    const dx = px - cx;
+                    const dy = py - cy;
+                    points.push([
+                        cx + dx * cos - dy * sin,
+                        cy + dx * sin + dy * cos
+                    ]);
+                }
+                continue;
+            }
+
+            if (kind === 'circle') {
+                const cx = Number(shape.x1) || 0;
+                const cy = Number(shape.y1) || 0;
+                const fallbackDiameter = Math.max(
+                    1,
+                    Math.hypot(
+                        (Number(shape.x2) || 0) - cx,
+                        (Number(shape.y2) || 0) - cy
+                    ) * 2
+                );
+                const rx = Math.max(0.5, (Number(shape.width) || fallbackDiameter) / 2);
+                const ry = Math.max(0.5, (Number(shape.height) || fallbackDiameter) / 2);
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
+
+                const extentX = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
+                const extentY = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
+
+                addBox(
+                    cx - extentX,
+                    cy - extentY,
+                    cx + extentX,
+                    cy + extentY
+                );
+            }
         }
 
         /*
@@ -2607,16 +2726,40 @@ class Floorplaner extends IPSModuleStrict
 
     function fontAwesomeSvgHtml(icon) {
         const parsed = parseSymconIcon(icon);
+
         try {
             if (window.FontAwesome && typeof window.FontAwesome.icon === 'function') {
-                const rendered = window.FontAwesome.icon({ prefix: parsed.prefix, iconName: parsed.iconName });
-                if (rendered && Array.isArray(rendered.html) && rendered.html.length > 0) {
-                    return rendered.html.join('');
+                // Zuerst genau den gelieferten Stil versuchen.
+                const prefixes = [parsed.prefix];
+
+                // Die zusätzlichen visuellen Einstellungen der neuen Symcon-
+                // Visualisierung liefern auch Symcon-eigene Icons, z.B.
+                // window-left-open, volant-open, marquee-half usw.
+                // Diese liegen in /icons.js als Kit-Icons (fak) und NICHT als
+                // normale FontAwesome-Light-Icons (fal). Der bisherige Code
+                // hat daraus fa-light fa-... gemacht -> Fragezeichen.
+                if (!prefixes.includes('fak')) prefixes.push('fak');
+                if (!prefixes.includes('fal')) prefixes.push('fal');
+
+                for (const prefix of prefixes) {
+                    const rendered = window.FontAwesome.icon({
+                        prefix,
+                        iconName: parsed.iconName
+                    });
+
+                    if (
+                        rendered &&
+                        Array.isArray(rendered.html) &&
+                        rendered.html.length > 0
+                    ) {
+                        return rendered.html.join('');
+                    }
                 }
             }
         } catch (e) {
             // Fallback weiter unten.
         }
+
         return '';
     }
 
@@ -2880,6 +3023,22 @@ class Floorplaner extends IPSModuleStrict
     function render() {
         const floor = currentFloor();
         const parts = [];
+
+        // Dezente Füllmuster für Formen. Bewusst nur eine kleine Auswahl.
+        parts.push(`
+            <defs>
+                <pattern id="shapePatternHatch" width="8" height="8" patternUnits="userSpaceOnUse">
+                    <path d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6"
+                          fill="none" stroke="var(--fp-text)" stroke-opacity=".28"
+                          stroke-width="1" vector-effect="non-scaling-stroke"/>
+                </pattern>
+                <pattern id="shapePatternTiles" width="18" height="12" patternUnits="userSpaceOnUse">
+                    <path d="M0,0 H18 V12 H0 Z M9,0 V12"
+                          fill="none" stroke="var(--fp-text)" stroke-opacity=".24"
+                          stroke-width="1" vector-effect="non-scaling-stroke"/>
+                </pattern>
+            </defs>
+        `);
         // Rollladen-Bedienelemente werden separat gesammelt und ganz zum Schluss
         // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
         // zuverlässig anklickbar.
@@ -2893,23 +3052,102 @@ class Floorplaner extends IPSModuleStrict
         const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
         const openingGapThickness = wallThickness + 4;
 
+        function shapeFillAttribute(shape) {
+            if (shape.fillEnabled !== true) return 'style="fill:none"';
+            const mode = shape.fillMode || 'light';
+            if (mode === 'hatch') return 'style="fill:url(#shapePatternHatch)"';
+            if (mode === 'tiles') return 'style="fill:url(#shapePatternTiles)"';
+            return 'style="fill:rgba(150,160,175,.18)"';
+        }
+
         for (const shape of floor.shapes || []) {
             const sel = selected?.type === 'shape' && selected.id === shape.id;
             const cls = sel ? ' selection-shape' : '';
+
             if (shape.kind === 'line') {
-                parts.push(`<line class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
-                parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
-                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+                const x1 = Number(shape.x1) || 0;
+                const y1 = Number(shape.y1) || 0;
+                const x2 = Number(shape.x2) || 0;
+                const y2 = Number(shape.y2) || 0;
+
+                parts.push(`<line class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+                parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+
+                if (sel) {
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${x2}" cy="${y2}" r="2.8"/>`);
+
+                    const cx = (x1 + x2) / 2;
+                    const cy = (y1 + y2) / 2;
+                    const len = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
+                    const nx = -(y2 - y1) / len;
+                    const ny =  (x2 - x1) / len;
+                    const rhx = cx + nx * 16;
+                    const rhy = cy + ny * 16;
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${cx}" y1="${cy}" x2="${rhx}" y2="${rhy}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rhx}" cy="${rhy}" r="3.2"/>`
+                    );
+                }
             } else if (shape.kind === 'rect') {
-                const x=Math.min(shape.x1,shape.x2), y=Math.min(shape.y1,shape.y2), w=Math.abs(shape.x2-shape.x1), h=Math.abs(shape.y2-shape.y1);
-                parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
-                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
-                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+                const x = Math.min(Number(shape.x1) || 0, Number(shape.x2) || 0);
+                const y = Math.min(Number(shape.y1) || 0, Number(shape.y2) || 0);
+                const w = Math.max(1, Math.abs((Number(shape.x2) || 0) - (Number(shape.x1) || 0)));
+                const h = Math.max(1, Math.abs((Number(shape.y2) || 0) - (Number(shape.y1) || 0)));
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const rotation = Number(shape.rotation) || 0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
+                parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"${transform}/>`);
+                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}" ${shapeFillAttribute(shape)}${transform}/>`);
+
+                if (sel) {
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + (w / 2) * Math.cos(rad) - (h / 2) * Math.sin(rad);
+                    const hy = cy + (w / 2) * Math.sin(rad) + (h / 2) * Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + (h / 2) * Math.sin(rad);
+                    const topY = cy - (h / 2) * Math.cos(rad);
+                    const rotateX = cx + (h / 2 + 16) * Math.sin(rad);
+                    const rotateY = cy - (h / 2 + 16) * Math.cos(rad);
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
+                }
             } else if (shape.kind === 'circle') {
-                const r=Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1);
-                parts.push(`<circle class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
-                parts.push(`<circle class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
-                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+                const cx = Number(shape.x1) || 0;
+                const cy = Number(shape.y1) || 0;
+                const fallbackDiameter = Math.max(1, Math.hypot((Number(shape.x2) || 0) - cx, (Number(shape.y2) || 0) - cy) * 2);
+                const w = Math.max(1, Number(shape.width) || fallbackDiameter);
+                const h = Math.max(1, Number(shape.height) || fallbackDiameter);
+                const rx = w / 2;
+                const ry = h / 2;
+                const rotation = Number(shape.rotation) || 0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
+                parts.push(`<ellipse class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"${transform}/>`);
+                parts.push(`<ellipse class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" ${shapeFillAttribute(shape)}${transform}/>`);
+
+                if (sel) {
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + rx * Math.cos(rad) - ry * Math.sin(rad);
+                    const hy = cy + rx * Math.sin(rad) + ry * Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + ry * Math.sin(rad);
+                    const topY = cy - ry * Math.cos(rad);
+                    const rotateX = cx + (ry + 16) * Math.sin(rad);
+                    const rotateY = cy - (ry + 16) * Math.cos(rad);
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
+                }
             }
         }
 
@@ -3130,14 +3368,26 @@ class Floorplaner extends IPSModuleStrict
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
             const isBooleanDevice = Number(item._variableType) === 0;
+            const isIntegerDevice = Number(item._variableType) === 1;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+
+            const newIntegerColor = isIntegerDevice
+                ? newIntegerPresentationColor(item)
+                : '';
+            const legacyIntegerColor = isIntegerDevice
+                ? legacyIntegerCurrentColor(item)
+                : '';
+            const effectiveIntegerColor = newIntegerColor || legacyIntegerColor;
+            const hasIntegerPresentationColor = /^#[0-9a-f]{6}$/i.test(effectiveIntegerColor);
+
             const statusRingEnabled = supportsStatusColor(item);
             const symconGlowColor = String(item._glowColor || '').trim();
             const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
-            const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
-            const numericClass = numericLevel !== null ? ' numeric-status' : '';
+            const numericLevel = numericStatusLevel(item);
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor;
+            const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
@@ -3169,6 +3419,9 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
+            const effectiveStatusColor = hasIntegerPresentationColor
+                ? effectiveIntegerColor
+                : statusColor;
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3225,10 +3478,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${statusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
-                      (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                      (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
                       `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
@@ -3298,9 +3551,27 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function symconAssociationColorToCss(value) {
+        const direct = String(value ?? '').trim();
+        if (/^#[0-9a-f]{6}$/i.test(direct)) {
+            return direct.toUpperCase();
+        }
+
         const color = Number(value);
         if (!Number.isFinite(color) || color < 0) return '';
         return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function associationButtonStyle(value) {
+        const color = symconAssociationColorToCss(value);
+        if (!color) return '';
+
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+        const textColor = luminance > 165 ? '#111111' : '#FFFFFF';
+
+        return `background:${color};border-color:${color};color:${textColor};`;
     }
 
     function legacyBoolOnColorFromProfile(profile) {
@@ -3314,6 +3585,35 @@ class Floorplaner extends IPSModuleStrict
 
         return onAssociation
             ? symconAssociationColorToCss(onAssociation.color)
+            : '';
+    }
+
+    function legacyIntegerCurrentColor(item) {
+        if (Number(item?._variableType) !== 1 || item?._hasLegacyProfile !== true) {
+            return '';
+        }
+
+        const direct = String(item?._legacyCurrentColor || '').trim();
+        if (/^#[0-9a-f]{6}$/i.test(direct)) {
+            return direct;
+        }
+
+        const raw = Number(item?._rawValue);
+        if (!Number.isFinite(raw)) {
+            return '';
+        }
+
+        const associations = Array.isArray(item?._profile?.associations)
+            ? item._profile.associations
+            : [];
+
+        const association = associations.find(entry => {
+            const value = Number(entry?.value);
+            return Number.isFinite(value) && Math.abs(value - raw) < 0.000001;
+        });
+
+        return association
+            ? symconAssociationColorToCss(association.color)
             : '';
     }
 
@@ -3349,12 +3649,62 @@ class Floorplaner extends IPSModuleStrict
             : automaticOpeningStatusColor(opening);
     }
 
+    function newIntegerPresentationColor(item) {
+        if (Number(item?._variableType) !== 1 || item?._hasNewPresentation !== true) {
+            return '';
+        }
+
+        const color = String(item?._newIntegerStatusColor || '').trim();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : '';
+    }
+
+    function hasAutomaticIntegerStatusColor(item) {
+        if (Number(item?._variableType) !== 1) {
+            return false;
+        }
+
+        // Neue Variablendarstellung: OPTIONS / INTERVALS / COLOR.
+        if (newIntegerPresentationColor(item) !== '') {
+            return true;
+        }
+
+        // Legacy-Profil mit einer Farbe auf der aktuellen Association.
+        // Auch dort wäre die manuelle Floorplaner-Farbe wirkungslos.
+        if (legacyIntegerCurrentColor(item) !== '') {
+            return true;
+        }
+
+        return false;
+    }
+
+    function canConfigureStatusColor(item) {
+        if (!supportsStatusColor(item)) {
+            return false;
+        }
+
+        // Neue Integer-Darstellung mit eigener Farbe (OPTIONS / INTERVALS /
+        // COLOR): Farbe kommt vollständig aus IP-Symcon und darf hier nicht
+        // scheinbar überschreibbar angeboten werden.
+        if (hasAutomaticIntegerStatusColor(item)) {
+            return false;
+        }
+
+        // Bool sowie numerische Integer/Float-Werte ohne eigene
+        // Präsentationsfarbe behalten die manuelle Floorplaner-Farbe.
+        return true;
+    }
+
     function supportsStatusColor(item) {
         // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
         // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
         const type = Number(item?._variableType);
         if (type === 0) return true;
-        if (type === 1 || type === 2) return numericStatusLevel(item) !== null;
+        if (type === 1) {
+            return newIntegerPresentationColor(item) !== '' ||
+                legacyIntegerCurrentColor(item) !== '' ||
+                numericStatusLevel(item) !== null;
+        }
+        if (type === 2) return numericStatusLevel(item) !== null;
         return false;
     }
 
@@ -3903,13 +4253,19 @@ class Floorplaner extends IPSModuleStrict
                         ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
                         : ''}
                 </div>
-                ${supportsStatusColor(obj) ? `
+                ${canConfigureStatusColor(obj) ? `
                     <div class="field">
                         <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
                         <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
                         ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
                     </div>
-                ` : ''}
+                ` : (
+                    hasAutomaticIntegerStatusColor(obj)
+                        ? `<div class="field">
+                            <div class="profile-hint">Statusfarbe wird automatisch aus IP-Symcon übernommen.</div>
+                           </div>`
+                        : ''
+                )}
 
                 ${Number(obj._variableType) === 0 ? `
                     <div class="field">
@@ -4041,6 +4397,134 @@ class Floorplaner extends IPSModuleStrict
                     <input data-field="rotation" type="number" min="-360" max="360" step="5" value="${Number(obj.rotation) || 0}">
                 </div>
             `;
+        } else if (selected.type === 'shape') {
+            propTitle.textContent = 'Form';
+
+            const kind = obj.kind || 'line';
+            if (kind === 'line') {
+                const dx = Number(obj.x2) - Number(obj.x1);
+                const dy = Number(obj.y2) - Number(obj.y1);
+                const length = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Linie" disabled>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
+                        </div>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Länge</label>
+                            <input data-field="shapeLength" type="number" min="1" step="1" value="${Math.round(length)}">
+                        </div>
+                        <div class="field">
+                            <label>Drehung</label>
+                            <input data-field="shapeAngle" type="number" min="-360" max="360" step="1" value="${Math.round(angle)}">
+                        </div>
+                    </div>
+                `;
+            } else if (kind === 'rect') {
+                const x = Math.min(Number(obj.x1), Number(obj.x2));
+                const y = Math.min(Number(obj.y1), Number(obj.y2));
+                const width = Math.abs(Number(obj.x2) - Number(obj.x1));
+                const height = Math.abs(Number(obj.y2) - Number(obj.y1));
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Rechteck" disabled>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(x)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(y)}">
+                        </div>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Breite</label>
+                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
+                        </div>
+                        <div class="field">
+                            <label>Tiefe</label>
+                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>Drehung</label>
+                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
+                    </div>
+                    <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
+                    ${obj.fillEnabled === true ? `
+                    <div class="field">
+                        <label>Muster</label>
+                        <select data-field="fillMode">
+                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                        </select>
+                    </div>` : ''}
+                `;
+            } else {
+                const fallbackDiameter = Math.max(1, Math.hypot(Number(obj.x2) - Number(obj.x1), Number(obj.y2) - Number(obj.y1)) * 2);
+                const width = Math.max(1, Number(obj.width) || fallbackDiameter);
+                const height = Math.max(1, Number(obj.height) || fallbackDiameter);
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Kreis / Ellipse" disabled>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
+                        </div>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Breite</label>
+                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
+                        </div>
+                        <div class="field">
+                            <label>Tiefe</label>
+                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>Drehung</label>
+                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
+                    </div>
+                    <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
+                    ${obj.fillEnabled === true ? `
+                    <div class="field">
+                        <label>Muster</label>
+                        <select data-field="fillMode">
+                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                        </select>
+                    </div>` : ''}
+                `;
+            }
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
             properties.innerHTML = `
@@ -4067,7 +4551,82 @@ class Floorplaner extends IPSModuleStrict
                 if (input.type === 'number') value = Number(value);
                 const fieldName = input.dataset.field;
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
-                obj[fieldName] = value;
+
+                if (selected.type === 'shape' && fieldName.startsWith('shape')) {
+                    const kind = obj.kind || 'line';
+
+                    if (kind === 'line') {
+                        const oldX = Number(obj.x1) || 0;
+                        const oldY = Number(obj.y1) || 0;
+                        const dx = Number(obj.x2) - oldX;
+                        const dy = Number(obj.y2) - oldY;
+                        let length = Math.max(1, Math.hypot(dx, dy));
+                        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                        if (fieldName === 'shapeX') {
+                            const delta = Number(value) - oldX;
+                            obj.x1 = Number(value);
+                            obj.x2 = Number(obj.x2) + delta;
+                        } else if (fieldName === 'shapeY') {
+                            const delta = Number(value) - oldY;
+                            obj.y1 = Number(value);
+                            obj.y2 = Number(obj.y2) + delta;
+                        } else {
+                            if (fieldName === 'shapeLength') length = Math.max(1, Number(value) || 1);
+                            if (fieldName === 'shapeAngle') angle = Number(value) || 0;
+                            const rad = angle * Math.PI / 180;
+                            obj.x2 = oldX + Math.cos(rad) * length;
+                            obj.y2 = oldY + Math.sin(rad) * length;
+                        }
+                    } else if (kind === 'rect') {
+                        let x = Math.min(Number(obj.x1), Number(obj.x2));
+                        let y = Math.min(Number(obj.y1), Number(obj.y2));
+                        let width = Math.max(1, Math.abs(Number(obj.x2) - Number(obj.x1)));
+                        let height = Math.max(1, Math.abs(Number(obj.y2) - Number(obj.y1)));
+
+                        if (fieldName === 'shapeX') x = Number(value) || 0;
+                        if (fieldName === 'shapeY') y = Number(value) || 0;
+                        if (fieldName === 'shapeWidth') width = Math.max(1, Number(value) || 1);
+                        if (fieldName === 'shapeHeight') height = Math.max(1, Number(value) || 1);
+                        if (fieldName === 'shapeRotation') obj.rotation = Number(value) || 0;
+
+                        obj.x1 = x;
+                        obj.y1 = y;
+                        obj.x2 = x + width;
+                        obj.y2 = y + height;
+                    } else if (kind === 'circle') {
+                        const oldX = Number(obj.x1) || 0;
+                        const oldY = Number(obj.y1) || 0;
+                        const fallbackDiameter = Math.max(
+                            1,
+                            Math.hypot((Number(obj.x2) || 0) - oldX, (Number(obj.y2) || 0) - oldY) * 2
+                        );
+
+                        if (fieldName === 'shapeX') {
+                            const delta = Number(value) - oldX;
+                            obj.x1 = Number(value);
+                            obj.x2 = Number(obj.x2) + delta;
+                        } else if (fieldName === 'shapeY') {
+                            const delta = Number(value) - oldY;
+                            obj.y1 = Number(value);
+                            obj.y2 = Number(obj.y2) + delta;
+                        } else if (fieldName === 'shapeWidth') {
+                            obj.width = Math.max(1, Number(value) || 1);
+                            if (!Number(obj.height)) obj.height = fallbackDiameter;
+                        } else if (fieldName === 'shapeHeight') {
+                            obj.height = Math.max(1, Number(value) || 1);
+                            if (!Number(obj.width)) obj.width = fallbackDiameter;
+                        } else if (fieldName === 'shapeRotation') {
+                            obj.rotation = Number(value) || 0;
+                        }
+                    }
+                } else {
+                    obj[fieldName] = value;
+                }
+
+                if (selected.type === 'shape' && fieldName === 'fillEnabled') {
+                    refreshPropertiesAfterStructuralChange();
+                }
 
                 if (selected.type === 'item' && fieldName === 'statusColor') {
                     obj.statusColorManual = true;
@@ -4530,7 +5089,8 @@ class Floorplaner extends IPSModuleStrict
             for (const association of associations) {
                 const value = Number(association.value);
                 const current = Number.isFinite(raw) && raw === value ? ' current' : '';
-                html += `<button type="button" class="${current.trim()}" data-shutter-value="${value}">${escapeHtml(association.name || String(value))}</button>`;
+                const associationStyle = associationButtonStyle(association.color);
+                html += `<button type="button" class="${current.trim()}" data-shutter-value="${value}"${associationStyle ? ` style="${associationStyle}"` : ''}>${escapeHtml(association.name || String(value))}</button>`;
             }
             html += '</div>';
         }
@@ -4687,10 +5247,34 @@ class Floorplaner extends IPSModuleStrict
             const id = rotateHandle.dataset.id;
             const obj = findEntity(rotateType, id);
 
-            if (obj && rotateType === 'furniture') {
+            if (obj && (rotateType === 'furniture' || rotateType === 'shape')) {
                 const raw = svgPointRaw(evt);
-                const cx = Number(obj.x) || 0;
-                const cy = Number(obj.y) || 0;
+
+                let cx = 0;
+                let cy = 0;
+                let currentRotation = 0;
+
+                if (rotateType === 'furniture') {
+                    cx = Number(obj.x) || 0;
+                    cy = Number(obj.y) || 0;
+                    currentRotation = Number(obj.rotation) || 0;
+                } else if ((obj.kind || 'line') === 'line') {
+                    cx = ((Number(obj.x1) || 0) + (Number(obj.x2) || 0)) / 2;
+                    cy = ((Number(obj.y1) || 0) + (Number(obj.y2) || 0)) / 2;
+                    currentRotation = Math.atan2(
+                        (Number(obj.y2) || 0) - (Number(obj.y1) || 0),
+                        (Number(obj.x2) || 0) - (Number(obj.x1) || 0)
+                    ) * 180 / Math.PI;
+                } else if (obj.kind === 'rect') {
+                    cx = (Math.min(Number(obj.x1) || 0, Number(obj.x2) || 0) + Math.max(Number(obj.x1) || 0, Number(obj.x2) || 0)) / 2;
+                    cy = (Math.min(Number(obj.y1) || 0, Number(obj.y2) || 0) + Math.max(Number(obj.y1) || 0, Number(obj.y2) || 0)) / 2;
+                    currentRotation = Number(obj.rotation) || 0;
+                } else {
+                    cx = Number(obj.x1) || 0;
+                    cy = Number(obj.y1) || 0;
+                    currentRotation = Number(obj.rotation) || 0;
+                }
+
                 const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
 
                 selected = {type: rotateType, id};
@@ -4699,7 +5283,9 @@ class Floorplaner extends IPSModuleStrict
                     type: rotateType,
                     id,
                     original: structuredClone(obj),
-                    angleOffset: (Number(obj.rotation) || 0) - pointerAngle
+                    centerX: cx,
+                    centerY: cy,
+                    angleOffset: currentRotation - pointerAngle
                 };
                 svg.setPointerCapture(evt.pointerId);
                 evt.preventDefault();
@@ -4769,6 +5355,7 @@ class Floorplaner extends IPSModuleStrict
         // im Editor jederzeit direkt angeklickt und verschoben werden.
         if (state.mode !== 'view' && target &&
             !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            releasePropertiesControl();
             selected = {type: target.dataset.type, id: target.dataset.id};
             const obj = findEntity(selected.type, selected.id);
             if (obj) {
@@ -4794,6 +5381,7 @@ class Floorplaner extends IPSModuleStrict
             };
             floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
             floor.shapes.push(shape);
+            releasePropertiesControl();
             selected = {type:'shape', id:shape.id};
             drag = {mode:'draw-shape', type:'shape', id:shape.id, start:p, original:structuredClone(shape)};
             svg.setPointerCapture(evt.pointerId);
@@ -5027,17 +5615,39 @@ class Floorplaner extends IPSModuleStrict
 
         if (drag.mode === 'rotate' && drag.original) {
             const obj = findEntity(drag.type, drag.id);
-            if (!obj || drag.type !== 'furniture') return;
+            if (!obj) return;
 
             const raw = svgPointRaw(evt);
-            const cx = Number(drag.original.x) || 0;
-            const cy = Number(drag.original.y) || 0;
+            const cx = Number(drag.centerX) || 0;
+            const cy = Number(drag.centerY) || 0;
             const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
             let rotation = pointerAngle + Number(drag.angleOffset || 0);
 
-            // Auf -180..180 normalisieren und Möbel nur in ganzen Grad drehen.
             rotation = ((rotation + 180) % 360 + 360) % 360 - 180;
-            obj.rotation = Math.round(rotation);
+            rotation = Math.round(rotation);
+
+            if (drag.type === 'furniture') {
+                obj.rotation = rotation;
+            } else if (drag.type === 'shape') {
+                if ((obj.kind || 'line') === 'line') {
+                    const original = drag.original;
+                    const ox1 = Number(original.x1) || 0;
+                    const oy1 = Number(original.y1) || 0;
+                    const ox2 = Number(original.x2) || 0;
+                    const oy2 = Number(original.y2) || 0;
+                    const length = Math.max(1, Math.hypot(ox2 - ox1, oy2 - oy1));
+                    const rad = rotation * Math.PI / 180;
+                    const half = length / 2;
+
+                    obj.x1 = cx - Math.cos(rad) * half;
+                    obj.y1 = cy - Math.sin(rad) * half;
+                    obj.x2 = cx + Math.cos(rad) * half;
+                    obj.y2 = cy + Math.sin(rad) * half;
+                } else {
+                    obj.rotation = rotation;
+                }
+            }
+
             render();
             return;
         }
@@ -5057,8 +5667,42 @@ class Floorplaner extends IPSModuleStrict
                     obj.y2 = snapValue(p.y);
                 }
             } else if (drag.type === 'shape') {
-                obj.x2 = p.x;
-                obj.y2 = p.y;
+                const kind = obj.kind || 'line';
+
+                if (kind === 'circle') {
+                    const cx = Number(drag.original.x1) || 0;
+                    const cy = Number(drag.original.y1) || 0;
+                    const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                    const dx = p.x - cx;
+                    const dy = p.y - cy;
+                    const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                    const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+                    obj.width = Math.max(1, Math.round(Math.abs(localX) * 2));
+                    obj.height = Math.max(1, Math.round(Math.abs(localY) * 2));
+                } else if (kind === 'rect') {
+                    const x1 = Number(drag.original.x1) || 0;
+                    const y1 = Number(drag.original.y1) || 0;
+                    const x2 = Number(drag.original.x2) || 0;
+                    const y2 = Number(drag.original.y2) || 0;
+                    const cx = (Math.min(x1, x2) + Math.max(x1, x2)) / 2;
+                    const cy = (Math.min(y1, y2) + Math.max(y1, y2)) / 2;
+                    const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                    const dx = p.x - cx;
+                    const dy = p.y - cy;
+                    const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                    const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+                    const w = Math.max(1, Math.round(Math.abs(localX) * 2));
+                    const h = Math.max(1, Math.round(Math.abs(localY) * 2));
+
+                    obj.x1 = cx - w / 2;
+                    obj.y1 = cy - h / 2;
+                    obj.x2 = cx + w / 2;
+                    obj.y2 = cy + h / 2;
+                } else {
+                    obj.x2 = p.x;
+                    obj.y2 = p.y;
+                }
             } else if (drag.type === 'furniture') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
@@ -5592,6 +6236,8 @@ class Floorplaner extends IPSModuleStrict
         const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
         const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
         const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
+        const legacyCurrentColorKey = prefix ? `_${prefix}LegacyCurrentColor` : '_legacyCurrentColor';
+        const newIntegerStatusColorKey = prefix ? `_${prefix}NewIntegerStatusColor` : '_newIntegerStatusColor';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -5610,6 +6256,8 @@ class Floorplaner extends IPSModuleStrict
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
         entity[legacyColorOnKey] = node?.legacyColorOn || '';
+        entity[legacyCurrentColorKey] = node?.legacyCurrentColor || '';
+        entity[newIntegerStatusColorKey] = node?.newIntegerStatusColor || '';
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
         // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
@@ -5688,7 +6336,9 @@ class Floorplaner extends IPSModuleStrict
                     }
 
                     if (entity.iconManual !== true) {
-                        entity.icon = node.objectIcon || 'fa-light fa-circle';
+                        entity.icon = Number(node.variableType) === 1
+                            ? (node.presentationIcon || node.objectIcon || 'fa-light fa-circle')
+                            : (node.objectIcon || 'fa-light fa-circle');
                         entity.iconSvg = '';
                     }
                     // Für Bool immer zwei wählbare Zustände anbieten, ohne den
@@ -5909,7 +6559,8 @@ class Floorplaner extends IPSModuleStrict
             for (const association of associations) {
                 const value = Number(association.value);
                 const current = Number.isFinite(raw) && raw === value ? ' current' : '';
-                html += `<button type="button" class="${current.trim()}" data-control-value="${value}">${escapeHtml(association.name || String(value))}</button>`;
+                const associationStyle = associationButtonStyle(association.color);
+                html += `<button type="button" class="${current.trim()}" data-control-value="${value}"${associationStyle ? ` style="${associationStyle}"` : ''}>${escapeHtml(association.name || String(value))}</button>`;
             }
             html += '</div>';
         }
@@ -6071,7 +6722,11 @@ class Floorplaner extends IPSModuleStrict
                     item.iconManual = false;
                     item.iconSvg = '';
                     item.icon = meta._hasLegacyProfile === true
-                        ? (meta._objectIcon || 'fa-light fa-circle')
+                        ? (
+                            Number(meta._variableType) === 1
+                                ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
+                                : (meta._objectIcon || 'fa-light fa-circle')
+                        )
                         : (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle');
                 }
 
@@ -6172,7 +6827,9 @@ class Floorplaner extends IPSModuleStrict
                         item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
                     }
                 } else if (meta._hasLegacyProfile === true) {
-                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    item.icon = Number(meta._variableType) === 1
+                        ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
+                        : (meta._objectIcon || 'fa-light fa-circle');
 
                     if (Number(meta._variableType) === 0) {
                         item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
@@ -6219,7 +6876,9 @@ class Floorplaner extends IPSModuleStrict
                             if (meta._hasLegacyProfile === true) {
                                 // Funktionierenden Legacy-Weg nicht verändern.
                                 if (!manualIcon && meta._objectIcon !== undefined) {
-                                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                                    item.icon = Number(meta._variableType) === 1
+                                        ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
+                                        : (meta._objectIcon || 'fa-light fa-circle');
                                     item.iconSvg = '';
                                 }
                                 if (Number(meta._variableType) === 0) {
@@ -7069,6 +7728,8 @@ HTML;
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                     $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
+                    $node['legacyCurrentColor'] = (string) ($meta['_legacyCurrentColor'] ?? '');
+                    $node['newIntegerStatusColor'] = (string) ($meta['_newIntegerStatusColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -7130,6 +7791,45 @@ HTML;
             }
         }
         return null;
+    }
+
+    private function GetVisualPresentationIcons(array $Presentation, int $VariableType): array
+    {
+        $result = ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
+
+        if ($Presentation === []) {
+            return $result;
+        }
+
+        $iconTrue = trim((string) ($this->FindPresentationValue($Presentation, 'ICON_TRUE') ?? ''));
+        $iconFalse = trim((string) ($this->FindPresentationValue($Presentation, 'ICON_FALSE') ?? ''));
+        $useIconFalseRaw = $this->FindPresentationValue($Presentation, 'USE_ICON_FALSE');
+        $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
+
+        if ($VariableType === 0 && $iconTrue !== '') {
+            $result['on'] = $iconTrue;
+            $result['off'] = ($useIconFalse && $iconFalse !== '') ? $iconFalse : $iconTrue;
+        } else {
+            $icon = trim((string) ($this->FindPresentationValue($Presentation, 'ICON') ?? ''));
+            if ($icon !== '') {
+                $result['icon'] = $icon;
+            }
+        }
+
+        $glowColorRaw = $this->FindPresentationValue($Presentation, 'GLOW_COLOR');
+        if ($glowColorRaw !== null && is_numeric($glowColorRaw)) {
+            $glowColor = (int) $glowColorRaw;
+            if ($glowColor >= 0) {
+                $result['glowColor'] = sprintf('#%06X', $glowColor & 0xFFFFFF);
+            }
+        }
+
+        $glowIntensityRaw = $this->FindPresentationValue($Presentation, 'GLOW_INTENSITY');
+        if ($glowIntensityRaw !== null && is_numeric($glowIntensityRaw)) {
+            $result['glowIntensity'] = max(0, min(100, (int) $glowIntensityRaw));
+        }
+
+        return $result;
     }
 
     private function GetNewPresentationIcons(int $VariableID, int $VariableType, mixed $RawValue, array $Variable): array
@@ -7294,6 +7994,270 @@ HTML;
         }
     }
 
+    private function DecodePresentationArrayValue(mixed $Value): array
+    {
+        if (is_array($Value)) {
+            return $Value;
+        }
+
+        if (!is_string($Value) || trim($Value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($Value, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function PresentationEntryValue(array $Entry, array $Keys, mixed $Default = null): mixed
+    {
+        foreach ($Keys as $key) {
+            if (array_key_exists($key, $Entry)) {
+                return $Entry[$key];
+            }
+        }
+
+        $lower = [];
+        foreach ($Entry as $key => $value) {
+            $lower[strtolower((string) $key)] = $value;
+        }
+
+        foreach ($Keys as $key) {
+            $normalized = strtolower($key);
+            if (array_key_exists($normalized, $lower)) {
+                return $lower[$normalized];
+            }
+        }
+
+        return $Default;
+    }
+
+    private function SymconColorToCss(mixed $Color): string
+    {
+        if (is_string($Color)) {
+            $color = trim($Color);
+            if (preg_match('/^#[0-9a-f]{6}$/i', $color) === 1) {
+                return strtoupper($color);
+            }
+            if ($color !== '' && is_numeric($color)) {
+                $Color = (int) $color;
+            }
+        }
+
+        if (is_int($Color) || is_float($Color)) {
+            $value = (int) $Color;
+
+            // IP-Symcon verwendet -1 als "keine/transparent"-Farbe.
+            if ($value < 0) {
+                return '';
+            }
+
+            return sprintf('#%06X', $value & 0xFFFFFF);
+        }
+
+        return '';
+    }
+
+    private function GetNewIntegerPresentationMeta(array $Presentation, mixed $RawValue): array
+    {
+        $result = [
+            'statusColor' => '',
+            'valueText'   => '',
+            'profile'     => null
+        ];
+
+        $rawNumeric = is_numeric($RawValue) ? (float) $RawValue : null;
+
+        // Enumeration / Value Presentation: OPTIONS enthält die einzelnen Werte.
+        $optionsRaw = $this->FindPresentationValue($Presentation, 'OPTIONS');
+        $options = $this->DecodePresentationArrayValue($optionsRaw);
+
+        if ($options !== []) {
+            $associations = [];
+
+            foreach ($options as $option) {
+                if (!is_array($option)) {
+                    continue;
+                }
+
+                $value = $this->PresentationEntryValue(
+                    $option,
+                    ['Value', 'value', 'OptionValue', 'ValueValue'],
+                    null
+                );
+                if (!is_numeric($value)) {
+                    continue;
+                }
+
+                $caption = (string) $this->PresentationEntryValue(
+                    $option,
+                    ['Caption', 'Name', 'Text', 'Label', 'caption', 'name'],
+                    ''
+                );
+                $icon = (string) $this->PresentationEntryValue(
+                    $option,
+                    ['Icon', 'ICON', 'icon'],
+                    ''
+                );
+
+                $colorActiveRaw = $this->PresentationEntryValue(
+                    $option,
+                    ['ColorActive', 'COLOR_ACTIVE', 'colorActive'],
+                    true
+                );
+                $colorActive = filter_var(
+                    $colorActiveRaw,
+                    FILTER_VALIDATE_BOOLEAN,
+                    FILTER_NULL_ON_FAILURE
+                );
+                if ($colorActive === null) {
+                    $colorActive = true;
+                }
+
+                $color = $colorActive
+                    ? $this->SymconColorToCss(
+                        $this->PresentationEntryValue(
+                            $option,
+                            // Enumeration verwendet offiziell "Color".
+                            // "ColorValue" zusätzlich für konvertierte/ältere
+                            // Darstellungsdaten akzeptieren.
+                            ['Color', 'COLOR', 'color', 'ColorValue'],
+                            null
+                        )
+                    )
+                    : '';
+
+                $associations[] = [
+                    'value' => (float) $value,
+                    'name'  => $caption,
+                    'icon'  => $icon,
+                    'color' => $color
+                ];
+
+                if (
+                    $rawNumeric !== null &&
+                    abs((float) $value - $rawNumeric) < 0.000001
+                ) {
+                    if ($caption !== '') {
+                        $result['valueText'] = $caption;
+                    }
+                    if ($color !== '') {
+                        $result['statusColor'] = $color;
+                    }
+                }
+            }
+
+            if ($associations !== []) {
+                $result['profile'] = [
+                    'name'         => '',
+                    'min'          => null,
+                    'max'          => null,
+                    'step'         => null,
+                    'prefix'       => '',
+                    'suffix'       => '',
+                    'associations' => $associations
+                ];
+            }
+        }
+
+        // Interval Presentation: Farbe anhand des aktuellen Wertebereichs.
+        $intervalsActive = filter_var(
+            $this->FindPresentationValue($Presentation, 'INTERVALS_ACTIVE'),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $intervals = $this->DecodePresentationArrayValue(
+            $this->FindPresentationValue($Presentation, 'INTERVALS')
+        );
+
+        if ($intervalsActive && $rawNumeric !== null && $intervals !== []) {
+            foreach ($intervals as $interval) {
+                if (!is_array($interval)) {
+                    continue;
+                }
+
+                $min = $this->PresentationEntryValue(
+                    $interval,
+                    ['IntervalMinValue', 'MinValue', 'min'],
+                    null
+                );
+                $max = $this->PresentationEntryValue(
+                    $interval,
+                    ['IntervalMaxValue', 'MaxValue', 'max'],
+                    null
+                );
+
+                if (!is_numeric($min) || !is_numeric($max)) {
+                    continue;
+                }
+
+                if ($rawNumeric < (float) $min || $rawNumeric > (float) $max) {
+                    continue;
+                }
+
+                $active = $this->PresentationEntryValue(
+                    $interval,
+                    ['ColorActive', 'Active', 'active'],
+                    true
+                );
+
+                if (filter_var($active, FILTER_VALIDATE_BOOLEAN)) {
+                    $color = $this->SymconColorToCss(
+                        $this->PresentationEntryValue(
+                            $interval,
+                            // Für Wertanzeige-Intervalle zuerst ColorValue.
+                            // Color bleibt als Fallback für Symcon-Versionen/
+                            // Konfigurationen, die diesen Namen verwenden.
+                            ['ColorValue', 'Color', 'COLOR', 'color'],
+                            null
+                        )
+                    );
+                    if ($color !== '') {
+                        $result['statusColor'] = $color;
+                    }
+                }
+                break;
+            }
+        }
+
+        // Allgemeine Farbe der neuen Darstellung als letzter Fallback.
+        if ($result['statusColor'] === '') {
+            $result['statusColor'] = $this->SymconColorToCss(
+                $this->FindPresentationValue($Presentation, 'COLOR')
+            );
+        }
+
+        // Falls MIN/MAX/STEP in der neuen Darstellung vorhanden sind, daraus
+        // einen Wertebereich erzeugen. Das bestehende Bedienkonzept kann ihn
+        // verwenden, aber nur wenn _canAction=true ist.
+        if ($result['profile'] === null) {
+            $min = $this->FindPresentationValue($Presentation, 'MIN');
+            if ($min === null) {
+                $min = $this->FindPresentationValue($Presentation, 'MIN_VALUE');
+            }
+            $max = $this->FindPresentationValue($Presentation, 'MAX');
+            if ($max === null) {
+                $max = $this->FindPresentationValue($Presentation, 'MAX_VALUE');
+            }
+            $step = $this->FindPresentationValue($Presentation, 'STEP');
+            if ($step === null) {
+                $step = $this->FindPresentationValue($Presentation, 'STEP_SIZE');
+            }
+
+            if (is_numeric($min) && is_numeric($max) && (float) $max > (float) $min) {
+                $result['profile'] = [
+                    'name'         => '',
+                    'min'          => (float) $min,
+                    'max'          => (float) $max,
+                    'step'         => is_numeric($step) ? (float) $step : 1,
+                    'prefix'       => '',
+                    'suffix'       => '',
+                    'associations' => []
+                ];
+            }
+        }
+
+        return $result;
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -7336,13 +8300,65 @@ HTML;
             $hasNewPresentation = $fallbackHasPresentation;
         }
 
-        $presentationIcons = $hasNewPresentation
-            ? $this->GetNewPresentationIcons($VariableID, $variableType, $rawValue, $variable)
-            : ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
+        // ICON / ICON_TRUE / ICON_FALSE gehören zu den zusätzlichen visuellen
+        // Einstellungen der Variable. Diese Werte können auch vorhanden sein,
+        // wenn die eigentliche Darstellung weiterhin ein Legacy-Profil nutzt.
+        // Darum NICHT vom Legacy-Profil-Icon ableiten.
+        $presentationIcons = $this->GetVisualPresentationIcons(
+            (array) ($activePresentation['parameters'] ?? []),
+            $variableType
+        );
+
+        // Fallback für Systeme, bei denen IPS_GetVariablePresentation() keine
+        // vollständigen Parameter liefert, aber eine neue Darstellung aktiv ist.
+        if (
+            $hasNewPresentation &&
+            $presentationIcons['icon'] === '' &&
+            $presentationIcons['off'] === '' &&
+            $presentationIcons['on'] === ''
+        ) {
+            $presentationIcons = $this->GetNewPresentationIcons(
+                $VariableID,
+                $variableType,
+                $rawValue,
+                $variable
+            );
+        }
         $profile = null;
         $profileSummary = '';
         $valueText = $this->FormatRawValue($rawValue);
         $legacyColorOn = '';
+        $legacyCurrentColor = '';
+        $newIntegerStatusColor = '';
+
+        // Integer mit neuer Variablendarstellung:
+        // OPTIONS / INTERVALS / COLOR direkt aus der aktiven Präsentation lesen.
+        if ($variableType === 1 && $hasNewPresentation) {
+            $newIntegerMeta = $this->GetNewIntegerPresentationMeta(
+                (array) ($activePresentation['parameters'] ?? []),
+                $rawValue
+            );
+
+            $newIntegerStatusColor = (string) ($newIntegerMeta['statusColor'] ?? '');
+
+            if ((string) ($newIntegerMeta['valueText'] ?? '') !== '') {
+                $valueText = (string) $newIntegerMeta['valueText'];
+            }
+
+            if (is_array($newIntegerMeta['profile'] ?? null)) {
+                $profile = $newIntegerMeta['profile'];
+
+                $assocCount = count((array) ($profile['associations'] ?? []));
+                if ($assocCount > 0) {
+                    $profileSummary = $assocCount . ' Stellungen';
+                } elseif (
+                    is_numeric($profile['min'] ?? null) &&
+                    is_numeric($profile['max'] ?? null)
+                ) {
+                    $profileSummary = $profile['min'] . '…' . $profile['max'];
+                }
+            }
+        }
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -7391,10 +8407,21 @@ HTML;
                 $profileSummary = implode(' · ', $parts);
 
                 foreach ($associations as $association) {
-                    if ((float) $association['value'] === (float) $rawValue && $association['name'] !== '') {
-                        $valueText = $association['name'];
-                        break;
+                    if ((float) $association['value'] !== (float) $rawValue) {
+                        continue;
                     }
+
+                    if ($association['name'] !== '') {
+                        $valueText = $association['name'];
+                    }
+
+                    // Aktuelle Farbe der passenden Legacy-Assoziation.
+                    // Keine Änderung am Icon oder an der Variablenauswahl.
+                    $associationColor = (int) ($association['color'] ?? -1);
+                    if ($hasLegacyProfile && $associationColor >= 0) {
+                        $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
+                    }
+                    break;
                 }
 
                 if ($valueText === $this->FormatRawValue($rawValue)) {
@@ -7435,6 +8462,8 @@ HTML;
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_legacyColorOn'        => $legacyColorOn,
+            '_legacyCurrentColor'   => $legacyCurrentColor,
+            '_newIntegerStatusColor'=> $newIntegerStatusColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
