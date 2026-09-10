@@ -1808,6 +1808,15 @@ class Floorplaner extends IPSModuleStrict
     let propertiesSelectOpen = false;
     let propertiesControlActive = false;
 
+    function releasePropertiesControl() {
+        const active = document.activeElement;
+        if (active && properties.contains(active) && typeof active.blur === 'function') {
+            active.blur();
+        }
+        propertiesControlActive = false;
+        propertiesSelectOpen = false;
+    }
+
     function refreshPropertiesAfterStructuralChange() {
         // Änderungen wie Icon oder Variablenzuordnung können ganze
         // Eigenschaftsblöcke ein-/ausblenden (z.B. Statusfarbe).
@@ -2223,6 +2232,7 @@ class Floorplaner extends IPSModuleStrict
         if (!state.floors.some(f => f.id === nextFloorID)) return;
 
         rememberCurrentFloorView(false);
+        releasePropertiesControl();
         state.activeFloor = nextFloorID;
         rememberLastViewFloor();
         selected = null;
@@ -4949,6 +4959,7 @@ class Floorplaner extends IPSModuleStrict
         // im Editor jederzeit direkt angeklickt und verschoben werden.
         if (state.mode !== 'view' && target &&
             !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            releasePropertiesControl();
             selected = {type: target.dataset.type, id: target.dataset.id};
             const obj = findEntity(selected.type, selected.id);
             if (obj) {
@@ -4974,6 +4985,7 @@ class Floorplaner extends IPSModuleStrict
             };
             floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
             floor.shapes.push(shape);
+            releasePropertiesControl();
             selected = {type:'shape', id:shape.id};
             drag = {mode:'draw-shape', type:'shape', id:shape.id, start:p, original:structuredClone(shape)};
             svg.setPointerCapture(evt.pointerId);
