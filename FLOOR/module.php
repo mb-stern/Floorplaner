@@ -1622,15 +1622,8 @@ class Floorplaner extends IPSModuleStrict
             height: 1em;
             display: block;
             margin: auto;
-            color: inherit;
             fill: currentColor;
-        }
-
-        /* Auch gespeicherte FontAwesome-/MDI-SVGs mit festen Fill-/Stroke-Werten
-           auf die aktuelle Profilfarbe zwingen. */
-        .device-icon-html svg * {
-            fill: currentColor !important;
-            stroke: currentColor !important;
+            color: inherit;
         }
 
         .symcon-icon-grid button svg {
@@ -2814,7 +2807,7 @@ class Floorplaner extends IPSModuleStrict
             ? svgHtml
             : `<i class="${escapeHtml(parsed.cls)}"></i>`;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
-            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px;color:var(--device-icon-color,var(--fp-text))">${content}</div></foreignObject>`;
     }
 
 
@@ -3535,14 +3528,21 @@ class Floorplaner extends IPSModuleStrict
     function integerStatusColorFromProfile(item) {
         if (Number(item?._variableType) !== 1) return '';
 
+        // Primär serverseitig aus der aktuell wirksamen IP-Symcon-Darstellung
+        // aufgelöst. Damit funktionieren Legacy-Profilfarben ebenso wie
+        // neue Wertanzeige-/Intervall-/Aufzählungsfarben.
+        const resolved = String(item?._integerStatusColor || '');
+        if (/^#[0-9a-f]{6}$/i.test(resolved)) {
+            return resolved;
+        }
+
+        // Fallback für bereits lokal vorhandene Legacy-Profil-Metadaten.
         const raw = Number(item?._rawValue);
         if (!Number.isFinite(raw)) return '';
 
         const associations = Array.isArray(item?._profile?.associations)
             ? item._profile.associations
             : [];
-
-        if (!associations.length) return '';
 
         const association = associations.find(entry => {
             const value = Number(entry?.value);
@@ -6130,6 +6130,7 @@ class Floorplaner extends IPSModuleStrict
         const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
         const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
         const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
+        const integerStatusColorKey = prefix ? `_${prefix}IntegerStatusColor` : '_integerStatusColor';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -6148,6 +6149,7 @@ class Floorplaner extends IPSModuleStrict
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
         entity[legacyColorOnKey] = node?.legacyColorOn || '';
+        entity[integerStatusColorKey] = node?.integerStatusColor || '';
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
         // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
@@ -7610,6 +7612,7 @@ HTML;
                     $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                     $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
+                    $node['integerStatusColor'] = (string) ($meta['_integerStatusColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -7835,6 +7838,121 @@ HTML;
         }
     }
 
+    private function GetIntegerRuntimeColor(
+        int $VariableType,
+        mixed $RawValue,
+        array $Presentation,
+        ?array $LegacyProfile
+    ): string {
+        if ($VariableType !== 1 || !is_numeric($RawValue)) {
+            return '';
+        }
+
+        $raw = (float) $RawValue;
+
+        $toCss = static function (mixed $Color): string {
+            if (!is_numeric($Color)) {
+                return '';
+            }
+
+            $color = (int) $Color;
+            if ($color < 0) {
+                return '';
+            }
+
+            return sprintf('#%06X', $color & 0xFFFFFF);
+        };
+
+        // 1. Legacy-Profil: Farbe der exakt zum Integerwert passenden Assoziation.
+        if (is_array($LegacyProfile)) {
+            foreach (($LegacyProfile['associations'] ?? []) as $association) {
+                if (
+                    isset($association['value']) &&
+                    is_numeric($association['value']) &&
+                    abs((float) $association['value'] - $raw) < 0.000001
+                ) {
+                    $color = $toCss($association['color'] ?? -1);
+                    if ($color !== '') {
+                        return $color;
+                    }
+                }
+            }
+        }
+
+        // IPS_GetVariablePresentation() liefert OPTIONS / INTERVALS je nach
+        // Darstellung teilweise als JSON-String, teilweise bereits als Array.
+        $decodeList = static function (mixed $Value): array {
+            if (is_array($Value)) {
+                return $Value;
+            }
+
+            if (is_string($Value) && trim($Value) !== '') {
+                $decoded = json_decode($Value, true);
+                return is_array($decoded) ? $decoded : [];
+            }
+
+            return [];
+        };
+
+        // 2. Neue Aufzählungsdarstellung: Farbe der aktuellen Option.
+        foreach ($decodeList($Presentation['OPTIONS'] ?? []) as $option) {
+            $value = $option['Value'] ?? $option['value'] ?? null;
+            if (!is_numeric($value) || abs((float) $value - $raw) >= 0.000001) {
+                continue;
+            }
+
+            $active = $option['ColorActive'] ?? $option['COLOR_ACTIVE'] ?? true;
+            if ($active === false || $active === 0 || $active === '0') {
+                continue;
+            }
+
+            $color = $toCss(
+                $option['ColorValue']
+                ?? $option['Color']
+                ?? $option['COLOR']
+                ?? -1
+            );
+            if ($color !== '') {
+                return $color;
+            }
+        }
+
+        // 3. Neue Wertanzeige / Slider: Intervallfarbe für den aktuellen Wert.
+        $intervalsActive = $Presentation['INTERVALS_ACTIVE'] ?? false;
+        if ($intervalsActive === true || $intervalsActive === 1 || $intervalsActive === '1') {
+            foreach ($decodeList($Presentation['INTERVALS'] ?? []) as $interval) {
+                $min = $interval['IntervalMinValue'] ?? $interval['MIN'] ?? null;
+                $max = $interval['IntervalMaxValue'] ?? $interval['MAX'] ?? null;
+
+                if (!is_numeric($min) || !is_numeric($max)) {
+                    continue;
+                }
+
+                if ($raw < (float) $min || $raw > (float) $max) {
+                    continue;
+                }
+
+                $active = $interval['ColorActive'] ?? $interval['COLOR_ACTIVE'] ?? false;
+                if (!($active === true || $active === 1 || $active === '1')) {
+                    continue;
+                }
+
+                $color = $toCss(
+                    $interval['ColorValue']
+                    ?? $interval['Color']
+                    ?? $interval['COLOR']
+                    ?? -1
+                );
+                if ($color !== '') {
+                    return $color;
+                }
+            }
+        }
+
+        // 4. Standardfarbe der neuen Darstellung.
+        return $toCss($Presentation['COLOR'] ?? -1);
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -7946,6 +8064,13 @@ HTML;
             }
         }
 
+        $integerStatusColor = $this->GetIntegerRuntimeColor(
+            $variableType,
+            $rawValue,
+            (array) ($activePresentation['parameters'] ?? []),
+            is_array($profile) ? $profile : null
+        );
+
         $variableInfo = IPS_GetVariable($VariableID);
         $actionID = $this->GetEffectiveVariableActionID($variableInfo);
 
@@ -7976,6 +8101,7 @@ HTML;
             '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_legacyColorOn'        => $legacyColorOn,
+            '_integerStatusColor'   => $integerStatusColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
