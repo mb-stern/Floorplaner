@@ -2318,6 +2318,85 @@ class Floorplaner extends IPSModuleStrict
         }
 
         /*
+         * Formen gehören ebenfalls zum eigentlichen Grundriss und müssen
+         * IMMER in die Fit-Grenzen einfließen. Zuvor wurden sie hier gar nicht
+         * berücksichtigt. Sobald dann ein Gerät vorhanden war, konnte sich
+         * "Einpassen" praktisch nur noch am Gerät orientieren.
+         */
+        for (const shape of floor.shapes || []) {
+            const kind = shape.kind || 'line';
+
+            if (kind === 'line') {
+                points.push(
+                    [Number(shape.x1) || 0, Number(shape.y1) || 0],
+                    [Number(shape.x2) || 0, Number(shape.y2) || 0]
+                );
+                continue;
+            }
+
+            if (kind === 'rect') {
+                const x1 = Number(shape.x1) || 0;
+                const y1 = Number(shape.y1) || 0;
+                const x2 = Number(shape.x2) || 0;
+                const y2 = Number(shape.y2) || 0;
+                const minX = Math.min(x1, x2);
+                const minY = Math.min(y1, y2);
+                const maxX = Math.max(x1, x2);
+                const maxY = Math.max(y1, y2);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
+
+                for (const [px, py] of [
+                    [minX, minY], [maxX, minY],
+                    [maxX, maxY], [minX, maxY]
+                ]) {
+                    const dx = px - cx;
+                    const dy = py - cy;
+                    points.push([
+                        cx + dx * cos - dy * sin,
+                        cy + dx * sin + dy * cos
+                    ]);
+                }
+                continue;
+            }
+
+            if (kind === 'circle') {
+                const cx = Number(shape.x1) || 0;
+                const cy = Number(shape.y1) || 0;
+                const fallbackDiameter = Math.max(
+                    1,
+                    Math.hypot(
+                        (Number(shape.x2) || 0) - cx,
+                        (Number(shape.y2) || 0) - cy
+                    ) * 2
+                );
+                const rx = Math.max(0.5, (Number(shape.width) || fallbackDiameter) / 2);
+                const ry = Math.max(0.5, (Number(shape.height) || fallbackDiameter) / 2);
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+
+                // Achsenparallele Bounding-Box einer gedrehten Ellipse.
+                const extentX = Math.sqrt(
+                    rx * rx * Math.cos(rotation) * Math.cos(rotation) +
+                    ry * ry * Math.sin(rotation) * Math.sin(rotation)
+                );
+                const extentY = Math.sqrt(
+                    rx * rx * Math.sin(rotation) * Math.sin(rotation) +
+                    ry * ry * Math.cos(rotation) * Math.cos(rotation)
+                );
+
+                addBox(
+                    cx - extentX,
+                    cy - extentY,
+                    cx + extentX,
+                    cy + extentY
+                );
+            }
+        }
+
+        /*
          * Geräte werden zusätzlich mit ihrer EFFEKTIV sichtbaren Größe
          * berücksichtigt. Befindet sich ein Gerät innerhalb des Grundrisses,
          * verändert es die Bounds nicht. Steht es z.B. auf einer Terrasse
