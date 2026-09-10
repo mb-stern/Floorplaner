@@ -648,6 +648,12 @@ class Floorplaner extends IPSModuleStrict
             stroke-width: 0.4;
         }
 
+        /* Light-Theme: Resize-/Verschiebepunkte schwarz darstellen.
+           Im Dark-Theme bleiben sie weiß. */
+        html[data-theme="light"] .resize-handle {
+            fill: #111111;
+        }
+
         /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
            Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
         .device-direct-slider {
@@ -1289,6 +1295,12 @@ class Floorplaner extends IPSModuleStrict
            bewusst weicher als reines Schwarz darstellen. */
         html[data-theme="light"] .wall {
             stroke: #4a4a4a;
+        }
+
+        /* Markierte Wände sollen auch im Light-Theme wie alle anderen
+           selektierten Elemente blau hervorgehoben werden. */
+        html[data-theme="light"] .wall.selected {
+            stroke: #74b9ff;
         }
 
         html[data-theme="light"] .opening-gap {
