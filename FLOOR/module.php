@@ -2914,9 +2914,16 @@ class Floorplaner extends IPSModuleStrict
                 if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
             } else if (shape.kind === 'rect') {
                 const x=Math.min(shape.x1,shape.x2), y=Math.min(shape.y1,shape.y2), w=Math.abs(shape.x2-shape.x1), h=Math.abs(shape.y2-shape.y1);
-                parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
-                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
-                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+                const cx=x+w/2, cy=y+h/2, rotation=Number(shape.rotation)||0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+                parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"${transform}/>`);
+                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"${transform}/>`);
+                if (sel) {
+                    const rad=rotation*Math.PI/180;
+                    const hx=cx+(w/2)*Math.cos(rad)-(h/2)*Math.sin(rad);
+                    const hy=cy+(w/2)*Math.sin(rad)+(h/2)*Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+                }
             } else if (shape.kind === 'circle') {
                 const r=Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1);
                 parts.push(`<circle class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
@@ -4053,6 +4060,101 @@ class Floorplaner extends IPSModuleStrict
                     <input data-field="rotation" type="number" min="-360" max="360" step="5" value="${Number(obj.rotation) || 0}">
                 </div>
             `;
+        } else if (selected.type === 'shape') {
+            propTitle.textContent = 'Form';
+
+            const kind = obj.kind || 'line';
+            if (kind === 'line') {
+                const dx = Number(obj.x2) - Number(obj.x1);
+                const dy = Number(obj.y2) - Number(obj.y1);
+                const length = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Linie" disabled>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
+                        </div>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Länge</label>
+                            <input data-field="shapeLength" type="number" min="1" step="1" value="${Math.round(length)}">
+                        </div>
+                        <div class="field">
+                            <label>Drehung</label>
+                            <input data-field="shapeAngle" type="number" min="-360" max="360" step="1" value="${Math.round(angle)}">
+                        </div>
+                    </div>
+                `;
+            } else if (kind === 'rect') {
+                const x = Math.min(Number(obj.x1), Number(obj.x2));
+                const y = Math.min(Number(obj.y1), Number(obj.y2));
+                const width = Math.abs(Number(obj.x2) - Number(obj.x1));
+                const height = Math.abs(Number(obj.y2) - Number(obj.y1));
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Rechteck" disabled>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(x)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(y)}">
+                        </div>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Breite</label>
+                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
+                        </div>
+                        <div class="field">
+                            <label>Tiefe</label>
+                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>Drehung</label>
+                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
+                    </div>
+                `;
+            } else {
+                const radius = Math.hypot(Number(obj.x2) - Number(obj.x1), Number(obj.y2) - Number(obj.y1));
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Kreis" disabled>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>Durchmesser</label>
+                        <input data-field="shapeDiameter" type="number" min="1" step="1" value="${Math.round(radius * 2)}">
+                    </div>
+                `;
+            }
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
             properties.innerHTML = `
@@ -4079,7 +4181,73 @@ class Floorplaner extends IPSModuleStrict
                 if (input.type === 'number') value = Number(value);
                 const fieldName = input.dataset.field;
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
-                obj[fieldName] = value;
+
+                if (selected.type === 'shape' && fieldName.startsWith('shape')) {
+                    const kind = obj.kind || 'line';
+
+                    if (kind === 'line') {
+                        const oldX = Number(obj.x1) || 0;
+                        const oldY = Number(obj.y1) || 0;
+                        const dx = Number(obj.x2) - oldX;
+                        const dy = Number(obj.y2) - oldY;
+                        let length = Math.max(1, Math.hypot(dx, dy));
+                        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                        if (fieldName === 'shapeX') {
+                            const delta = Number(value) - oldX;
+                            obj.x1 = Number(value);
+                            obj.x2 = Number(obj.x2) + delta;
+                        } else if (fieldName === 'shapeY') {
+                            const delta = Number(value) - oldY;
+                            obj.y1 = Number(value);
+                            obj.y2 = Number(obj.y2) + delta;
+                        } else {
+                            if (fieldName === 'shapeLength') length = Math.max(1, Number(value) || 1);
+                            if (fieldName === 'shapeAngle') angle = Number(value) || 0;
+                            const rad = angle * Math.PI / 180;
+                            obj.x2 = oldX + Math.cos(rad) * length;
+                            obj.y2 = oldY + Math.sin(rad) * length;
+                        }
+                    } else if (kind === 'rect') {
+                        let x = Math.min(Number(obj.x1), Number(obj.x2));
+                        let y = Math.min(Number(obj.y1), Number(obj.y2));
+                        let width = Math.max(1, Math.abs(Number(obj.x2) - Number(obj.x1)));
+                        let height = Math.max(1, Math.abs(Number(obj.y2) - Number(obj.y1)));
+
+                        if (fieldName === 'shapeX') x = Number(value) || 0;
+                        if (fieldName === 'shapeY') y = Number(value) || 0;
+                        if (fieldName === 'shapeWidth') width = Math.max(1, Number(value) || 1);
+                        if (fieldName === 'shapeHeight') height = Math.max(1, Number(value) || 1);
+                        if (fieldName === 'shapeRotation') obj.rotation = Number(value) || 0;
+
+                        obj.x1 = x;
+                        obj.y1 = y;
+                        obj.x2 = x + width;
+                        obj.y2 = y + height;
+                    } else if (kind === 'circle') {
+                        const oldX = Number(obj.x1) || 0;
+                        const oldY = Number(obj.y1) || 0;
+                        const dx = Number(obj.x2) - oldX;
+                        const dy = Number(obj.y2) - oldY;
+                        const angle = Math.atan2(dy, dx);
+
+                        if (fieldName === 'shapeX') {
+                            const delta = Number(value) - oldX;
+                            obj.x1 = Number(value);
+                            obj.x2 = Number(obj.x2) + delta;
+                        } else if (fieldName === 'shapeY') {
+                            const delta = Number(value) - oldY;
+                            obj.y1 = Number(value);
+                            obj.y2 = Number(obj.y2) + delta;
+                        } else if (fieldName === 'shapeDiameter') {
+                            const radius = Math.max(0.5, (Number(value) || 1) / 2);
+                            obj.x2 = oldX + Math.cos(angle || 0) * radius;
+                            obj.y2 = oldY + Math.sin(angle || 0) * radius;
+                        }
+                    }
+                } else {
+                    obj[fieldName] = value;
+                }
 
                 if (selected.type === 'item' && fieldName === 'statusColor') {
                     obj.statusColorManual = true;
