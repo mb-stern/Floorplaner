@@ -73,6 +73,10 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ## 📝 Änderungen
 
+### 1.9
+
+- Einige Sichtbarkeits-Verbesserungen im Bearbeitungsmodus des Light-Theme.
+
 ### 1.8
 
 - Fenster und Türen sind nun umfassend konfigurierbar.
