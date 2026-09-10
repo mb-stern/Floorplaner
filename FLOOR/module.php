@@ -2317,6 +2317,70 @@ class Floorplaner extends IPSModuleStrict
             );
         }
 
+        // Gezeichnete Formen gehören immer zum sichtbaren Etageninhalt.
+        // Besonders wichtig bei Etagen ohne Wände: "Formen + eine Variable"
+        // darf beim Einpassen nicht nur auf die Variable zoomen.
+        for (const shape of floor.shapes || []) {
+            const type = String(shape.type || shape.kind || '').toLowerCase();
+
+            if (type === 'line') {
+                points.push(
+                    [Number(shape.x1) || 0, Number(shape.y1) || 0],
+                    [Number(shape.x2) || 0, Number(shape.y2) || 0]
+                );
+                continue;
+            }
+
+            const cx = Number(shape.x) || 0;
+            const cy = Number(shape.y) || 0;
+            const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+            const cos = Math.cos(rotation);
+            const sin = Math.sin(rotation);
+
+            if (type === 'ellipse' || type === 'circle') {
+                const rx = Math.max(
+                    1,
+                    Number(shape.rx) ||
+                    ((Number(shape.width) || Number(shape.w) || Number(shape.size) || 40) / 2)
+                );
+                const ry = type === 'circle'
+                    ? rx
+                    : Math.max(
+                        1,
+                        Number(shape.ry) ||
+                        ((Number(shape.height) || Number(shape.h) || Number(shape.size) || 40) / 2)
+                    );
+
+                const extentX = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
+                const extentY = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
+                addBox(cx - extentX, cy - extentY, cx + extentX, cy + extentY);
+                continue;
+            }
+
+            const halfW = Math.max(
+                1,
+                (Number(shape.width) || Number(shape.w) || Number(shape.size) || 40) / 2
+            );
+            const halfH = Math.max(
+                1,
+                (Number(shape.height) || Number(shape.h) || Number(shape.size) || 40) / 2
+            );
+
+            const corners = [
+                [-halfW, -halfH],
+                [ halfW, -halfH],
+                [ halfW,  halfH],
+                [-halfW,  halfH]
+            ].map(([dx, dy]) => [
+                cx + dx * cos - dy * sin,
+                cy + dx * sin + dy * cos
+            ]);
+
+            for (const point of corners) {
+                points.push(point);
+            }
+        }
+
         /*
          * Geräte werden zusätzlich mit ihrer EFFEKTIV sichtbaren Größe
          * berücksichtigt. Befindet sich ein Gerät innerhalb des Grundrisses,
@@ -3295,10 +3359,14 @@ class Floorplaner extends IPSModuleStrict
             const isIntegerDevice = Number(item._variableType) === 1;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
 
+            const newIntegerColor = isIntegerDevice
+                ? newIntegerPresentationColor(item)
+                : '';
             const legacyIntegerColor = isIntegerDevice
                 ? legacyIntegerCurrentColor(item)
                 : '';
-            const hasLegacyIntegerColor = /^#[0-9a-f]{6}$/i.test(legacyIntegerColor);
+            const effectiveIntegerColor = newIntegerColor || legacyIntegerColor;
+            const hasIntegerPresentationColor = /^#[0-9a-f]{6}$/i.test(effectiveIntegerColor);
 
             const statusRingEnabled = supportsStatusColor(item);
             const symconGlowColor = String(item._glowColor || '').trim();
@@ -3306,7 +3374,7 @@ class Floorplaner extends IPSModuleStrict
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasLegacyIntegerColor;
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor;
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -3339,8 +3407,8 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
-            const effectiveStatusColor = hasLegacyIntegerColor
-                ? legacyIntegerColor
+            const effectiveStatusColor = hasIntegerPresentationColor
+                ? effectiveIntegerColor
                 : statusColor;
 
             const showName = item.showName === true;
@@ -3398,7 +3466,7 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasLegacyIntegerColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
@@ -3551,13 +3619,24 @@ class Floorplaner extends IPSModuleStrict
             : automaticOpeningStatusColor(opening);
     }
 
+    function newIntegerPresentationColor(item) {
+        if (Number(item?._variableType) !== 1 || item?._hasNewPresentation !== true) {
+            return '';
+        }
+
+        const color = String(item?._newIntegerStatusColor || '').trim();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : '';
+    }
+
     function supportsStatusColor(item) {
         // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
         // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
         const type = Number(item?._variableType);
         if (type === 0) return true;
         if (type === 1) {
-            return legacyIntegerCurrentColor(item) !== '' || numericStatusLevel(item) !== null;
+            return newIntegerPresentationColor(item) !== '' ||
+                legacyIntegerCurrentColor(item) !== '' ||
+                numericStatusLevel(item) !== null;
         }
         if (type === 2) return numericStatusLevel(item) !== null;
         return false;
@@ -7572,6 +7651,7 @@ HTML;
                     $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
                     $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
                     $node['legacyCurrentColor'] = (string) ($meta['_legacyCurrentColor'] ?? '');
+                    $node['newIntegerStatusColor'] = (string) ($meta['_newIntegerStatusColor'] ?? '');
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
@@ -7836,6 +7916,244 @@ HTML;
         }
     }
 
+    private function DecodePresentationArrayValue(mixed $Value): array
+    {
+        if (is_array($Value)) {
+            return $Value;
+        }
+
+        if (!is_string($Value) || trim($Value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($Value, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function PresentationEntryValue(array $Entry, array $Keys, mixed $Default = null): mixed
+    {
+        foreach ($Keys as $key) {
+            if (array_key_exists($key, $Entry)) {
+                return $Entry[$key];
+            }
+        }
+
+        $lower = [];
+        foreach ($Entry as $key => $value) {
+            $lower[strtolower((string) $key)] = $value;
+        }
+
+        foreach ($Keys as $key) {
+            $normalized = strtolower($key);
+            if (array_key_exists($normalized, $lower)) {
+                return $lower[$normalized];
+            }
+        }
+
+        return $Default;
+    }
+
+    private function SymconColorToCss(mixed $Color): string
+    {
+        if (is_string($Color)) {
+            $color = trim($Color);
+            if (preg_match('/^#[0-9a-f]{6}$/i', $color) === 1) {
+                return strtoupper($color);
+            }
+            if ($color !== '' && is_numeric($color)) {
+                $Color = (int) $color;
+            }
+        }
+
+        if (is_int($Color) || is_float($Color)) {
+            $value = (int) $Color;
+            if ($value >= 0) {
+                return sprintf('#%06X', $value & 0xFFFFFF);
+            }
+        }
+
+        return '';
+    }
+
+    private function GetNewIntegerPresentationMeta(array $Presentation, mixed $RawValue): array
+    {
+        $result = [
+            'statusColor' => '',
+            'valueText'   => '',
+            'profile'     => null
+        ];
+
+        $rawNumeric = is_numeric($RawValue) ? (float) $RawValue : null;
+
+        // Enumeration / Value Presentation: OPTIONS enthält die einzelnen Werte.
+        $optionsRaw = $this->FindPresentationValue($Presentation, 'OPTIONS');
+        $options = $this->DecodePresentationArrayValue($optionsRaw);
+
+        if ($options !== []) {
+            $associations = [];
+
+            foreach ($options as $option) {
+                if (!is_array($option)) {
+                    continue;
+                }
+
+                $value = $this->PresentationEntryValue(
+                    $option,
+                    ['Value', 'value', 'OptionValue', 'ValueValue'],
+                    null
+                );
+                if (!is_numeric($value)) {
+                    continue;
+                }
+
+                $caption = (string) $this->PresentationEntryValue(
+                    $option,
+                    ['Caption', 'Name', 'Text', 'Label', 'caption', 'name'],
+                    ''
+                );
+                $icon = (string) $this->PresentationEntryValue(
+                    $option,
+                    ['Icon', 'ICON', 'icon'],
+                    ''
+                );
+
+                $color = $this->SymconColorToCss(
+                    $this->PresentationEntryValue(
+                        $option,
+                        ['Color', 'ColorValue', 'COLOR', 'color'],
+                        null
+                    )
+                );
+
+                $associations[] = [
+                    'value' => (float) $value,
+                    'name'  => $caption,
+                    'icon'  => $icon,
+                    'color' => $color
+                ];
+
+                if (
+                    $rawNumeric !== null &&
+                    abs((float) $value - $rawNumeric) < 0.000001
+                ) {
+                    if ($caption !== '') {
+                        $result['valueText'] = $caption;
+                    }
+                    if ($color !== '') {
+                        $result['statusColor'] = $color;
+                    }
+                }
+            }
+
+            if ($associations !== []) {
+                $result['profile'] = [
+                    'name'         => '',
+                    'min'          => null,
+                    'max'          => null,
+                    'step'         => null,
+                    'prefix'       => '',
+                    'suffix'       => '',
+                    'associations' => $associations
+                ];
+            }
+        }
+
+        // Interval Presentation: Farbe anhand des aktuellen Wertebereichs.
+        $intervalsActive = filter_var(
+            $this->FindPresentationValue($Presentation, 'INTERVALS_ACTIVE'),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $intervals = $this->DecodePresentationArrayValue(
+            $this->FindPresentationValue($Presentation, 'INTERVALS')
+        );
+
+        if ($intervalsActive && $rawNumeric !== null && $intervals !== []) {
+            foreach ($intervals as $interval) {
+                if (!is_array($interval)) {
+                    continue;
+                }
+
+                $min = $this->PresentationEntryValue(
+                    $interval,
+                    ['IntervalMinValue', 'MinValue', 'min'],
+                    null
+                );
+                $max = $this->PresentationEntryValue(
+                    $interval,
+                    ['IntervalMaxValue', 'MaxValue', 'max'],
+                    null
+                );
+
+                if (!is_numeric($min) || !is_numeric($max)) {
+                    continue;
+                }
+
+                if ($rawNumeric < (float) $min || $rawNumeric > (float) $max) {
+                    continue;
+                }
+
+                $active = $this->PresentationEntryValue(
+                    $interval,
+                    ['ColorActive', 'Active', 'active'],
+                    true
+                );
+
+                if (filter_var($active, FILTER_VALIDATE_BOOLEAN)) {
+                    $color = $this->SymconColorToCss(
+                        $this->PresentationEntryValue(
+                            $interval,
+                            ['Color', 'ColorValue', 'COLOR', 'color'],
+                            null
+                        )
+                    );
+                    if ($color !== '') {
+                        $result['statusColor'] = $color;
+                    }
+                }
+                break;
+            }
+        }
+
+        // Allgemeine Farbe der neuen Darstellung als letzter Fallback.
+        if ($result['statusColor'] === '') {
+            $result['statusColor'] = $this->SymconColorToCss(
+                $this->FindPresentationValue($Presentation, 'COLOR')
+            );
+        }
+
+        // Falls MIN/MAX/STEP in der neuen Darstellung vorhanden sind, daraus
+        // einen Wertebereich erzeugen. Das bestehende Bedienkonzept kann ihn
+        // verwenden, aber nur wenn _canAction=true ist.
+        if ($result['profile'] === null) {
+            $min = $this->FindPresentationValue($Presentation, 'MIN');
+            if ($min === null) {
+                $min = $this->FindPresentationValue($Presentation, 'MIN_VALUE');
+            }
+            $max = $this->FindPresentationValue($Presentation, 'MAX');
+            if ($max === null) {
+                $max = $this->FindPresentationValue($Presentation, 'MAX_VALUE');
+            }
+            $step = $this->FindPresentationValue($Presentation, 'STEP');
+            if ($step === null) {
+                $step = $this->FindPresentationValue($Presentation, 'STEP_SIZE');
+            }
+
+            if (is_numeric($min) && is_numeric($max) && (float) $max > (float) $min) {
+                $result['profile'] = [
+                    'name'         => '',
+                    'min'          => (float) $min,
+                    'max'          => (float) $max,
+                    'step'         => is_numeric($step) ? (float) $step : 1,
+                    'prefix'       => '',
+                    'suffix'       => '',
+                    'associations' => []
+                ];
+            }
+        }
+
+        return $result;
+    }
+
     private function GetVariableRuntimeMeta(int $VariableID): array
     {
         $variable = IPS_GetVariable($VariableID);
@@ -7907,6 +8225,36 @@ HTML;
         $valueText = $this->FormatRawValue($rawValue);
         $legacyColorOn = '';
         $legacyCurrentColor = '';
+        $newIntegerStatusColor = '';
+
+        // Integer mit neuer Variablendarstellung:
+        // OPTIONS / INTERVALS / COLOR direkt aus der aktiven Präsentation lesen.
+        if ($variableType === 1 && $hasNewPresentation) {
+            $newIntegerMeta = $this->GetNewIntegerPresentationMeta(
+                (array) ($activePresentation['parameters'] ?? []),
+                $rawValue
+            );
+
+            $newIntegerStatusColor = (string) ($newIntegerMeta['statusColor'] ?? '');
+
+            if ((string) ($newIntegerMeta['valueText'] ?? '') !== '') {
+                $valueText = (string) $newIntegerMeta['valueText'];
+            }
+
+            if (is_array($newIntegerMeta['profile'] ?? null)) {
+                $profile = $newIntegerMeta['profile'];
+
+                $assocCount = count((array) ($profile['associations'] ?? []));
+                if ($assocCount > 0) {
+                    $profileSummary = $assocCount . ' Stellungen';
+                } elseif (
+                    is_numeric($profile['min'] ?? null) &&
+                    is_numeric($profile['max'] ?? null)
+                ) {
+                    $profileSummary = $profile['min'] . '…' . $profile['max'];
+                }
+            }
+        }
 
         if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
             try {
@@ -8011,6 +8359,7 @@ HTML;
             '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
             '_legacyColorOn'        => $legacyColorOn,
             '_legacyCurrentColor'   => $legacyCurrentColor,
+            '_newIntegerStatusColor'=> $newIntegerStatusColor,
             '_variablePath'         => $this->GetObjectPath($VariableID),
             '_rawValue'       => $rawValue,
             '_valueText'      => $valueText,
