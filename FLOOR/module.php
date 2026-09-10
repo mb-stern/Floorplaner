@@ -6233,7 +6233,11 @@ class Floorplaner extends IPSModuleStrict
                             entity.statusColor = String(node.glowColor);
                         }
                     } else {
-                        entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
+                        // Integer/Float/String: Das Objekt-Icon beibehalten.
+                        // presentationIcon kann bei neuen Symcon-Darstellungen
+                        // ein Darstellungs-/Parameterwert statt eines direkt
+                        // renderbaren FontAwesome-Icons sein und führte zu '?'.
+                        entity.icon = node.objectIcon || entity.icon || 'fa-light fa-circle';
                     }
                 } else if (node.hasLegacyProfile === true) {
                     if (Number(node.variableType) === 0) {
@@ -6728,7 +6732,10 @@ class Floorplaner extends IPSModuleStrict
                             item.statusColor = String(meta._glowColor);
                         }
                     } else {
-                        item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                        // Integer/Float/String: niemals automatisch auf das
+                        // Presentation-Icon umschalten. Das reale Objekt-Icon
+                        // ist die stabile Quelle für die Geräteanzeige.
+                        item.icon = meta._objectIcon || item.icon || 'fa-light fa-circle';
                     }
                 } else if (meta._hasLegacyProfile === true) {
                     item.icon = meta._objectIcon || 'fa-light fa-circle';
@@ -6802,7 +6809,10 @@ class Floorplaner extends IPSModuleStrict
                                     item.statusColor = String(meta._glowColor);
                                 }
                             } else if (!manualIcon) {
-                                item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                                // Bei Integer/Float/String ausschließlich das
+                                // Objekt-Icon aktualisieren; dadurch bleibt nach
+                                // Variablen-Refresh kein unbekanntes '?' zurück.
+                                item.icon = meta._objectIcon || item.icon || 'fa-light fa-circle';
                                 item.iconSvg = '';
                             }
                         }
