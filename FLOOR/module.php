@@ -3639,8 +3639,22 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function hasAutomaticIntegerStatusColor(item) {
-        return Number(item?._variableType) === 1 &&
-            newIntegerPresentationColor(item) !== '';
+        if (Number(item?._variableType) !== 1) {
+            return false;
+        }
+
+        // Neue Variablendarstellung: OPTIONS / INTERVALS / COLOR.
+        if (newIntegerPresentationColor(item) !== '') {
+            return true;
+        }
+
+        // Legacy-Profil mit einer Farbe auf der aktuellen Association.
+        // Auch dort wäre die manuelle Floorplaner-Farbe wirkungslos.
+        if (legacyIntegerCurrentColor(item) !== '') {
+            return true;
+        }
+
+        return false;
     }
 
     function canConfigureStatusColor(item) {
@@ -4228,7 +4242,7 @@ class Floorplaner extends IPSModuleStrict
                 ` : (
                     hasAutomaticIntegerStatusColor(obj)
                         ? `<div class="field">
-                            <div class="profile-hint">Statusfarbe wird automatisch aus der IP-Symcon-Variablendarstellung übernommen.</div>
+                            <div class="profile-hint">Statusfarbe wird automatisch aus IP-Symcon übernommen.</div>
                            </div>`
                         : ''
                 )}
@@ -6201,6 +6215,8 @@ class Floorplaner extends IPSModuleStrict
         const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
         const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
         const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
+        const legacyCurrentColorKey = prefix ? `_${prefix}LegacyCurrentColor` : '_legacyCurrentColor';
+        const newIntegerStatusColorKey = prefix ? `_${prefix}NewIntegerStatusColor` : '_newIntegerStatusColor';
 
         entity[pathKey] = node?.path || '';
         entity[valueKey] = node?.valueText || '';
@@ -6219,6 +6235,8 @@ class Floorplaner extends IPSModuleStrict
         entity[glowColorKey] = node?.glowColor || '';
         entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
         entity[legacyColorOnKey] = node?.legacyColorOn || '';
+        entity[legacyCurrentColorKey] = node?.legacyCurrentColor || '';
+        entity[newIntegerStatusColorKey] = node?.newIntegerStatusColor || '';
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
         // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
