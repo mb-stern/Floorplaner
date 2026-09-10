@@ -76,6 +76,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 ### 1.9
 
 - Einige Sichtbarkeits-Verbesserungen im Bearbeitungsmodus des Light-Theme.
+- Die Formen sind nun analog den Möbel konfigurierbar.
 
 ### 1.8
 
