@@ -2609,7 +2609,61 @@ class Floorplaner extends IPSModuleStrict
         'gear': 'fa-light fa-gear',
         'cog': 'fa-light fa-gear',
         'home': 'fa-light fa-house',
-        'house': 'fa-light fa-house'
+        'house': 'fa-light fa-house',
+        'aircraft': 'fa-light fa-plane',
+        'arrowright': 'fa-light fa-arrow-right',
+        'backspace': 'fa-light fa-delete-left',
+        'basement': 'fa-light fa-house',
+        'bath': 'fa-light fa-bath',
+        'bed': 'fa-light fa-bed',
+        'bike': 'fa-light fa-bicycle',
+        'book': 'fa-light fa-book',
+        'caret': 'fa-light fa-caret-right',
+        'cat': 'fa-light fa-cat',
+        'climate': 'fa-light fa-temperature-half',
+        'close': 'fa-light fa-xmark',
+        'closeall': 'fa-light fa-xmark',
+        'cloud': 'fa-light fa-cloud',
+        'cloudy': 'fa-light fa-clouds',
+        'cocktail': 'fa-light fa-martini-glass-citrus',
+        'cross': 'fa-light fa-xmark',
+        'database': 'fa-light fa-database',
+        'dining': 'fa-light fa-utensils',
+        'doll': 'fa-light fa-child-dress',
+        'download': 'fa-light fa-download',
+        'energyproduction': 'fa-light fa-bolt',
+        'energysolar': 'fa-light fa-solar-panel',
+        'energystorage': 'fa-light fa-battery-half',
+        'favorite': 'fa-light fa-star',
+        'fitness': 'fa-light fa-dumbbell',
+        'floorlamp': 'fa-light fa-lamp-floor',
+        'gas': 'fa-light fa-fire-flame-simple',
+        'handicap': 'fa-light fa-wheelchair',
+        'heart': 'fa-light fa-heart',
+        'help': 'fa-light fa-circle-question',
+        'intensity': 'fa-light fa-sun-bright',
+        'link': 'fa-light fa-link',
+        'menu': 'fa-light fa-bars',
+        'pants': 'fa-light fa-person',
+        'party': 'fa-light fa-party-horn',
+        'people': 'fa-light fa-people-group',
+        'raffstore': 'fa-light fa-blinds',
+        'remote': 'fa-light fa-remote-control',
+        'sink': 'fa-light fa-sink',
+        'sleet': 'fa-light fa-cloud-sleet',
+        'speedo': 'fa-light fa-gauge-high',
+        'sunny': 'fa-light fa-sun-bright',
+        'teddy': 'fa-light fa-teddy-bear',
+        'tee': 'fa-light fa-shirt',
+        'thunder': 'fa-light fa-cloud-bolt',
+        'umbrella': 'fa-light fa-umbrella',
+        'windspeed': 'fa-light fa-wind',
+        'shutter': 'fa-light fa-blinds',
+        'shutters': 'fa-light fa-blinds',
+        'roller': 'fa-light fa-blinds',
+        'rollershutter': 'fa-light fa-blinds',
+        'blind': 'fa-light fa-blinds',
+        'blinds': 'fa-light fa-blinds'
     };
 
     function normalizeSymconIcon(icon) {
@@ -2663,14 +2717,48 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
-    function safeFallbackIconSvgHtml() {
-        // Absichtlich KEIN <i class="fa-..."> als Fallback.
-        // Ein unbekannter/alter Symcon-Iconname würde von FontAwesome sonst
-        // als Fragezeichen-Glyphe dargestellt. Dieses SVG ist unabhängig
-        // von /icons.js und kann daher immer sicher gerendert werden.
-        return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
-            '<circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/>' +
-            '</svg>';
+    function isAvailableSymconIcon(icon) {
+        const normalized = normalizeSymconIcon(icon);
+        try {
+            return availableSymconIcons().includes(normalized);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function resolveRenderableSymconIcon(...candidates) {
+        for (const candidate of candidates) {
+            const raw = String(candidate || '').trim();
+            if (!raw) continue;
+
+            const normalized = normalizeSymconIcon(raw);
+            if (isAvailableSymconIcon(normalized)) {
+                return normalized;
+            }
+
+            // Legacy-Namen können z.B. "Raffstore-50", "Intensity-25" usw.
+            // enthalten. Erst den Grundnamen ohne Prozent-/Stufen-Suffix testen.
+            const baseRaw = raw.replace(/[-_ ]?(0|1|25|30|50|60|75|100)%?$/i, '');
+            if (baseRaw !== raw) {
+                const baseNormalized = normalizeSymconIcon(baseRaw);
+                if (isAvailableSymconIcon(baseNormalized)) {
+                    return baseNormalized;
+                }
+            }
+
+            // Letzter semantischer Versuch gegen die tatsächlich in /icons.js
+            // geladenen Namen. So wird kein unbekanntes Icon als '?' gerendert.
+            const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const icons = availableSymconIcons();
+            const exact = icons.find(entry =>
+                iconSearchText(entry).toLowerCase().replace(/[^a-z0-9]/g, '') === key
+            );
+            if (exact) return exact;
+        }
+
+        // Nur ein garantiert vorhandenes FontAwesome-Icon als allerletzter Schutz.
+        const defaults = ['fa-light fa-house', 'fa-light fa-toggle-on', 'fa-light fa-circle'];
+        return defaults.find(isAvailableSymconIcon) || 'fa-light fa-circle';
     }
 
     function effectiveItemIcon(item, forcedState = null) {
@@ -2706,36 +2794,43 @@ class Floorplaner extends IPSModuleStrict
             return persisted;
         }
 
-        const icon = normalizeSymconIcon(effectiveItemIcon(item, state));
+        const icon = resolveRenderableSymconIcon(
+            effectiveItemIcon(item, state),
+            item?._objectIcon,
+            defaultSymconIconForLegacyKind(item?.kind)
+        );
         const generated = fontAwesomeSvgHtml(icon);
-        if (generated) return generated;
-        return safeFallbackIconSvgHtml();
+        return generated;
     }
 
     function propertyIconPreviewHtml(item) {
-        const icon = normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
+        const icon = resolveRenderableSymconIcon(
+            item?.icon,
+            item?._objectIcon,
+            defaultSymconIconForLegacyKind(item?.kind)
+        );
         const storedSvg = String(item?.iconSvg || '').trim();
-        if (storedSvg.startsWith('<svg')) {
+        if (storedSvg.startsWith('<svg') && !storedSvg.includes('fa-circle-question')) {
             return storedSvg;
         }
-        const generated = fontAwesomeSvgHtml(icon);
-        if (generated) {
-            return generated;
-        }
-        return safeFallbackIconSvgHtml();
+        return fontAwesomeSvgHtml(icon);
     }
 
     function renderSymconGlyph(icon, radius, storedSvg = '') {
-        const parsed = parseSymconIcon(icon);
+        const resolvedIcon = resolveRenderableSymconIcon(icon);
+        const parsed = parseSymconIcon(resolvedIcon);
         const r = Math.max(8, Number(radius) || 18);
         const fontSize = Math.max(12, r * 1.18);
-        // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
-        // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
+        // Nur ein tatsächlich gespeichertes SVG weiterverwenden. Ein früher erzeugtes
+        // Fragezeichen-SVG wird verworfen und anhand des gültigen Icons neu gerendert.
         const persisted = String(storedSvg || '').trim();
-        const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
-        const content = svgHtml !== ''
-            ? svgHtml
-            : safeFallbackIconSvgHtml();
+        const persistedLooksInvalid =
+            persisted.includes('fa-circle-question') ||
+            persisted.includes('question');
+        const svgHtml = (persisted !== '' && !persistedLooksInvalid)
+            ? persisted
+            : fontAwesomeSvgHtml(parsed.cls);
+        const content = svgHtml;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
             `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
@@ -3324,7 +3419,11 @@ class Floorplaner extends IPSModuleStrict
             const boolGlowPx = (boolActive && symconGlowEnabled)
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
-            const icon = effectiveItemIcon(item);
+            const icon = resolveRenderableSymconIcon(
+                effectiveItemIcon(item),
+                item?._objectIcon,
+                defaultSymconIconForLegacyKind(item?.kind)
+            );
             const effectiveStatusColor = hasIntegerStatusColor
                 ? integerStatusColor
                 : statusColor;
@@ -5892,7 +5991,7 @@ class Floorplaner extends IPSModuleStrict
         const shown = icons.slice(0, query ? 500 : 80);
         iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
             const cls = icon === current ? ' current' : '';
-            const preview = fontAwesomeSvgHtml(icon) || safeFallbackIconSvgHtml();
+            const preview = fontAwesomeSvgHtml(icon);
             return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}">${preview}</button>`;
         }).join('') + `</div>` + (icons.length > shown.length ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>` : '');
 
