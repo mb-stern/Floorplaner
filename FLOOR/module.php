@@ -1622,8 +1622,15 @@ class Floorplaner extends IPSModuleStrict
             height: 1em;
             display: block;
             margin: auto;
-            fill: currentColor;
             color: inherit;
+            fill: currentColor;
+        }
+
+        /* Auch gespeicherte FontAwesome-/MDI-SVGs mit festen Fill-/Stroke-Werten
+           auf die aktuelle Profilfarbe zwingen. */
+        .device-icon-html svg * {
+            fill: currentColor !important;
+            stroke: currentColor !important;
         }
 
         .symcon-icon-grid button svg {
