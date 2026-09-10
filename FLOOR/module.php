@@ -654,6 +654,10 @@ class Floorplaner extends IPSModuleStrict
             fill: #111111;
         }
 
+        html[data-theme="light"] .rotate-handle {
+            fill: #111111;
+        }
+
         /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
            Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
         .device-direct-slider {
@@ -1989,6 +1993,18 @@ class Floorplaner extends IPSModuleStrict
             for (const shape of floor.shapes) {
                 if (typeof shape.fillEnabled !== 'boolean') shape.fillEnabled = false;
                 if (!['light', 'hatch', 'tiles'].includes(shape.fillMode)) shape.fillMode = 'light';
+                if (!Number.isFinite(Number(shape.rotation))) shape.rotation = 0;
+
+                if (shape.kind === 'circle') {
+                    const cx = Number(shape.x1) || 0;
+                    const cy = Number(shape.y1) || 0;
+                    const diameter = Math.max(
+                        1,
+                        Math.hypot((Number(shape.x2) || 0) - cx, (Number(shape.y2) || 0) - cy) * 2
+                    );
+                    if (!Number(shape.width)) shape.width = diameter;
+                    if (!Number(shape.height)) shape.height = diameter;
+                }
             }
             floor.trackers = Array.isArray(floor.trackers) ? floor.trackers : [];
         }
@@ -2947,27 +2963,91 @@ class Floorplaner extends IPSModuleStrict
         for (const shape of floor.shapes || []) {
             const sel = selected?.type === 'shape' && selected.id === shape.id;
             const cls = sel ? ' selection-shape' : '';
+
             if (shape.kind === 'line') {
-                parts.push(`<line class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
-                parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}"/>`);
-                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+                const x1 = Number(shape.x1) || 0;
+                const y1 = Number(shape.y1) || 0;
+                const x2 = Number(shape.x2) || 0;
+                const y2 = Number(shape.y2) || 0;
+
+                parts.push(`<line class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+                parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+
+                if (sel) {
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${x2}" cy="${y2}" r="2.8"/>`);
+
+                    const cx = (x1 + x2) / 2;
+                    const cy = (y1 + y2) / 2;
+                    const len = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
+                    const nx = -(y2 - y1) / len;
+                    const ny =  (x2 - x1) / len;
+                    const rhx = cx + nx * 16;
+                    const rhy = cy + ny * 16;
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${cx}" y1="${cy}" x2="${rhx}" y2="${rhy}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rhx}" cy="${rhy}" r="3.2"/>`
+                    );
+                }
             } else if (shape.kind === 'rect') {
-                const x=Math.min(shape.x1,shape.x2), y=Math.min(shape.y1,shape.y2), w=Math.abs(shape.x2-shape.x1), h=Math.abs(shape.y2-shape.y1);
-                const cx=x+w/2, cy=y+h/2, rotation=Number(shape.rotation)||0;
+                const x = Math.min(Number(shape.x1) || 0, Number(shape.x2) || 0);
+                const y = Math.min(Number(shape.y1) || 0, Number(shape.y2) || 0);
+                const w = Math.max(1, Math.abs((Number(shape.x2) || 0) - (Number(shape.x1) || 0)));
+                const h = Math.max(1, Math.abs((Number(shape.y2) || 0) - (Number(shape.y1) || 0)));
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const rotation = Number(shape.rotation) || 0;
                 const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
                 parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"${transform}/>`);
                 parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}" ${shapeFillAttribute(shape)}${transform}/>`);
+
                 if (sel) {
-                    const rad=rotation*Math.PI/180;
-                    const hx=cx+(w/2)*Math.cos(rad)-(h/2)*Math.sin(rad);
-                    const hy=cy+(w/2)*Math.sin(rad)+(h/2)*Math.cos(rad);
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + (w / 2) * Math.cos(rad) - (h / 2) * Math.sin(rad);
+                    const hy = cy + (w / 2) * Math.sin(rad) + (h / 2) * Math.cos(rad);
                     parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + (h / 2) * Math.sin(rad);
+                    const topY = cy - (h / 2) * Math.cos(rad);
+                    const rotateX = cx + (h / 2 + 16) * Math.sin(rad);
+                    const rotateY = cy - (h / 2 + 16) * Math.cos(rad);
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
                 }
             } else if (shape.kind === 'circle') {
-                const r=Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1);
-                parts.push(`<circle class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}"/>`);
-                parts.push(`<circle class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${shape.x1}" cy="${shape.y1}" r="${r}" ${shapeFillAttribute(shape)}/>`);
-                if (sel) parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${shape.x2}" cy="${shape.y2}" r="2.8"/>`);
+                const cx = Number(shape.x1) || 0;
+                const cy = Number(shape.y1) || 0;
+                const fallbackDiameter = Math.max(1, Math.hypot((Number(shape.x2) || 0) - cx, (Number(shape.y2) || 0) - cy) * 2);
+                const w = Math.max(1, Number(shape.width) || fallbackDiameter);
+                const h = Math.max(1, Number(shape.height) || fallbackDiameter);
+                const rx = w / 2;
+                const ry = h / 2;
+                const rotation = Number(shape.rotation) || 0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
+                parts.push(`<ellipse class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"${transform}/>`);
+                parts.push(`<ellipse class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" ${shapeFillAttribute(shape)}${transform}/>`);
+
+                if (sel) {
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + rx * Math.cos(rad) - ry * Math.sin(rad);
+                    const hy = cy + rx * Math.sin(rad) + ry * Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + ry * Math.sin(rad);
+                    const topY = cy - ry * Math.cos(rad);
+                    const rotateX = cx + (ry + 16) * Math.sin(rad);
+                    const rotateY = cy - (ry + 16) * Math.cos(rad);
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
+                }
             }
         }
 
@@ -4182,11 +4262,14 @@ class Floorplaner extends IPSModuleStrict
                     </div>` : ''}
                 `;
             } else {
-                const radius = Math.hypot(Number(obj.x2) - Number(obj.x1), Number(obj.y2) - Number(obj.y1));
+                const fallbackDiameter = Math.max(1, Math.hypot(Number(obj.x2) - Number(obj.x1), Number(obj.y2) - Number(obj.y1)) * 2);
+                const width = Math.max(1, Number(obj.width) || fallbackDiameter);
+                const height = Math.max(1, Number(obj.height) || fallbackDiameter);
+
                 properties.innerHTML = `
                     <div class="field">
                         <label>Form</label>
-                        <input value="Kreis" disabled>
+                        <input value="Kreis / Ellipse" disabled>
                     </div>
                     <div class="row2">
                         <div class="field">
@@ -4198,9 +4281,19 @@ class Floorplaner extends IPSModuleStrict
                             <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
                         </div>
                     </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Breite</label>
+                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
+                        </div>
+                        <div class="field">
+                            <label>Tiefe</label>
+                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
+                        </div>
+                    </div>
                     <div class="field">
-                        <label>Durchmesser</label>
-                        <input data-field="shapeDiameter" type="number" min="1" step="1" value="${Math.round(radius * 2)}">
+                        <label>Drehung</label>
+                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
                     </div>
                     <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
                     ${obj.fillEnabled === true ? `
@@ -4286,9 +4379,10 @@ class Floorplaner extends IPSModuleStrict
                     } else if (kind === 'circle') {
                         const oldX = Number(obj.x1) || 0;
                         const oldY = Number(obj.y1) || 0;
-                        const dx = Number(obj.x2) - oldX;
-                        const dy = Number(obj.y2) - oldY;
-                        const angle = Math.atan2(dy, dx);
+                        const fallbackDiameter = Math.max(
+                            1,
+                            Math.hypot((Number(obj.x2) || 0) - oldX, (Number(obj.y2) || 0) - oldY) * 2
+                        );
 
                         if (fieldName === 'shapeX') {
                             const delta = Number(value) - oldX;
@@ -4298,10 +4392,14 @@ class Floorplaner extends IPSModuleStrict
                             const delta = Number(value) - oldY;
                             obj.y1 = Number(value);
                             obj.y2 = Number(obj.y2) + delta;
-                        } else if (fieldName === 'shapeDiameter') {
-                            const radius = Math.max(0.5, (Number(value) || 1) / 2);
-                            obj.x2 = oldX + Math.cos(angle || 0) * radius;
-                            obj.y2 = oldY + Math.sin(angle || 0) * radius;
+                        } else if (fieldName === 'shapeWidth') {
+                            obj.width = Math.max(1, Number(value) || 1);
+                            if (!Number(obj.height)) obj.height = fallbackDiameter;
+                        } else if (fieldName === 'shapeHeight') {
+                            obj.height = Math.max(1, Number(value) || 1);
+                            if (!Number(obj.width)) obj.width = fallbackDiameter;
+                        } else if (fieldName === 'shapeRotation') {
+                            obj.rotation = Number(value) || 0;
                         }
                     }
                 } else {
@@ -4930,10 +5028,34 @@ class Floorplaner extends IPSModuleStrict
             const id = rotateHandle.dataset.id;
             const obj = findEntity(rotateType, id);
 
-            if (obj && rotateType === 'furniture') {
+            if (obj && (rotateType === 'furniture' || rotateType === 'shape')) {
                 const raw = svgPointRaw(evt);
-                const cx = Number(obj.x) || 0;
-                const cy = Number(obj.y) || 0;
+
+                let cx = 0;
+                let cy = 0;
+                let currentRotation = 0;
+
+                if (rotateType === 'furniture') {
+                    cx = Number(obj.x) || 0;
+                    cy = Number(obj.y) || 0;
+                    currentRotation = Number(obj.rotation) || 0;
+                } else if ((obj.kind || 'line') === 'line') {
+                    cx = ((Number(obj.x1) || 0) + (Number(obj.x2) || 0)) / 2;
+                    cy = ((Number(obj.y1) || 0) + (Number(obj.y2) || 0)) / 2;
+                    currentRotation = Math.atan2(
+                        (Number(obj.y2) || 0) - (Number(obj.y1) || 0),
+                        (Number(obj.x2) || 0) - (Number(obj.x1) || 0)
+                    ) * 180 / Math.PI;
+                } else if (obj.kind === 'rect') {
+                    cx = (Math.min(Number(obj.x1) || 0, Number(obj.x2) || 0) + Math.max(Number(obj.x1) || 0, Number(obj.x2) || 0)) / 2;
+                    cy = (Math.min(Number(obj.y1) || 0, Number(obj.y2) || 0) + Math.max(Number(obj.y1) || 0, Number(obj.y2) || 0)) / 2;
+                    currentRotation = Number(obj.rotation) || 0;
+                } else {
+                    cx = Number(obj.x1) || 0;
+                    cy = Number(obj.y1) || 0;
+                    currentRotation = Number(obj.rotation) || 0;
+                }
+
                 const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
 
                 selected = {type: rotateType, id};
@@ -4942,7 +5064,9 @@ class Floorplaner extends IPSModuleStrict
                     type: rotateType,
                     id,
                     original: structuredClone(obj),
-                    angleOffset: (Number(obj.rotation) || 0) - pointerAngle
+                    centerX: cx,
+                    centerY: cy,
+                    angleOffset: currentRotation - pointerAngle
                 };
                 svg.setPointerCapture(evt.pointerId);
                 evt.preventDefault();
@@ -5272,17 +5396,39 @@ class Floorplaner extends IPSModuleStrict
 
         if (drag.mode === 'rotate' && drag.original) {
             const obj = findEntity(drag.type, drag.id);
-            if (!obj || drag.type !== 'furniture') return;
+            if (!obj) return;
 
             const raw = svgPointRaw(evt);
-            const cx = Number(drag.original.x) || 0;
-            const cy = Number(drag.original.y) || 0;
+            const cx = Number(drag.centerX) || 0;
+            const cy = Number(drag.centerY) || 0;
             const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
             let rotation = pointerAngle + Number(drag.angleOffset || 0);
 
-            // Auf -180..180 normalisieren und Möbel nur in ganzen Grad drehen.
             rotation = ((rotation + 180) % 360 + 360) % 360 - 180;
-            obj.rotation = Math.round(rotation);
+            rotation = Math.round(rotation);
+
+            if (drag.type === 'furniture') {
+                obj.rotation = rotation;
+            } else if (drag.type === 'shape') {
+                if ((obj.kind || 'line') === 'line') {
+                    const original = drag.original;
+                    const ox1 = Number(original.x1) || 0;
+                    const oy1 = Number(original.y1) || 0;
+                    const ox2 = Number(original.x2) || 0;
+                    const oy2 = Number(original.y2) || 0;
+                    const length = Math.max(1, Math.hypot(ox2 - ox1, oy2 - oy1));
+                    const rad = rotation * Math.PI / 180;
+                    const half = length / 2;
+
+                    obj.x1 = cx - Math.cos(rad) * half;
+                    obj.y1 = cy - Math.sin(rad) * half;
+                    obj.x2 = cx + Math.cos(rad) * half;
+                    obj.y2 = cy + Math.sin(rad) * half;
+                } else {
+                    obj.rotation = rotation;
+                }
+            }
+
             render();
             return;
         }
@@ -5302,8 +5448,42 @@ class Floorplaner extends IPSModuleStrict
                     obj.y2 = snapValue(p.y);
                 }
             } else if (drag.type === 'shape') {
-                obj.x2 = p.x;
-                obj.y2 = p.y;
+                const kind = obj.kind || 'line';
+
+                if (kind === 'circle') {
+                    const cx = Number(drag.original.x1) || 0;
+                    const cy = Number(drag.original.y1) || 0;
+                    const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                    const dx = p.x - cx;
+                    const dy = p.y - cy;
+                    const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                    const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+                    obj.width = Math.max(1, Math.round(Math.abs(localX) * 2));
+                    obj.height = Math.max(1, Math.round(Math.abs(localY) * 2));
+                } else if (kind === 'rect') {
+                    const x1 = Number(drag.original.x1) || 0;
+                    const y1 = Number(drag.original.y1) || 0;
+                    const x2 = Number(drag.original.x2) || 0;
+                    const y2 = Number(drag.original.y2) || 0;
+                    const cx = (Math.min(x1, x2) + Math.max(x1, x2)) / 2;
+                    const cy = (Math.min(y1, y2) + Math.max(y1, y2)) / 2;
+                    const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                    const dx = p.x - cx;
+                    const dy = p.y - cy;
+                    const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                    const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+                    const w = Math.max(1, Math.round(Math.abs(localX) * 2));
+                    const h = Math.max(1, Math.round(Math.abs(localY) * 2));
+
+                    obj.x1 = cx - w / 2;
+                    obj.y1 = cy - h / 2;
+                    obj.x2 = cx + w / 2;
+                    obj.y2 = cy + h / 2;
+                } else {
+                    obj.x2 = p.x;
+                    obj.y2 = p.y;
+                }
             } else if (drag.type === 'furniture') {
                 const cx = Number(drag.original.x) || 0;
                 const cy = Number(drag.original.y) || 0;
