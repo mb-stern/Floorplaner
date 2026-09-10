@@ -2663,6 +2663,16 @@ class Floorplaner extends IPSModuleStrict
         return '';
     }
 
+    function safeFallbackIconSvgHtml() {
+        // Absichtlich KEIN <i class="fa-..."> als Fallback.
+        // Ein unbekannter/alter Symcon-Iconname würde von FontAwesome sonst
+        // als Fragezeichen-Glyphe dargestellt. Dieses SVG ist unabhängig
+        // von /icons.js und kann daher immer sicher gerendert werden.
+        return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+            '<circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/>' +
+            '</svg>';
+    }
+
     function effectiveItemIcon(item, forcedState = null) {
         const fallback = item?.icon || item?._objectIcon || defaultSymconIconForLegacyKind(item?.kind);
         if (Number(item?._variableType) !== 0) return fallback;
@@ -2699,7 +2709,7 @@ class Floorplaner extends IPSModuleStrict
         const icon = normalizeSymconIcon(effectiveItemIcon(item, state));
         const generated = fontAwesomeSvgHtml(icon);
         if (generated) return generated;
-        return `<i class="${escapeHtml(icon)}"></i>`;
+        return safeFallbackIconSvgHtml();
     }
 
     function propertyIconPreviewHtml(item) {
@@ -2712,7 +2722,7 @@ class Floorplaner extends IPSModuleStrict
         if (generated) {
             return generated;
         }
-        return `<i class="${escapeHtml(icon)}"></i>`;
+        return safeFallbackIconSvgHtml();
     }
 
     function renderSymconGlyph(icon, radius, storedSvg = '') {
@@ -2725,7 +2735,7 @@ class Floorplaner extends IPSModuleStrict
         const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
         const content = svgHtml !== ''
             ? svgHtml
-            : `<i class="${escapeHtml(parsed.cls)}"></i>`;
+            : safeFallbackIconSvgHtml();
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
             `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
@@ -5882,7 +5892,7 @@ class Floorplaner extends IPSModuleStrict
         const shown = icons.slice(0, query ? 500 : 80);
         iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
             const cls = icon === current ? ' current' : '';
-            const preview = fontAwesomeSvgHtml(icon) || `<i class="${escapeHtml(icon)}"></i>`;
+            const preview = fontAwesomeSvgHtml(icon) || safeFallbackIconSvgHtml();
             return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}">${preview}</button>`;
         }).join('') + `</div>` + (icons.length > shown.length ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>` : '');
 
