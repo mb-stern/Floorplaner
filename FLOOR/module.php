@@ -3348,14 +3348,27 @@ class Floorplaner extends IPSModuleStrict
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
             const raw = item._rawValue;
             const isBooleanDevice = Number(item._variableType) === 0;
+            const isIntegerDevice = Number(item._variableType) === 1;
             const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
-            const statusRingEnabled = supportsStatusColor(item);
+
+            // Integer mit Profil-/Darstellungsfarbe funktioniert wie Bool:
+            // Der aktuelle Status bekommt direkt einen farbigen Ring.
+            // Dafür ist KEIN Zahlenbereich und KEINE Bedienbarkeit erforderlich.
+            const integerStatusColor = isIntegerDevice
+                ? integerStatusColorFromProfile(item)
+                : '';
+            const hasIntegerStatusColor = /^#[0-9a-f]{6}$/i.test(integerStatusColor);
+
+            const statusRingEnabled = supportsStatusColor(item) || hasIntegerStatusColor;
             const symconGlowColor = String(item._glowColor || '').trim();
             const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
-            const numericLevel = statusRingEnabled ? numericStatusLevel(item) : null;
-            const numericClass = numericLevel !== null ? ' numeric-status' : '';
+            // Zahlenbereich: bisherige stufenlose Ring-Deckkraft.
+            // Integer-Assoziation: voller Ring wie bei Bool.
+            const numericLevel = supportsStatusColor(item) ? numericStatusLevel(item) : null;
+            const numericRingVisible = numericLevel !== null || hasIntegerStatusColor;
+            const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
@@ -3387,8 +3400,7 @@ class Floorplaner extends IPSModuleStrict
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
-            const integerStatusColor = integerStatusColorFromProfile(item);
-            const effectiveStatusColor = integerStatusColor !== ''
+            const effectiveStatusColor = hasIntegerStatusColor
                 ? integerStatusColor
                 : statusColor;
 
@@ -3447,10 +3459,10 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2)}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerStatusColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
-                      (numericLevel !== null ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                      (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
                       `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
@@ -3601,11 +3613,15 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function supportsStatusColor(item) {
-        // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
-        // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
+        // Statusring ist unabhängig von der Bedienbarkeit.
+        // Bool: wie bisher.
+        // Integer: entweder aktuelle Profil-/Darstellungsfarbe oder Zahlenbereich.
         const type = Number(item?._variableType);
         if (type === 0) return true;
-        if (type === 1 || type === 2) return numericStatusLevel(item) !== null;
+        if (type === 1) {
+            return integerStatusColorFromProfile(item) !== '' || numericStatusLevel(item) !== null;
+        }
+        if (type === 2) return numericStatusLevel(item) !== null;
         return false;
     }
 
