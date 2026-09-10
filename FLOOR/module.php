@@ -7977,9 +7977,13 @@ HTML;
 
         if (is_int($Color) || is_float($Color)) {
             $value = (int) $Color;
-            if ($value >= 0) {
-                return sprintf('#%06X', $value & 0xFFFFFF);
+
+            // IP-Symcon verwendet -1 als "keine/transparent"-Farbe.
+            if ($value < 0) {
+                return '';
             }
+
+            return sprintf('#%06X', $value & 0xFFFFFF);
         }
 
         return '';
@@ -8027,13 +8031,32 @@ HTML;
                     ''
                 );
 
-                $color = $this->SymconColorToCss(
-                    $this->PresentationEntryValue(
-                        $option,
-                        ['Color', 'ColorValue', 'COLOR', 'color'],
-                        null
-                    )
+                $colorActiveRaw = $this->PresentationEntryValue(
+                    $option,
+                    ['ColorActive', 'COLOR_ACTIVE', 'colorActive'],
+                    true
                 );
+                $colorActive = filter_var(
+                    $colorActiveRaw,
+                    FILTER_VALIDATE_BOOLEAN,
+                    FILTER_NULL_ON_FAILURE
+                );
+                if ($colorActive === null) {
+                    $colorActive = true;
+                }
+
+                $color = $colorActive
+                    ? $this->SymconColorToCss(
+                        $this->PresentationEntryValue(
+                            $option,
+                            // Enumeration verwendet offiziell "Color".
+                            // "ColorValue" zusätzlich für konvertierte/ältere
+                            // Darstellungsdaten akzeptieren.
+                            ['Color', 'COLOR', 'color', 'ColorValue'],
+                            null
+                        )
+                    )
+                    : '';
 
                 $associations[] = [
                     'value' => (float) $value,
@@ -8112,7 +8135,10 @@ HTML;
                     $color = $this->SymconColorToCss(
                         $this->PresentationEntryValue(
                             $interval,
-                            ['Color', 'ColorValue', 'COLOR', 'color'],
+                            // Für Wertanzeige-Intervalle zuerst ColorValue.
+                            // Color bleibt als Fallback für Symcon-Versionen/
+                            // Konfigurationen, die diesen Namen verwenden.
+                            ['ColorValue', 'Color', 'COLOR', 'color'],
                             null
                         )
                     );
