@@ -1655,10 +1655,10 @@ class Floorplaner extends IPSModuleStrict
                 <b>Bedienung</b><br>
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
+                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
                 Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
                 Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
-                Formen: Position anklicken; Formtyp, Name, Größe und Darstellung danach rechts einstellen.<br>
+                Formen: Linie, Rechteck oder Kreis im Dropdown wählen und mit der Maus aufziehen.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
                 − / +: manuell heraus- oder hineinzoomen.<br>
                 Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
@@ -1668,7 +1668,12 @@ class Floorplaner extends IPSModuleStrict
     <div class="toolbar">
         <div class="group">
             <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
-            <button data-tool="shape" title="Form platzieren">Formen</button>
+            <select id="shapeToolSelect" title="Form zeichnen">
+                <option value="" disabled selected>Formen</option>
+                <option value="shape-line">Linie</option>
+                <option value="shape-rect">Rechteck</option>
+                <option value="shape-circle">Kreis</option>
+            </select>
             <button data-tool="wall">Wand</button>
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
@@ -1987,11 +1992,6 @@ class Floorplaner extends IPSModuleStrict
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
             floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
             for (const shape of floor.shapes) {
-                if (!shape.name) {
-                    const names = {line:'Linie',rect:'Rechteck',circle:'Kreis / Ellipse',triangle:'Dreieck',arrow:'Pfeil',freeform:'Freiform'};
-                    shape.name = names[shape.kind || 'rect'] || 'Form';
-                }
-                if (typeof shape.showName !== 'boolean') shape.showName = false;
                 if (typeof shape.fillEnabled !== 'boolean') shape.fillEnabled = false;
                 if (!['light', 'hatch', 'tiles'].includes(shape.fillMode)) shape.fillMode = 'light';
                 if (!Number.isFinite(Number(shape.rotation))) shape.rotation = 0;
@@ -2097,6 +2097,13 @@ class Floorplaner extends IPSModuleStrict
         document.querySelectorAll('[data-tool]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
+        const shapeSelect = document.getElementById('shapeToolSelect');
+        if (shapeSelect) {
+            // Die Box soll immer "Formen" anzeigen. Die gewählte Form ist nur
+            // das aktive Werkzeug und wird nicht als dauerhafte Beschriftung
+            // im Dropdown stehen gelassen.
+            shapeSelect.value = '';
+        }
         render();
     }
 
@@ -2328,7 +2335,7 @@ class Floorplaner extends IPSModuleStrict
                 continue;
             }
 
-            if (kind === 'rect' || kind === 'triangle' || kind === 'arrow' || kind === 'freeform') {
+            if (kind === 'rect') {
                 const x1 = Number(shape.x1) || 0;
                 const y1 = Number(shape.y1) || 0;
                 const x2 = Number(shape.x2) || 0;
@@ -3109,41 +3116,6 @@ class Floorplaner extends IPSModuleStrict
                         `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
                         `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
                     );
-                }
-            } else if (shape.kind === 'triangle' || shape.kind === 'arrow' || shape.kind === 'freeform') {
-                const x = Math.min(Number(shape.x1) || 0, Number(shape.x2) || 0);
-                const y = Math.min(Number(shape.y1) || 0, Number(shape.y2) || 0);
-                const w = Math.max(1, Math.abs((Number(shape.x2)||0)-(Number(shape.x1)||0)));
-                const h = Math.max(1, Math.abs((Number(shape.y2)||0)-(Number(shape.y1)||0)));
-                const cx = x + w / 2;
-                const cy = y + h / 2;
-                const rotation = Number(shape.rotation) || 0;
-                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
-
-                let points;
-                if (shape.kind === 'triangle') {
-                    points = `${cx},${y} ${x+w},${y+h} ${x},${y+h}`;
-                } else if (shape.kind === 'arrow') {
-                    const shaftY1 = y + h * .34, shaftY2 = y + h * .66, headX = x + w * .58;
-                    points = `${x},${shaftY1} ${headX},${shaftY1} ${headX},${y} ${x+w},${cy} ${headX},${y+h} ${headX},${shaftY2} ${x},${shaftY2}`;
-                } else {
-                    points = `${x+w*.12},${y+h*.18} ${x+w*.62},${y} ${x+w},${y+h*.28} ${x+w*.84},${y+h*.82} ${x+w*.36},${y+h} ${x},${y+h*.62}`;
-                }
-
-                parts.push(`<polygon class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" points="${points}"${transform}/>`);
-                parts.push(`<polygon class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" points="${points}" ${shapeFillAttribute(shape)}${transform}/>`);
-
-                if (sel) {
-                    const rad = rotation * Math.PI / 180;
-                    const hx = cx + (w/2)*Math.cos(rad) - (h/2)*Math.sin(rad);
-                    const hy = cy + (w/2)*Math.sin(rad) + (h/2)*Math.cos(rad);
-                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
-                    const topX = cx + (h/2)*Math.sin(rad);
-                    const topY = cy - (h/2)*Math.cos(rad);
-                    const rotateX = cx + (h/2+16)*Math.sin(rad);
-                    const rotateY = cy - (h/2+16)*Math.cos(rad);
-                    parts.push(`<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
-                               `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`);
                 }
             } else if (shape.kind === 'circle') {
                 const cx = Number(shape.x1) || 0;
@@ -3989,83 +3961,569 @@ class Floorplaner extends IPSModuleStrict
         } else if (selected.type === 'text') {
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
         } else if (selected.type === 'shape') {
-            propTitle.textContent = 'Form';
+            floor.shapes = (floor.shapes || []).filter(v => v.id !== selected.id);
+        }
 
-            const kind = obj.kind || 'rect';
-            const shapeNames = {
-                line: 'Linie',
-                rect: 'Rechteck',
-                circle: 'Kreis / Ellipse',
-                triangle: 'Dreieck',
-                arrow: 'Pfeil',
-                freeform: 'Freiform'
-            };
-            const x = kind === 'circle'
-                ? (Number(obj.x1) || 0)
-                : Math.min(Number(obj.x1) || 0, Number(obj.x2) || 0);
-            const y = kind === 'circle'
-                ? (Number(obj.y1) || 0)
-                : Math.min(Number(obj.y1) || 0, Number(obj.y2) || 0);
-            const fallbackWidth = Math.max(1, Math.abs((Number(obj.x2) || 0) - (Number(obj.x1) || 0)));
-            const fallbackHeight = Math.max(1, Math.abs((Number(obj.y2) || 0) - (Number(obj.y1) || 0)));
-            const width = kind === 'circle'
-                ? Math.max(1, Number(obj.width) || Math.max(fallbackWidth * 2, 80))
-                : Math.max(1, fallbackWidth || 80);
-            const height = kind === 'circle'
-                ? Math.max(1, Number(obj.height) || Math.max(fallbackHeight * 2, 60))
-                : Math.max(1, fallbackHeight || 60);
-            const lineLength = kind === 'line'
-                ? Math.max(1, Math.hypot((Number(obj.x2)||0)-(Number(obj.x1)||0), (Number(obj.y2)||0)-(Number(obj.y1)||0)))
-                : width;
-            const lineAngle = kind === 'line'
-                ? Math.atan2((Number(obj.y2)||0)-(Number(obj.y1)||0), (Number(obj.x2)||0)-(Number(obj.x1)||0)) * 180 / Math.PI
-                : (Number(obj.rotation) || 0);
+        selected = null;
+        pushHistory();
+        markDirty();
+        render();
+    }
 
+    function defaultDisplayModeForKind(kind) {
+        return ['temperature','humidity'].includes(kind) ? 'value' : 'icon';
+    }
+
+    function shutterMappingOptions(selectedValue) {
+        const options = [
+            ['keep', 'Position nicht ändern'],
+            ['100', 'Offen (100 %)'],
+            ['75', '75 % offen'],
+            ['50', 'Halb (50 %)'],
+            ['25', '25 % offen'],
+            ['0', 'Geschlossen (0 %)']
+        ];
+
+        return options.map(([value, label]) =>
+            `<option value="${value}"${String(selectedValue) === value ? ' selected' : ''}>${label}</option>`
+        ).join('');
+    }
+
+    function shutterValueMappingHtml(obj) {
+        if (!obj || Number(obj.shutterVariableID || 0) <= 0) return '';
+        if (Number(obj._shutterVariableType) !== 1) return '';
+
+        const profile = obj._shutterVariableProfile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (!associations.length) return '';
+
+        const enabled = obj.shutterValueMappingEnabled === true;
+        const map = obj.shutterValueMap && typeof obj.shutterValueMap === 'object'
+            ? obj.shutterValueMap
+            : {};
+
+        let html = `
+            <div class="field">
+                <label class="check">
+                    <input data-field="shutterValueMappingEnabled" type="checkbox"${enabled ? ' checked' : ''}>
+                    Rollo-Werte zuordnen
+                </label>
+            </div>
+        `;
+
+        if (!enabled) return html;
+
+        html += `<div class="field"><label>Integerwerte → Rollo-Status</label>`;
+        html += `<div class="profile-hint">Jedem Profilwert kannst du eine grafische Stellung zuordnen.</div>`;
+
+        for (const association of associations) {
+            const rawValue = Number(association.value);
+            if (!Number.isFinite(rawValue)) continue;
+
+            const key = String(rawValue);
+            let selectedValue = Object.prototype.hasOwnProperty.call(map, key)
+                ? String(map[key])
+                : 'keep';
+
+            html += `
+                <div class="row2" style="align-items:center;margin-top:6px">
+                    <div class="field" style="margin:0">
+                        <label>${escapeHtml(String(association.name || key))} (${escapeHtml(key)})</label>
+                    </div>
+                    <div class="field" style="margin:0">
+                        <select data-shutter-map-value="${escapeHtml(key)}">
+                            ${shutterMappingOptions(selectedValue)}
+                        </select>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
+    function renderProperties() {
+        // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
+        // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
+        // (Möbeltyp, Icon, Profil-nahe Auswahlfelder usw.).
+        //
+        // document.activeElement allein reicht nicht in allen Browsern/HTML-SDK-
+        // Situationen zuverlässig aus. Daher merken wir zusätzlich, ob gerade
+        // irgendein Select in der Eigenschaftenleiste aktiv benutzt wird.
+        const activeElement = document.activeElement;
+        const activePropertyControl =
+            activeElement &&
+            properties.contains(activeElement) &&
+            (
+                activeElement instanceof HTMLInputElement ||
+                activeElement instanceof HTMLSelectElement ||
+                activeElement instanceof HTMLTextAreaElement
+            );
+
+        if (propertiesControlActive || propertiesSelectOpen || activePropertyControl) {
+            return;
+        }
+        const floor = currentFloor();
+
+        if (!selected) {
+            propTitle.textContent = 'Projekteigenschaften';
             properties.innerHTML = `
                 <div class="field">
-                    <label>Formtyp</label>
-                    <select data-field="shapeKind">
-                        ${Object.entries(shapeNames).map(([key,name]) =>
-                            `<option value="${key}"${key === kind ? ' selected' : ''}>${name}</option>`
-                        ).join('')}
+                    <label>Etagenname</label>
+                    <input data-project="floorName" value="${escapeHtml(floor.name)}">
+                </div>
+                <div class="field">
+                    <label>Reihenfolge</label>
+                    <input type="number" min="1" max="${state.floors.length}" step="1" data-project="floorOrder" value="${Number(floor.order) || 1}">
+                </div>
+                <div class="field">
+                    <label>Mauerwerkdicke</label>
+                    <input type="number" min="1" max="60" step="1" data-project="wallThickness" value="${Number(floor.wallThickness) || 12}">
+                </div>
+                <div class="field">
+                    <label>Elemente</label>
+                    <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte, ${(floor.furniture || []).length} Möbel" disabled>
+                </div>
+            `;
+            bindPropertyInputs();
+            return;
+        }
+
+        const obj = findEntity(selected.type, selected.id);
+        if (!obj) {
+            selected = null;
+            renderProperties();
+            return;
+        }
+
+        if (selected.type === 'wall') {
+            propTitle.textContent = 'Wand';
+            properties.innerHTML = `
+                <div class="row2">
+                    <div class="field"><label>X1</label><input data-field="x1" type="number" value="${obj.x1}"></div>
+                    <div class="field"><label>Y1</label><input data-field="y1" type="number" value="${obj.y1}"></div>
+                </div>
+                <div class="row2">
+                    <div class="field"><label>X2</label><input data-field="x2" type="number" value="${obj.x2}"></div>
+                    <div class="field"><label>Y2</label><input data-field="y2" type="number" value="${obj.y2}"></div>
+                </div>
+            `;
+        } else if (selected.type === 'opening') {
+            propTitle.textContent = obj.type === 'door' ? 'Tür' : 'Fenster';
+
+            if (obj.type === 'window') {
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 120}">
+                    </div>
+
+                    <div class="field">
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
+                    </div>
+
+                    <div class="field">
+                        <label>Fensterkontakt / Fensterposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    <div class="field">
+                        <label>Rollo / Rollladen (optional)</label>
+                        <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
+                            value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label>Rollo-Typ</label>
+                            <select data-field="shutterStyle">
+                                <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
+                                <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
+                            </select>
+                        </div>
+
+                    ` : ''}
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Fensterzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterSideInvert" type="checkbox"${obj.shutterSideInvert === true ? ' checked' : ''}>
+                                Rollo innen / außen tauschen
+                            </label>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}>
+                                Rollo-Status invertieren
+                            </label>
+                        </div>
+
+                        ${shutterValueMappingHtml(obj)}
+                    ` : ''}
+
+                `;
+            } else {
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 80}">
+                    </div>
+
+                    <div class="field">
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
+                    </div>
+
+                    <div class="field">
+                        <label>Türkontakt / Türposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
+                                Öffnungsseite innen / außen tauschen
+                            </label>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Türzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
+                `;
+            }
+
+        } else if (selected.type === 'item') {
+            propTitle.textContent = 'Gerät';
+            const kind = obj.kind || 'generic';
+            properties.innerHTML = `
+                <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || '')}"></div>
+                <div class="field">
+                    <label>IP-Symcon Variable</label>
+                    <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
+                        value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    ${obj._profileName && obj._hasNewPresentation !== true
+                        ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
+                        : ''}
+                </div>
+                ${canConfigureStatusColor(obj) ? `
+                    <div class="field">
+                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
+                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
+                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
+                    </div>
+                ` : (
+                    hasAutomaticIntegerStatusColor(obj)
+                        ? `<div class="field">
+                            <div class="profile-hint">Statusfarbe wird automatisch aus IP-Symcon übernommen.</div>
+                           </div>`
+                        : ''
+                )}
+
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label>Icons</label>
+                        <div class="bool-icon-row">
+                            <div class="bool-icon-field">
+                                <label>AUS</label>
+                                <button id="itemIconOffSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für AUS auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, false)}</span>
+                                </button>
+                            </div>
+                            <div class="bool-icon-field">
+                                <label>EIN</label>
+                                <button id="itemIconOnSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für EIN auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, true)}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="profile-hint">${obj._hasLegacyProfile === true
+                            ? 'Legacy: Basis-Icon weiterhin aus „Weitere visuelle Einstellungen“. AUS/EIN können hier optional getrennt überschrieben werden.'
+                            : 'Neue Variablendarstellung: AUS/EIN werden automatisch übernommen und können hier getrennt geändert werden.'}</div>
+                    </div>
+                ` : `
+                    <div class="field">
+                        <label>Icon</label>
+                        <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
+                            <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
+                            <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
+                        </button>
+                        <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
+                    </div>
+                `}
+                ${Number(obj.variableID || 0) > 0 ? `
+                    <div class="field">
+                        <button id="refreshVariableSettings" type="button" title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                            Variableneinstellungen aktualisieren
+                        </button>
+                    </div>
+                ` : ''}
+
+                <div class="row2">
+                    <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
+                </div>
+                <div class="row2">
+                    <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="valueFrame" type="checkbox"${obj.valueFrame === true ? ' checked' : ''}> Rahmen um Istwert</label></div>
+                </div>
+                ${obj.variableID && obj._canAction !== true ? `<div class="profile-hint">Reiner Istwert: Für diese Variable ist keine Aktion hinterlegt. Sie wird deshalb nur angezeigt und nicht bedient.</div>` : ''}
+                ${directSliderConfig(obj) ? `
+                    <div class="field">
+                        <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider anzeigen</label>
+                        <div class="profile-hint">Nur für echte Zahlenbereiche ohne Profil-Assoziationen.</div>
+                    </div>
+                ` : ''}
+
+                <div class="row2">
+                    <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
+                    <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
+                </div>
+                <div class="row2">
+                    <div class="field">
+                        <label>Name Position</label>
+                        <select data-field="labelPosition">
+                            <option value="below"${(obj.labelPosition || 'below') === 'below' ? ' selected' : ''}>unten</option>
+                            <option value="above"${obj.labelPosition === 'above' ? ' selected' : ''}>oben</option>
+                            <option value="left"${obj.labelPosition === 'left' ? ' selected' : ''}>links</option>
+                            <option value="right"${obj.labelPosition === 'right' ? ' selected' : ''}>rechts</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Wert Position</label>
+                        <select data-field="valuePosition">
+                            <option value="below"${(obj.valuePosition || 'below') === 'below' ? ' selected' : ''}>unten</option>
+                            <option value="above"${obj.valuePosition === 'above' ? ' selected' : ''}>oben</option>
+                            <option value="left"${obj.valuePosition === 'left' ? ' selected' : ''}>links</option>
+                            <option value="right"${obj.valuePosition === 'right' ? ' selected' : ''}>rechts</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row2">
+                    <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
+                    <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
+                </div>
+                <div class="row2">
+                    <div class="field"><label>Symbolgröße</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+                    <div class="field"><label>Drehung</label><input data-field="angle" type="number" min="-360" max="360" step="5" value="${Number(obj.angle) || 0}"></div>
+                </div>
+            `;
+        } else if (selected.type === 'furniture') {
+            propTitle.textContent = 'Möbel';
+            const ftype = obj.type || 'sofa';
+            properties.innerHTML = `
+                <div class="field">
+                    <label>Möbeltyp</label>
+                    <select data-field="type">
+                        ${Object.entries(furnitureTemplates)
+                            .map(([key,tpl]) => `<option value="${key}"${key === ftype ? ' selected' : ''}>${escapeHtml(tpl.name)}</option>`)
+                            .join('')}
                     </select>
                 </div>
                 <div class="field">
                     <label>Name</label>
-                    <input data-field="name" value="${escapeHtml(obj.name || shapeNames[kind] || 'Form')}">
+                    <input data-field="name" value="${escapeHtml(obj.name || furnitureTemplates[ftype]?.name || 'Möbel')}">
                 </div>
                 <label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label>
-
                 <div class="row2">
-                    <div class="field"><label>X</label><input data-field="shapeX" type="number" step="1" value="${Math.round(x)}"></div>
-                    <div class="field"><label>Y</label><input data-field="shapeY" type="number" step="1" value="${Math.round(y)}"></div>
+                    <div class="field">
+                        <label>X</label>
+                        <input data-field="x" type="number" value="${Number(obj.x) || 0}">
+                    </div>
+                    <div class="field">
+                        <label>Y</label>
+                        <input data-field="y" type="number" value="${Number(obj.y) || 0}">
+                    </div>
                 </div>
+                <div class="row2">
+                    <div class="field">
+                        <label>Breite</label>
+                        <input data-field="width" type="number" min="8" step="1" value="${Number(obj.width) || 100}">
+                    </div>
+                    <div class="field">
+                        <label>Tiefe</label>
+                        <input data-field="height" type="number" min="8" step="1" value="${Number(obj.height) || 60}">
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Drehung</label>
+                    <input data-field="rotation" type="number" min="-360" max="360" step="5" value="${Number(obj.rotation) || 0}">
+                </div>
+            `;
+        } else if (selected.type === 'shape') {
+            propTitle.textContent = 'Form';
 
-                ${kind === 'line' ? `
-                    <div class="row2">
-                        <div class="field"><label>Länge</label><input data-field="shapeLength" type="number" min="1" step="1" value="${Math.round(lineLength)}"></div>
-                        <div class="field"><label>Drehung</label><input data-field="shapeAngle" type="number" min="-360" max="360" step="1" value="${Math.round(lineAngle)}"></div>
+            const kind = obj.kind || 'line';
+            if (kind === 'line') {
+                const dx = Number(obj.x2) - Number(obj.x1);
+                const dy = Number(obj.y2) - Number(obj.y1);
+                const length = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Linie" disabled>
                     </div>
-                ` : `
                     <div class="row2">
-                        <div class="field"><label>Breite</label><input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}"></div>
-                        <div class="field"><label>Höhe</label><input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}"></div>
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
+                        </div>
                     </div>
-                    <div class="field"><label>Drehung</label><input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}"></div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Länge</label>
+                            <input data-field="shapeLength" type="number" min="1" step="1" value="${Math.round(length)}">
+                        </div>
+                        <div class="field">
+                            <label>Drehung</label>
+                            <input data-field="shapeAngle" type="number" min="-360" max="360" step="1" value="${Math.round(angle)}">
+                        </div>
+                    </div>
+                `;
+            } else if (kind === 'rect') {
+                const x = Math.min(Number(obj.x1), Number(obj.x2));
+                const y = Math.min(Number(obj.y1), Number(obj.y2));
+                const width = Math.abs(Number(obj.x2) - Number(obj.x1));
+                const height = Math.abs(Number(obj.y2) - Number(obj.y1));
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Rechteck" disabled>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(x)}">
+                        </div>
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(y)}">
+                        </div>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Breite</label>
+                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
+                        </div>
+                        <div class="field">
+                            <label>Tiefe</label>
+                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>Drehung</label>
+                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
+                    </div>
                     <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
                     ${obj.fillEnabled === true ? `
+                    <div class="field">
+                        <label>Muster</label>
+                        <select data-field="fillMode">
+                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                        </select>
+                    </div>` : ''}
+                `;
+            } else {
+                const fallbackDiameter = Math.max(1, Math.hypot(Number(obj.x2) - Number(obj.x1), Number(obj.y2) - Number(obj.y1)) * 2);
+                const width = Math.max(1, Number(obj.width) || fallbackDiameter);
+                const height = Math.max(1, Number(obj.height) || fallbackDiameter);
+
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Form</label>
+                        <input value="Kreis / Ellipse" disabled>
+                    </div>
+                    <div class="row2">
                         <div class="field">
-                            <label>Muster</label>
-                            <select data-field="fillMode">
-                                <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
-                                <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
-                                <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
-                            </select>
+                            <label>X</label>
+                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
                         </div>
-                    ` : ''}
-                `}
-                ${kind === 'freeform' ? `<div class="profile-hint">Freiform ist in diesem ersten Versuch als frei skalierbare Fläche vorbereitet. Eine spätere Version kann zusätzliche Eckpunkte per Maus ergänzen.</div>` : ''}
-            `;
+                        <div class="field">
+                            <label>Y</label>
+                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
+                        </div>
+                    </div>
+                    <div class="row2">
+                        <div class="field">
+                            <label>Breite</label>
+                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
+                        </div>
+                        <div class="field">
+                            <label>Tiefe</label>
+                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>Drehung</label>
+                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
+                    </div>
+                    <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
+                    ${obj.fillEnabled === true ? `
+                    <div class="field">
+                        <label>Muster</label>
+                        <select data-field="fillMode">
+                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                        </select>
+                    </div>` : ''}
+                `;
+            }
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
             properties.innerHTML = `
@@ -4093,50 +4551,8 @@ class Floorplaner extends IPSModuleStrict
                 const fieldName = input.dataset.field;
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
 
-                if (selected.type === 'shape' && fieldName === 'shapeKind') {
-                    const oldKind = obj.kind || 'rect';
-                    const cx = oldKind === 'circle'
-                        ? (Number(obj.x1) || 0)
-                        : ((Number(obj.x1) || 0) + (Number(obj.x2) || 0)) / 2;
-                    const cy = oldKind === 'circle'
-                        ? (Number(obj.y1) || 0)
-                        : ((Number(obj.y1) || 0) + (Number(obj.y2) || 0)) / 2;
-                    let width = oldKind === 'circle'
-                        ? Math.max(1, Number(obj.width) || 80)
-                        : Math.max(1, Math.abs((Number(obj.x2)||0)-(Number(obj.x1)||0)) || 80);
-                    let height = oldKind === 'circle'
-                        ? Math.max(1, Number(obj.height) || 60)
-                        : Math.max(1, Math.abs((Number(obj.y2)||0)-(Number(obj.y1)||0)) || 60);
-
-                    obj.kind = String(value);
-                    obj.rotation = Number(obj.rotation) || 0;
-
-                    if (obj.kind === 'line') {
-                        obj.x1 = cx - width / 2;
-                        obj.y1 = cy;
-                        obj.x2 = cx + width / 2;
-                        obj.y2 = cy;
-                    } else if (obj.kind === 'circle') {
-                        obj.x1 = cx;
-                        obj.y1 = cy;
-                        obj.width = width;
-                        obj.height = height;
-                        obj.x2 = cx + width / 2;
-                        obj.y2 = cy;
-                    } else {
-                        obj.x1 = cx - width / 2;
-                        obj.y1 = cy - height / 2;
-                        obj.x2 = cx + width / 2;
-                        obj.y2 = cy + height / 2;
-                    }
-
-                    const defaultNames = {line:'Linie',rect:'Rechteck',circle:'Kreis / Ellipse',triangle:'Dreieck',arrow:'Pfeil',freeform:'Freiform'};
-                    const oldNames = ['Form','Linie','Rechteck','Kreis / Ellipse','Dreieck','Pfeil','Freiform'];
-                    if (!obj.name || oldNames.includes(obj.name)) obj.name = defaultNames[obj.kind] || 'Form';
-                    input.blur();
-                    refreshPropertiesAfterStructuralChange();
-                } else if (selected.type === 'shape' && fieldName.startsWith('shape')) {
-                    const kind = obj.kind || 'rect';
+                if (selected.type === 'shape' && fieldName.startsWith('shape')) {
+                    const kind = obj.kind || 'line';
 
                     if (kind === 'line') {
                         const oldX = Number(obj.x1) || 0;
@@ -4161,7 +4577,7 @@ class Floorplaner extends IPSModuleStrict
                             obj.x2 = oldX + Math.cos(rad) * length;
                             obj.y2 = oldY + Math.sin(rad) * length;
                         }
-                    } else if (kind !== 'circle') {
+                    } else if (kind === 'rect') {
                         let x = Math.min(Number(obj.x1), Number(obj.x2));
                         let y = Math.min(Number(obj.y1), Number(obj.y2));
                         let width = Math.max(1, Math.abs(Number(obj.x2) - Number(obj.x1)));
@@ -4422,6 +4838,12 @@ class Floorplaner extends IPSModuleStrict
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
 
+    document.getElementById('shapeToolSelect')?.addEventListener('change', evt => {
+        const next = evt.target.value;
+        if (!next) return;
+        setTool(next);
+    });
+
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
     document.getElementById('undoBtn').addEventListener('click', () => restoreHistory(historyIndex - 1));
     document.getElementById('redoBtn').addEventListener('click', () => restoreHistory(historyIndex + 1));
@@ -4561,21 +4983,6 @@ class Floorplaner extends IPSModuleStrict
         floor.name = name.trim() || `${sourceFloor.name} Kopie`;
 
         const wallIdMap = new Map();
-
-        // Optionaler Formenname – wie bei Möbeln standardmäßig ausgeblendet.
-        for (const shape of floor.shapes || []) {
-            if (shape.showName !== true || !shape.name) continue;
-            let nx, ny;
-            if ((shape.kind || 'rect') === 'circle') {
-                nx = Number(shape.x1) || 0;
-                ny = Number(shape.y1) || 0;
-            } else {
-                nx = ((Number(shape.x1) || 0) + (Number(shape.x2) || 0)) / 2;
-                ny = ((Number(shape.y1) || 0) + (Number(shape.y2) || 0)) / 2;
-            }
-            parts.push(`<text class="furniture-label" x="${nx}" y="${ny}" dy=".35em">${escapeHtml(shape.name)}</text>`);
-        }
-
         for (const wall of floor.walls || []) {
             const oldID = wall.id;
             wall.id = uid('wall');
@@ -4965,27 +5372,19 @@ class Floorplaner extends IPSModuleStrict
             }
         }
 
-        if (tool === 'shape') {
+        if (tool === 'shape-line' || tool === 'shape-rect' || tool === 'shape-circle') {
             const shape = {
                 id: uid('shape'),
-                kind: 'rect',
-                name: 'Form',
-                showName: false,
-                x1: p.x - 40,
-                y1: p.y - 30,
-                x2: p.x + 40,
-                y2: p.y + 30,
-                rotation: 0,
-                fillEnabled: false,
-                fillMode: 'light'
+                kind: tool === 'shape-line' ? 'line' : (tool === 'shape-rect' ? 'rect' : 'circle'),
+                x1: p.x, y1: p.y, x2: p.x, y2: p.y
             };
             floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
             floor.shapes.push(shape);
             releasePropertiesControl();
             selected = {type:'shape', id:shape.id};
-            pushHistory();
-            markDirty();
-            setTool('');
+            drag = {mode:'draw-shape', type:'shape', id:shape.id, start:p, original:structuredClone(shape)};
+            svg.setPointerCapture(evt.pointerId);
+            evt.preventDefault();
             render();
             return;
         }
