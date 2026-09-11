@@ -187,6 +187,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 - Formen liegen nun unterhalb der Möbel, da sie unter anderem Grundflächen markieren sollen.
 - Möbel und Formen werden nun alphabetisch gelistet.
 - Floorplaner in Floorplan umbenannt.
+- Weitere Speicheroptimierungen über den Webhook, um die Output-Buffer Fehlermeldung auch bei grossen Projekten zu umgehen.
 
 ### 1.9
 
