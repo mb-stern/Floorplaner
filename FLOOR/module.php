@@ -105,7 +105,7 @@ class Floorplaner extends IPSModuleStrict
         $elements = [
             [
                 'type'    => 'Label',
-                'caption' => 'Floorplaner – Floorplan Editor für IP-Symcon'
+                'caption' => 'Floorplaner'
             ],
             [
                 'type'    => 'Label',
@@ -119,17 +119,16 @@ class Floorplaner extends IPSModuleStrict
                     [
                         'type'    => 'Label',
                         'caption' => sprintf(
-                            'Etagen: %d | Wände: %d | Türen/Fenster: %d | Geräte: %d | Texte: %d',
+                            'Etagen: %d | Wände: %d | Türen: %d | Fenster: %d | Geräte: %d | Möbel: %d | Formen: %d | Texte: %d',
                             $counts['floors'],
                             $counts['walls'],
-                            $counts['openings'],
+                            $counts['doors'],
+                            $counts['windows'],
                             $counts['items'],
+                            $counts['furniture'],
+                            $counts['shapes'],
                             $counts['texts']
                         )
-                    ],
-                    [
-                        'type'    => 'Label',
-                        'caption' => 'Hinweis: IP-Symcon-Konfigurationsformulare können kein beliebiges HTML/JavaScript einbetten. Deshalb ist der Zeicheneditor als HTML-SDK-Darstellung derselben Instanz umgesetzt. Die Projekteinstellungen bleiben hier im Konfigurationsformular.'
                     ]
                 ]
             ]
@@ -8650,11 +8649,14 @@ HTML;
     private function CountElements(array $Project): array
     {
         $counts = [
-            'floors'   => 0,
-            'walls'    => 0,
-            'openings' => 0,
-            'items'    => 0,
-            'texts'    => 0
+            'floors'    => 0,
+            'walls'     => 0,
+            'doors'     => 0,
+            'windows'   => 0,
+            'items'     => 0,
+            'furniture' => 0,
+            'shapes'    => 0,
+            'texts'     => 0
         ];
 
         $floors = $Project['floors'] ?? [];
@@ -8669,9 +8671,23 @@ HTML;
                 continue;
             }
 
-            foreach (['walls', 'openings', 'items', 'texts'] as $key) {
+            foreach (['walls', 'items', 'furniture', 'shapes', 'texts'] as $key) {
                 if (isset($floor[$key]) && is_array($floor[$key])) {
                     $counts[$key] += count($floor[$key]);
+                }
+            }
+
+            if (isset($floor['openings']) && is_array($floor['openings'])) {
+                foreach ($floor['openings'] as $opening) {
+                    if (!is_array($opening)) {
+                        continue;
+                    }
+
+                    if (($opening['type'] ?? '') === 'door') {
+                        $counts['doors']++;
+                    } elseif (($opening['type'] ?? '') === 'window') {
+                        $counts['windows']++;
+                    }
                 }
             }
         }
