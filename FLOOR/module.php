@@ -197,22 +197,18 @@ class Floorplan extends IPSModuleStrict
 
     public function GetVisualizationTile(): string
     {
-        $project = $this->GetProject();
-
-        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
-
         /*
-         * Raster- und Anzeigeeinstellungen gehören zum gespeicherten Floorplan.
-         * Sie dürfen beim Laden der HTML-SDK-Kachel nicht mehr durch die alten
-         * Modul-Properties überschrieben werden, sonst springen Rastergröße und
-         * Raster-An/Aus nach jedem Reload wieder auf die Standardwerte zurück.
+         * Output-Buffer-Optimierung:
+         * Die HTML-SDK-Kachel enthält weiterhin das komplette CSS und die komplette
+         * DOM-Struktur, aber nicht mehr den großen Editor-JavaScript-Block und auch
+         * nicht mehr das komplette Projekt inklusive Runtime-Metadaten.
+         *
+         * Beides wird über den bereits vorhandenen instanzbezogenen WebHook geladen.
+         * Damit bleibt GetVisualizationTile() unabhängig von der Projektgröße klein.
          */
-        $project = $this->AddRuntimeValues($project);
-
-        $initial = json_encode(
-            $project,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP
-        );
+        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
+        $editorJavaScriptUrl = $this->GetVisualizationModuleWebHookUrl('floorplan-editor.js');
+        $projectUrl = $this->GetVisualizationModuleWebHookUrl('project.json');
 
         $html = <<<'HTML'
 <!doctype html>
@@ -1750,9 +1746,58 @@ class Floorplan extends IPSModuleStrict
 </div>
 
 <script>
-(() => {
-    const initial = __INITIAL_PROJECT__;
-    const lastViewFloorStorageKey = 'floorplaner:lastViewFloor:__INSTANCE_ID__';
+window.__FLOORPLAN_BOOTSTRAP__ = Object.freeze({
+    instanceId: __INSTANCE_ID__,
+    projectUrl: '__FLOORPLAN_PROJECT_URL__'
+});
+</script>
+<script defer src="__FLOORPLAN_EDITOR_JS_URL__"></script>
+
+
+</body>
+</html>
+HTML;
+
+        return str_replace(
+            [
+                '__INSTANCE_ID__',
+                '__EASY_FLOORPLAN_MODULE_URL__',
+                '__FLOORPLAN_EDITOR_JS_URL__',
+                '__FLOORPLAN_PROJECT_URL__'
+            ],
+            [
+                (string) $this->InstanceID,
+                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars($editorJavaScriptUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars($projectUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            ],
+            $html
+        );
+    }
+
+    private function GetVisualizationEditorJavaScript(): string
+    {
+        return <<<'JAVASCRIPT'
+(async () => {
+    const bootstrap = window.__FLOORPLAN_BOOTSTRAP__ || {};
+    const projectUrl = String(bootstrap.projectUrl || '');
+
+    if (!projectUrl) {
+        throw new Error('Projekt-URL fehlt.');
+    }
+
+    const response = await fetch(projectUrl, {
+        cache: 'no-store',
+        credentials: 'same-origin'
+    });
+
+    if (!response.ok) {
+        throw new Error(`Floorplan-Projekt konnte nicht geladen werden (${response.status}).`);
+    }
+
+    const initial = await response.json();
+    const instanceID = Number(bootstrap.instanceId) || 0;
+    const lastViewFloorStorageKey = `floorplaner:lastViewFloor:${instanceID}`;
     const svg = document.getElementById('viewport');
     const scene = document.getElementById('scene');
     const properties = document.getElementById('properties');
@@ -7182,29 +7227,23 @@ class Floorplan extends IPSModuleStrict
         }
     }, 1000);
 
-})();
-</script>
+})().catch(error => {
+    console.error('Floorplan konnte nicht initialisiert werden:', error);
+    const status = document.getElementById('status');
+    if (status) {
+        status.textContent = 'Floorplan konnte nicht geladen werden';
+    }
+});
 
-
-</body>
-</html>
-HTML;
-
-        return str_replace(
-            ['__INITIAL_PROJECT__', '__INSTANCE_ID__', '__EASY_FLOORPLAN_MODULE_URL__'],
-            [
-                $initial,
-                (string) $this->InstanceID,
-                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-            ],
-            $html
-        );
+JAVASCRIPT;
     }
 
     private function GetVisualizationWebHookAssets(): array
     {
         return [
-            'easy-floorplan.js'
+            'easy-floorplan.js',
+            'floorplan-editor.js',
+            'project.json'
         ];
     }
 
@@ -7249,8 +7288,51 @@ HTML;
             }
 
             /*
-             * Bestehende Originaldatei im Modulbaum.
-             * Keine Laufzeitkopie in /user/ und keine zusätzliche generierte Datei.
+             * Dynamische Projekt-/Runtime-Daten werden nicht mehr in die HTML-SDK-
+             * Ausgabe eingebettet. Dadurch kann ein großer Floorplan den Output-
+             * Buffer von GetVisualizationTile() nicht mehr vergrößern.
+             */
+            if ($asset === 'project.json') {
+                $project = $this->AddRuntimeValues($this->GetProject());
+                $payload = json_encode(
+                    $project,
+                    JSON_UNESCAPED_SLASHES
+                    | JSON_UNESCAPED_UNICODE
+                    | JSON_HEX_TAG
+                    | JSON_HEX_AMP
+                );
+
+                if ($payload === false) {
+                    throw new RuntimeException('Floorplan-Projekt konnte nicht serialisiert werden.');
+                }
+
+                header('Content-Type: application/json; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-store, no-cache, must-revalidate');
+                header('Pragma: no-cache');
+                header('Content-Length: ' . strlen($payload));
+                echo $payload;
+                return;
+            }
+
+            /*
+             * Der komplette Floorplan-Editor bleibt Bestandteil dieser module.php.
+             * Er wird nur nicht mehr über GetVisualizationTile() ausgegeben, sondern
+             * bei Bedarf direkt über den WebHook ausgeliefert.
+             */
+            if ($asset === 'floorplan-editor.js') {
+                $source = $this->GetVisualizationEditorJavaScript();
+
+                header('Content-Type: text/javascript; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-cache');
+                header('Content-Length: ' . strlen($source));
+                echo $source;
+                return;
+            }
+
+            /*
+             * Easy-Floorplan bleibt unverändert als Originaldatei im Modulbaum.
              */
             $path = __DIR__
                 . DIRECTORY_SEPARATOR
@@ -7258,7 +7340,7 @@ HTML;
                 . DIRECTORY_SEPARATOR
                 . 'vendor'
                 . DIRECTORY_SEPARATOR
-                . $asset;
+                . 'easy-floorplan.js';
 
             if (!is_file($path)) {
                 http_response_code(404);
