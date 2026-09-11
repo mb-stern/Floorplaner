@@ -76,6 +76,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 ### 1.10
 
 - Konfiguratinsformular aktualisiert.
+- Auswahl der Formen derjenigen der Möbel angepasst und um Pfeil und Dreieck erweitert.
 
 ### 1.9
 
