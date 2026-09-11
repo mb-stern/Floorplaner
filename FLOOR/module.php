@@ -2097,13 +2097,30 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function setTool(next) {
-        tool = next;
+        // Erneuter Klick auf das bereits aktive Werkzeug schaltet es wieder aus.
+        if (next && tool === next) {
+            next = '';
+        }
+
+        tool = next || '';
         wallStart = null;
         preview = null;
+
         document.querySelectorAll('[data-tool]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
+
         render();
+    }
+
+    function deactivateToolWithoutRender() {
+        tool = '';
+        wallStart = null;
+        preview = null;
+
+        document.querySelectorAll('[data-tool]').forEach(btn => {
+            btn.classList.remove('active');
+        });
     }
 
     function updateModeUI() {
@@ -5311,6 +5328,10 @@ class Floorplaner extends IPSModuleStrict
             const obj = findEntity(rotateType, id);
 
             if (obj && (rotateType === 'furniture' || rotateType === 'shape')) {
+                if (tool === 'pan') {
+                    deactivateToolWithoutRender();
+                }
+
                 const raw = svgPointRaw(evt);
 
                 let cx = 0;
@@ -5364,6 +5385,10 @@ class Floorplaner extends IPSModuleStrict
             const obj = findEntity(resizeType, id);
 
             if (obj) {
+                if (tool === 'pan') {
+                    deactivateToolWithoutRender();
+                }
+
                 selected = {type: resizeType, id};
                 drag = {
                     mode: 'resize',
@@ -5418,6 +5443,12 @@ class Floorplaner extends IPSModuleStrict
         // im Editor jederzeit direkt angeklickt und verschoben werden.
         if (state.mode !== 'view' && target &&
             !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            // "Verschieben" gilt nur für freie Fläche. Sobald ein bestehendes
+            // Element bearbeitet wird, ist das Werkzeug wieder inaktiv.
+            if (tool === 'pan') {
+                deactivateToolWithoutRender();
+            }
+
             releasePropertiesControl();
             selected = {type: target.dataset.type, id: target.dataset.id};
             const obj = findEntity(selected.type, selected.id);
@@ -5511,7 +5542,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'opening', id: o.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             render();
             return;
         }
@@ -5547,7 +5578,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'item', id: item.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             render();
             return;
         }
@@ -5570,7 +5601,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'furniture', id: furniture.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             renderAll();
             return;
         }
@@ -5587,7 +5618,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'text', id: t.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             render();
         }
     });
@@ -5903,7 +5934,7 @@ class Floorplaner extends IPSModuleStrict
             wallStart = null;
             preview = null;
             selected = null;
-            setTool('pan');
+            setTool('');
         }
 
         if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {
