@@ -73,6 +73,10 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 
 ## 📝 Änderungen
 
+### 1.10
+
+- Konfiguratinsformular aktualisiert.
+
 ### 1.9
 
 - Einige Sichtbarkeits-Verbesserungen im Bearbeitungsmodus des Light-Theme.
