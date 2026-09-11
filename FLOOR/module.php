@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * Floorplaner
+ * Floorplan
  * Prefix in module.json: FLOOR
  *
  * Basis / Zielprojekt:
@@ -12,7 +12,7 @@ declare(strict_types=1);
  * License: MIT
  */
 
-class Floorplaner extends IPSModuleStrict
+class Floorplan extends IPSModuleStrict
 {
     private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;
@@ -78,9 +78,23 @@ class Floorplaner extends IPSModuleStrict
             );
 
             if ($payload !== false) {
+                // Während Modul-/Instanz-Updates können weiterhin VM_UPDATE-Meldungen
+                // eintreffen, obwohl die HTML-SDK-InstanceInterface intern noch nicht
+                // wieder verfügbar ist. In diesem kurzen Zustand keine Visualisierungs-
+                // Nachricht senden; der nächste reguläre Variablenwert wird wieder
+                // normal übertragen.
+                if (IPS_GetKernelRunlevel() !== KR_READY || !IPS_InstanceExists($this->InstanceID)) {
+                    return;
+                }
+
+                $instance = IPS_GetInstance($this->InstanceID);
+                if ((int) ($instance['InstanceStatus'] ?? 0) !== 102) {
+                    return;
+                }
+
                 // Nur den Zustand der betroffenen Variable übertragen.
                 // KEIN komplettes Projekt neu laden -> Etage und Ansicht bleiben unverändert.
-                $this->UpdateVisualizationValue($payload);
+                @$this->UpdateVisualizationValue($payload);
             }
         } catch (Throwable $e) {
             $this->SendDebug('VariableUpdate', $e->getMessage(), 0);
@@ -105,7 +119,7 @@ class Floorplaner extends IPSModuleStrict
         $elements = [
             [
                 'type'    => 'Label',
-                'caption' => 'Floorplaner – Floorplan Editor für IP-Symcon'
+                'caption' => 'Floorplan'
             ],
             [
                 'type'    => 'Label',
@@ -119,17 +133,16 @@ class Floorplaner extends IPSModuleStrict
                     [
                         'type'    => 'Label',
                         'caption' => sprintf(
-                            'Etagen: %d | Wände: %d | Türen/Fenster: %d | Geräte: %d | Texte: %d',
+                            'Etagen: %d | Wände: %d | Türen: %d | Fenster: %d | Geräte: %d | Möbel: %d | Formen: %d | Texte: %d',
                             $counts['floors'],
                             $counts['walls'],
-                            $counts['openings'],
+                            $counts['doors'],
+                            $counts['windows'],
                             $counts['items'],
+                            $counts['furniture'],
+                            $counts['shapes'],
                             $counts['texts']
                         )
-                    ],
-                    [
-                        'type'    => 'Label',
-                        'caption' => 'Hinweis: IP-Symcon-Konfigurationsformulare können kein beliebiges HTML/JavaScript einbetten. Deshalb ist der Zeicheneditor als HTML-SDK-Darstellung derselben Instanz umgesetzt. Die Projekteinstellungen bleiben hier im Konfigurationsformular.'
                     ]
                 ]
             ]
@@ -198,22 +211,18 @@ class Floorplaner extends IPSModuleStrict
 
     public function GetVisualizationTile(): string
     {
-        $project = $this->GetProject();
-
-        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
-
         /*
-         * Raster- und Anzeigeeinstellungen gehören zum gespeicherten Floorplan.
-         * Sie dürfen beim Laden der HTML-SDK-Kachel nicht mehr durch die alten
-         * Modul-Properties überschrieben werden, sonst springen Rastergröße und
-         * Raster-An/Aus nach jedem Reload wieder auf die Standardwerte zurück.
+         * Output-Buffer-Optimierung:
+         * Die HTML-SDK-Kachel enthält weiterhin das komplette CSS und die komplette
+         * DOM-Struktur, aber nicht mehr den großen Editor-JavaScript-Block und auch
+         * nicht mehr das komplette Projekt inklusive Runtime-Metadaten.
+         *
+         * Beides wird über den bereits vorhandenen instanzbezogenen WebHook geladen.
+         * Damit bleibt GetVisualizationTile() unabhängig von der Projektgröße klein.
          */
-        $project = $this->AddRuntimeValues($project);
-
-        $initial = json_encode(
-            $project,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP
-        );
+        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
+        $editorJavaScriptUrl = $this->GetVisualizationModuleWebHookUrl('floorplan-editor.js');
+        $projectUrl = $this->GetVisualizationModuleWebHookUrl('project.json');
 
         $html = <<<'HTML'
 <!doctype html>
@@ -1656,10 +1665,10 @@ class Floorplaner extends IPSModuleStrict
                 <b>Bedienung</b><br>
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
+                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
                 Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
                 Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
-                Formen: Linie, Rechteck oder Kreis im Dropdown wählen und mit der Maus aufziehen.<br>
+                Formen: Position anklicken; Formtyp, Name, Größe und Darstellung danach rechts einstellen.<br>
                 Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
                 − / +: manuell heraus- oder hineinzoomen.<br>
                 Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
@@ -1669,12 +1678,7 @@ class Floorplaner extends IPSModuleStrict
     <div class="toolbar">
         <div class="group">
             <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
-            <select id="shapeToolSelect" title="Form zeichnen">
-                <option value="" disabled selected>Formen</option>
-                <option value="shape-line">Linie</option>
-                <option value="shape-rect">Rechteck</option>
-                <option value="shape-circle">Kreis</option>
-            </select>
+            <button data-tool="shape" title="Form platzieren">Formen</button>
             <button data-tool="wall">Wand</button>
             <button data-tool="door">Tür</button>
             <button data-tool="window">Fenster</button>
@@ -1756,9 +1760,58 @@ class Floorplaner extends IPSModuleStrict
 </div>
 
 <script>
-(() => {
-    const initial = __INITIAL_PROJECT__;
-    const lastViewFloorStorageKey = 'floorplaner:lastViewFloor:__INSTANCE_ID__';
+window.__FLOORPLAN_BOOTSTRAP__ = Object.freeze({
+    instanceId: __INSTANCE_ID__,
+    projectUrl: '__FLOORPLAN_PROJECT_URL__'
+});
+</script>
+<script defer src="__FLOORPLAN_EDITOR_JS_URL__"></script>
+
+
+</body>
+</html>
+HTML;
+
+        return str_replace(
+            [
+                '__INSTANCE_ID__',
+                '__EASY_FLOORPLAN_MODULE_URL__',
+                '__FLOORPLAN_EDITOR_JS_URL__',
+                '__FLOORPLAN_PROJECT_URL__'
+            ],
+            [
+                (string) $this->InstanceID,
+                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars($editorJavaScriptUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars($projectUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            ],
+            $html
+        );
+    }
+
+    private function GetVisualizationEditorJavaScript(): string
+    {
+        return <<<'JAVASCRIPT'
+(async () => {
+    const bootstrap = window.__FLOORPLAN_BOOTSTRAP__ || {};
+    const projectUrl = String(bootstrap.projectUrl || '');
+
+    if (!projectUrl) {
+        throw new Error('Projekt-URL fehlt.');
+    }
+
+    const response = await fetch(projectUrl, {
+        cache: 'no-store',
+        credentials: 'same-origin'
+    });
+
+    if (!response.ok) {
+        throw new Error(`Floorplan-Projekt konnte nicht geladen werden (${response.status}).`);
+    }
+
+    const initial = await response.json();
+    const instanceID = Number(bootstrap.instanceId) || 0;
+    const lastViewFloorStorageKey = `floorplaner:lastViewFloor:${instanceID}`;
     const svg = document.getElementById('viewport');
     const scene = document.getElementById('scene');
     const properties = document.getElementById('properties');
@@ -1993,6 +2046,17 @@ class Floorplaner extends IPSModuleStrict
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
             floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
             for (const shape of floor.shapes) {
+                if (!shape.name) {
+                    const shapeNames = {
+                        line: 'Linie',
+                        rect: 'Rechteck',
+                        circle: 'Kreis / Ellipse',
+                        triangle: 'Dreieck',
+                        arrow: 'Pfeil',
+                            };
+                    shape.name = shapeNames[shape.kind || 'rect'] || 'Form';
+                }
+                if (typeof shape.showName !== 'boolean') shape.showName = false;
                 if (typeof shape.fillEnabled !== 'boolean') shape.fillEnabled = false;
                 if (!['light', 'hatch', 'tiles'].includes(shape.fillMode)) shape.fillMode = 'light';
                 if (!Number.isFinite(Number(shape.rotation))) shape.rotation = 0;
@@ -2092,20 +2156,30 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function setTool(next) {
-        tool = next;
+        // Erneuter Klick auf das bereits aktive Werkzeug schaltet es wieder aus.
+        if (next && tool === next) {
+            next = '';
+        }
+
+        tool = next || '';
         wallStart = null;
         preview = null;
+
         document.querySelectorAll('[data-tool]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
-        const shapeSelect = document.getElementById('shapeToolSelect');
-        if (shapeSelect) {
-            // Die Box soll immer "Formen" anzeigen. Die gewählte Form ist nur
-            // das aktive Werkzeug und wird nicht als dauerhafte Beschriftung
-            // im Dropdown stehen gelassen.
-            shapeSelect.value = '';
-        }
+
         render();
+    }
+
+    function deactivateToolWithoutRender() {
+        tool = '';
+        wallStart = null;
+        preview = null;
+
+        document.querySelectorAll('[data-tool]').forEach(btn => {
+            btn.classList.remove('active');
+        });
     }
 
     function updateModeUI() {
@@ -2121,6 +2195,9 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function setMode(mode) {
+        // Jeder Wechsel zwischen Editor und Live-Ansicht beendet ein aktives Werkzeug.
+        deactivateToolWithoutRender();
+
         state.mode = mode === 'view' ? 'view' : 'edit';
 
         const gridControls = document.querySelector('.grid-editor-controls');
@@ -2336,7 +2413,7 @@ class Floorplaner extends IPSModuleStrict
                 continue;
             }
 
-            if (kind === 'rect') {
+            if (kind === 'rect' || kind === 'triangle' || kind === 'arrow') {
                 const x1 = Number(shape.x1) || 0;
                 const y1 = Number(shape.y1) || 0;
                 const x2 = Number(shape.x2) || 0;
@@ -3060,6 +3137,36 @@ class Floorplaner extends IPSModuleStrict
             return 'style="fill:rgba(150,160,175,.18)"';
         }
 
+        // Formen liegen als eigene Ebene unter den Möbeln.
+        // Da viele Möbel-Symbole teilweise transparent gezeichnet werden, reicht
+        // die reine SVG-Reihenfolge nicht aus: Die Form würde sonst durch das
+        // Möbel hindurch sichtbar bleiben. Deshalb schneiden wir die Grundfläche
+        // jedes Möbels aus der Formen-Ebene heraus.
+        const furnitureMaskParts = [];
+        for (const furniture of floor.furniture || []) {
+            const tpl = furnitureTemplates[furniture.type] || furnitureTemplates.sofa;
+            const fw = Math.max(8, Number(furniture.width) || Number(tpl?.size?.w) || 100);
+            const fh = Math.max(8, Number(furniture.height) || Number(tpl?.size?.h) || 60);
+            const fx = Number(furniture.x) || 0;
+            const fy = Number(furniture.y) || 0;
+            const rotation = Number(furniture.rotation) || 0;
+
+            furnitureMaskParts.push(
+                `<rect x="${-fw / 2}" y="${-fh / 2}" width="${fw}" height="${fh}" ` +
+                `transform="translate(${fx} ${fy}) rotate(${rotation})" fill="black"/>`
+            );
+        }
+
+        parts.push(
+            `<defs><mask id="shapeBelowFurnitureMask" maskUnits="userSpaceOnUse" ` +
+            `x="-100000" y="-100000" width="200000" height="200000">` +
+            `<rect x="-100000" y="-100000" width="200000" height="200000" fill="white"/>` +
+            furnitureMaskParts.join('') +
+            `</mask></defs>`
+        );
+
+        parts.push(`<g class="shape-layer" mask="url(#shapeBelowFurnitureMask)">`);
+
         for (const shape of floor.shapes || []) {
             const sel = selected?.type === 'shape' && selected.id === shape.id;
             const cls = sel ? ' selection-shape' : '';
@@ -3118,6 +3225,44 @@ class Floorplaner extends IPSModuleStrict
                         `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
                     );
                 }
+            } else if (shape.kind === 'triangle' || shape.kind === 'arrow') {
+                const x = Math.min(Number(shape.x1) || 0, Number(shape.x2) || 0);
+                const y = Math.min(Number(shape.y1) || 0, Number(shape.y2) || 0);
+                const w = Math.max(1, Math.abs((Number(shape.x2) || 0) - (Number(shape.x1) || 0)));
+                const h = Math.max(1, Math.abs((Number(shape.y2) || 0) - (Number(shape.y1) || 0)));
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const rotation = Number(shape.rotation) || 0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
+                let points;
+                if (shape.kind === 'triangle') {
+                    points = `${cx},${y} ${x + w},${y + h} ${x},${y + h}`;
+                } else {
+                    const shaftY1 = y + h * .34;
+                    const shaftY2 = y + h * .66;
+                    const headX = x + w * .58;
+                    points = `${x},${shaftY1} ${headX},${shaftY1} ${headX},${y} ${x + w},${cy} ${headX},${y + h} ${headX},${shaftY2} ${x},${shaftY2}`;
+                }
+
+                parts.push(`<polygon class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" points="${points}"${transform}/>`);
+                parts.push(`<polygon class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" points="${points}" ${shapeFillAttribute(shape)}${transform}/>`);
+
+                if (sel) {
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + (w / 2) * Math.cos(rad) - (h / 2) * Math.sin(rad);
+                    const hy = cy + (w / 2) * Math.sin(rad) + (h / 2) * Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + (h / 2) * Math.sin(rad);
+                    const topY = cy - (h / 2) * Math.cos(rad);
+                    const rotateX = cx + (h / 2 + 16) * Math.sin(rad);
+                    const rotateY = cy - (h / 2 + 16) * Math.cos(rad);
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
+                }
             } else if (shape.kind === 'circle') {
                 const cx = Number(shape.x1) || 0;
                 const cy = Number(shape.y1) || 0;
@@ -3150,6 +3295,26 @@ class Floorplaner extends IPSModuleStrict
                 }
             }
         }
+
+
+        // Optionaler Formenname – wie bei Möbeln standardmäßig ausgeblendet.
+        for (const shape of floor.shapes || []) {
+            if (shape.showName !== true || !shape.name) continue;
+
+            let nx;
+            let ny;
+            if ((shape.kind || 'rect') === 'circle') {
+                nx = Number(shape.x1) || 0;
+                ny = Number(shape.y1) || 0;
+            } else {
+                nx = ((Number(shape.x1) || 0) + (Number(shape.x2) || 0)) / 2;
+                ny = ((Number(shape.y1) || 0) + (Number(shape.y2) || 0)) / 2;
+            }
+
+            parts.push(`<text class="furniture-label" x="${nx}" y="${ny}" dy=".35em">${escapeHtml(shape.name)}</text>`);
+        }
+
+        parts.push(`</g>`);
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
@@ -3390,7 +3555,7 @@ class Floorplaner extends IPSModuleStrict
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
-            // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
+            // Er ist unabhängig von der optionalen Floorplan-Statusfarbe.
             const boolClass = isBooleanDevice
                 ? (
                     boolActive && (statusRingEnabled || symconGlowEnabled)
@@ -3669,7 +3834,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         // Legacy-Profil mit einer Farbe auf der aktuellen Association.
-        // Auch dort wäre die manuelle Floorplaner-Farbe wirkungslos.
+        // Auch dort wäre die manuelle Floorplan-Farbe wirkungslos.
         if (legacyIntegerCurrentColor(item) !== '') {
             return true;
         }
@@ -3690,7 +3855,7 @@ class Floorplaner extends IPSModuleStrict
         }
 
         // Bool sowie numerische Integer/Float-Werte ohne eigene
-        // Präsentationsfarbe behalten die manuelle Floorplaner-Farbe.
+        // Präsentationsfarbe behalten die manuelle Floorplan-Farbe.
         return true;
     }
 
@@ -4363,6 +4528,7 @@ class Floorplaner extends IPSModuleStrict
                     <label>Möbeltyp</label>
                     <select data-field="type">
                         ${Object.entries(furnitureTemplates)
+                            .sort(([, a], [, b]) => String(a?.name || '').localeCompare(String(b?.name || ''), 'de', {sensitivity: 'base'}))
                             .map(([key,tpl]) => `<option value="${key}"${key === ftype ? ' selected' : ''}>${escapeHtml(tpl.name)}</option>`)
                             .join('')}
                     </select>
@@ -4400,131 +4566,96 @@ class Floorplaner extends IPSModuleStrict
         } else if (selected.type === 'shape') {
             propTitle.textContent = 'Form';
 
-            const kind = obj.kind || 'line';
-            if (kind === 'line') {
-                const dx = Number(obj.x2) - Number(obj.x1);
-                const dy = Number(obj.y2) - Number(obj.y1);
-                const length = Math.hypot(dx, dy);
-                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            const kind = obj.kind || 'rect';
+            const shapeNames = {
+                line: 'Linie',
+                rect: 'Rechteck',
+                circle: 'Kreis / Ellipse',
+                triangle: 'Dreieck',
+                arrow: 'Pfeil',
+            };
 
-                properties.innerHTML = `
-                    <div class="field">
-                        <label>Form</label>
-                        <input value="Linie" disabled>
-                    </div>
-                    <div class="row2">
-                        <div class="field">
-                            <label>X</label>
-                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
-                        </div>
-                        <div class="field">
-                            <label>Y</label>
-                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
-                        </div>
-                    </div>
-                    <div class="row2">
-                        <div class="field">
-                            <label>Länge</label>
-                            <input data-field="shapeLength" type="number" min="1" step="1" value="${Math.round(length)}">
-                        </div>
-                        <div class="field">
-                            <label>Drehung</label>
-                            <input data-field="shapeAngle" type="number" min="-360" max="360" step="1" value="${Math.round(angle)}">
-                        </div>
-                    </div>
-                `;
-            } else if (kind === 'rect') {
-                const x = Math.min(Number(obj.x1), Number(obj.x2));
-                const y = Math.min(Number(obj.y1), Number(obj.y2));
-                const width = Math.abs(Number(obj.x2) - Number(obj.x1));
-                const height = Math.abs(Number(obj.y2) - Number(obj.y1));
+            const x = kind === 'circle'
+                ? (Number(obj.x1) || 0)
+                : Math.min(Number(obj.x1) || 0, Number(obj.x2) || 0);
+            const y = kind === 'circle'
+                ? (Number(obj.y1) || 0)
+                : Math.min(Number(obj.y1) || 0, Number(obj.y2) || 0);
 
-                properties.innerHTML = `
-                    <div class="field">
-                        <label>Form</label>
-                        <input value="Rechteck" disabled>
-                    </div>
+            const fallbackWidth = Math.max(1, Math.abs((Number(obj.x2) || 0) - (Number(obj.x1) || 0)));
+            const fallbackHeight = Math.max(1, Math.abs((Number(obj.y2) || 0) - (Number(obj.y1) || 0)));
+
+            const width = kind === 'circle'
+                ? Math.max(1, Number(obj.width) || Math.max(fallbackWidth * 2, 80))
+                : Math.max(1, fallbackWidth || 80);
+            const height = kind === 'circle'
+                ? Math.max(1, Number(obj.height) || Math.max(fallbackHeight * 2, 60))
+                : Math.max(1, fallbackHeight || 60);
+
+            const lineLength = kind === 'line'
+                ? Math.max(1, Math.hypot(
+                    (Number(obj.x2) || 0) - (Number(obj.x1) || 0),
+                    (Number(obj.y2) || 0) - (Number(obj.y1) || 0)
+                ))
+                : width;
+            const lineAngle = kind === 'line'
+                ? Math.atan2(
+                    (Number(obj.y2) || 0) - (Number(obj.y1) || 0),
+                    (Number(obj.x2) || 0) - (Number(obj.x1) || 0)
+                ) * 180 / Math.PI
+                : (Number(obj.rotation) || 0);
+
+            properties.innerHTML = `
+                <div class="field">
+                    <label>Formtyp</label>
+                    <select data-field="shapeKind">
+                        ${Object.entries(shapeNames)
+                            .sort(([, a], [, b]) => String(a || '').localeCompare(String(b || ''), 'de', {sensitivity: 'base'}))
+                            .map(([key, name]) =>
+                                `<option value="${key}"${key === kind ? ' selected' : ''}>${escapeHtml(name)}</option>`
+                            ).join('')}
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Name</label>
+                    <input data-field="name" value="${escapeHtml(obj.name || shapeNames[kind] || 'Form')}">
+                </div>
+
+                <label class="check">
+                    <input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}>
+                    Name anzeigen
+                </label>
+
+                <div class="row2">
+                    <div class="field"><label>X</label><input data-field="shapeX" type="number" step="1" value="${Math.round(x)}"></div>
+                    <div class="field"><label>Y</label><input data-field="shapeY" type="number" step="1" value="${Math.round(y)}"></div>
+                </div>
+
+                ${kind === 'line' ? `
                     <div class="row2">
-                        <div class="field">
-                            <label>X</label>
-                            <input data-field="shapeX" type="number" step="1" value="${Math.round(x)}">
-                        </div>
-                        <div class="field">
-                            <label>Y</label>
-                            <input data-field="shapeY" type="number" step="1" value="${Math.round(y)}">
-                        </div>
+                        <div class="field"><label>Länge</label><input data-field="shapeLength" type="number" min="1" step="1" value="${Math.round(lineLength)}"></div>
+                        <div class="field"><label>Drehung</label><input data-field="shapeAngle" type="number" min="-360" max="360" step="1" value="${Math.round(lineAngle)}"></div>
                     </div>
+                ` : `
                     <div class="row2">
-                        <div class="field">
-                            <label>Breite</label>
-                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
-                        </div>
-                        <div class="field">
-                            <label>Tiefe</label>
-                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
-                        </div>
+                        <div class="field"><label>Breite</label><input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}"></div>
+                        <div class="field"><label>Höhe</label><input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}"></div>
                     </div>
-                    <div class="field">
-                        <label>Drehung</label>
-                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
-                    </div>
+                    <div class="field"><label>Drehung</label><input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}"></div>
                     <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
                     ${obj.fillEnabled === true ? `
-                    <div class="field">
-                        <label>Muster</label>
-                        <select data-field="fillMode">
-                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
-                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
-                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
-                        </select>
-                    </div>` : ''}
-                `;
-            } else {
-                const fallbackDiameter = Math.max(1, Math.hypot(Number(obj.x2) - Number(obj.x1), Number(obj.y2) - Number(obj.y1)) * 2);
-                const width = Math.max(1, Number(obj.width) || fallbackDiameter);
-                const height = Math.max(1, Number(obj.height) || fallbackDiameter);
-
-                properties.innerHTML = `
-                    <div class="field">
-                        <label>Form</label>
-                        <input value="Kreis / Ellipse" disabled>
-                    </div>
-                    <div class="row2">
                         <div class="field">
-                            <label>X</label>
-                            <input data-field="shapeX" type="number" step="1" value="${Math.round(Number(obj.x1) || 0)}">
+                            <label>Muster</label>
+                            <select data-field="fillMode">
+                                <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                                <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                                <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                            </select>
                         </div>
-                        <div class="field">
-                            <label>Y</label>
-                            <input data-field="shapeY" type="number" step="1" value="${Math.round(Number(obj.y1) || 0)}">
-                        </div>
-                    </div>
-                    <div class="row2">
-                        <div class="field">
-                            <label>Breite</label>
-                            <input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}">
-                        </div>
-                        <div class="field">
-                            <label>Tiefe</label>
-                            <input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}">
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label>Drehung</label>
-                        <input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}">
-                    </div>
-                    <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
-                    ${obj.fillEnabled === true ? `
-                    <div class="field">
-                        <label>Muster</label>
-                        <select data-field="fillMode">
-                            <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
-                            <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
-                            <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
-                        </select>
-                    </div>` : ''}
-                `;
-            }
+                    ` : ''}
+                `}
+            `;
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
             properties.innerHTML = `
@@ -4552,8 +4683,60 @@ class Floorplaner extends IPSModuleStrict
                 const fieldName = input.dataset.field;
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
 
-                if (selected.type === 'shape' && fieldName.startsWith('shape')) {
-                    const kind = obj.kind || 'line';
+                if (selected.type === 'shape' && fieldName === 'shapeKind') {
+                    const oldKind = obj.kind || 'rect';
+                    const cx = oldKind === 'circle'
+                        ? (Number(obj.x1) || 0)
+                        : ((Number(obj.x1) || 0) + (Number(obj.x2) || 0)) / 2;
+                    const cy = oldKind === 'circle'
+                        ? (Number(obj.y1) || 0)
+                        : ((Number(obj.y1) || 0) + (Number(obj.y2) || 0)) / 2;
+
+                    const width = oldKind === 'circle'
+                        ? Math.max(1, Number(obj.width) || 80)
+                        : Math.max(1, Math.abs((Number(obj.x2) || 0) - (Number(obj.x1) || 0)) || 80);
+                    const height = oldKind === 'circle'
+                        ? Math.max(1, Number(obj.height) || 60)
+                        : Math.max(1, Math.abs((Number(obj.y2) || 0) - (Number(obj.y1) || 0)) || 60);
+
+                    obj.kind = String(value);
+                    obj.rotation = Number(obj.rotation) || 0;
+
+                    if (obj.kind === 'line') {
+                        obj.x1 = cx - width / 2;
+                        obj.y1 = cy;
+                        obj.x2 = cx + width / 2;
+                        obj.y2 = cy;
+                    } else if (obj.kind === 'circle') {
+                        obj.x1 = cx;
+                        obj.y1 = cy;
+                        obj.width = width;
+                        obj.height = height;
+                        obj.x2 = cx + width / 2;
+                        obj.y2 = cy;
+                    } else {
+                        obj.x1 = cx - width / 2;
+                        obj.y1 = cy - height / 2;
+                        obj.x2 = cx + width / 2;
+                        obj.y2 = cy + height / 2;
+                    }
+
+                    const defaultNames = {
+                        line: 'Linie',
+                        rect: 'Rechteck',
+                        circle: 'Kreis / Ellipse',
+                        triangle: 'Dreieck',
+                        arrow: 'Pfeil',
+                            };
+                    const automaticNames = ['Form', 'Linie', 'Rechteck', 'Kreis / Ellipse', 'Dreieck', 'Pfeil'];
+                    if (!obj.name || automaticNames.includes(obj.name)) {
+                        obj.name = defaultNames[obj.kind] || 'Form';
+                    }
+
+                    input.blur();
+                    refreshPropertiesAfterStructuralChange();
+                } else if (selected.type === 'shape' && fieldName.startsWith('shape')) {
+                    const kind = obj.kind || 'rect';
 
                     if (kind === 'line') {
                         const oldX = Number(obj.x1) || 0;
@@ -4578,7 +4761,7 @@ class Floorplaner extends IPSModuleStrict
                             obj.x2 = oldX + Math.cos(rad) * length;
                             obj.y2 = oldY + Math.sin(rad) * length;
                         }
-                    } else if (kind === 'rect') {
+                    } else if (kind !== 'circle') {
                         let x = Math.min(Number(obj.x1), Number(obj.x2));
                         let y = Math.min(Number(obj.y1), Number(obj.y2));
                         let width = Math.max(1, Math.abs(Number(obj.x2) - Number(obj.x1)));
@@ -4839,10 +5022,12 @@ class Floorplaner extends IPSModuleStrict
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
 
-    document.getElementById('shapeToolSelect')?.addEventListener('change', evt => {
-        const next = evt.target.value;
-        if (!next) return;
-        setTool(next);
+    // Sobald ein anderer Button der Editor-Leiste gedrückt wird, darf kein
+    // Platzierungs-/Verschiebe-Werkzeug aktiv bleiben.
+    document.querySelectorAll('.toolbar button:not([data-tool])').forEach(btn => {
+        btn.addEventListener('click', () => {
+            deactivateToolWithoutRender();
+        });
     });
 
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
@@ -5248,6 +5433,10 @@ class Floorplaner extends IPSModuleStrict
             const obj = findEntity(rotateType, id);
 
             if (obj && (rotateType === 'furniture' || rotateType === 'shape')) {
+                if (tool === 'pan') {
+                    deactivateToolWithoutRender();
+                }
+
                 const raw = svgPointRaw(evt);
 
                 let cx = 0;
@@ -5301,6 +5490,10 @@ class Floorplaner extends IPSModuleStrict
             const obj = findEntity(resizeType, id);
 
             if (obj) {
+                if (tool === 'pan') {
+                    deactivateToolWithoutRender();
+                }
+
                 selected = {type: resizeType, id};
                 drag = {
                     mode: 'resize',
@@ -5355,6 +5548,12 @@ class Floorplaner extends IPSModuleStrict
         // im Editor jederzeit direkt angeklickt und verschoben werden.
         if (state.mode !== 'view' && target &&
             !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            // "Verschieben" gilt nur für freie Fläche. Sobald ein bestehendes
+            // Element bearbeitet wird, ist das Werkzeug wieder inaktiv.
+            if (tool === 'pan') {
+                deactivateToolWithoutRender();
+            }
+
             releasePropertiesControl();
             selected = {type: target.dataset.type, id: target.dataset.id};
             const obj = findEntity(selected.type, selected.id);
@@ -5373,19 +5572,27 @@ class Floorplaner extends IPSModuleStrict
             }
         }
 
-        if (tool === 'shape-line' || tool === 'shape-rect' || tool === 'shape-circle') {
+        if (tool === 'shape') {
             const shape = {
                 id: uid('shape'),
-                kind: tool === 'shape-line' ? 'line' : (tool === 'shape-rect' ? 'rect' : 'circle'),
-                x1: p.x, y1: p.y, x2: p.x, y2: p.y
+                kind: 'rect',
+                name: 'Form',
+                showName: false,
+                x1: p.x - 40,
+                y1: p.y - 30,
+                x2: p.x + 40,
+                y2: p.y + 30,
+                rotation: 0,
+                fillEnabled: false,
+                fillMode: 'light'
             };
             floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
             floor.shapes.push(shape);
             releasePropertiesControl();
-            selected = {type:'shape', id:shape.id};
-            drag = {mode:'draw-shape', type:'shape', id:shape.id, start:p, original:structuredClone(shape)};
-            svg.setPointerCapture(evt.pointerId);
-            evt.preventDefault();
+            selected = {type: 'shape', id: shape.id};
+            pushHistory();
+            markDirty();
+            setTool('');
             render();
             return;
         }
@@ -5440,7 +5647,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'opening', id: o.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             render();
             return;
         }
@@ -5476,7 +5683,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'item', id: item.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             render();
             return;
         }
@@ -5499,7 +5706,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'furniture', id: furniture.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             renderAll();
             return;
         }
@@ -5516,7 +5723,7 @@ class Floorplaner extends IPSModuleStrict
             selected = {type: 'text', id: t.id};
             pushHistory();
             markDirty();
-            setTool('pan');
+            setTool('');
             render();
         }
     });
@@ -5832,7 +6039,7 @@ class Floorplaner extends IPSModuleStrict
             wallStart = null;
             preview = null;
             selected = null;
-            setTool('pan');
+            setTool('');
         }
 
         if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {
@@ -6260,7 +6467,7 @@ class Floorplaner extends IPSModuleStrict
         entity[newIntegerStatusColorKey] = node?.newIntegerStatusColor || '';
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
-        // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
+        // Floorplan-Konfiguration "Statusfarbe EIN" übernehmen.
         // AUS erhält bewusst keine eigene Farbe.
         if (
             entityType === 'item' &&
@@ -6375,7 +6582,7 @@ class Floorplaner extends IPSModuleStrict
     }
 
     if (!variableModal || !variableList || !variableSearch) {
-        throw new Error('Floorplaner: Variablen-Auswahldialog fehlt im HTML.');
+        throw new Error('Floorplan: Variablen-Auswahldialog fehlt im HTML.');
     }
 
     variableSearch.addEventListener('input', () => renderObjectTree(variableSearch.value));
@@ -6677,7 +6884,7 @@ class Floorplaner extends IPSModuleStrict
     });
 
     // Geräte-Popup auch schließen, wenn außerhalb des eigentlichen Dialogs
-    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplaner absichtlich
+    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplan absichtlich
     // pointer-events:none, deshalb muss dies auf Dokumentebene geprüft werden.
     document.addEventListener('pointerdown', evt => {
         if (!controlModal?.classList.contains('open')) return;
@@ -7034,29 +7241,23 @@ class Floorplaner extends IPSModuleStrict
         }
     }, 1000);
 
-})();
-</script>
+})().catch(error => {
+    console.error('Floorplan konnte nicht initialisiert werden:', error);
+    const status = document.getElementById('status');
+    if (status) {
+        status.textContent = 'Floorplan konnte nicht geladen werden';
+    }
+});
 
-
-</body>
-</html>
-HTML;
-
-        return str_replace(
-            ['__INITIAL_PROJECT__', '__INSTANCE_ID__', '__EASY_FLOORPLAN_MODULE_URL__'],
-            [
-                $initial,
-                (string) $this->InstanceID,
-                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-            ],
-            $html
-        );
+JAVASCRIPT;
     }
 
     private function GetVisualizationWebHookAssets(): array
     {
         return [
-            'easy-floorplan.js'
+            'easy-floorplan.js',
+            'floorplan-editor.js',
+            'project.json'
         ];
     }
 
@@ -7101,8 +7302,51 @@ HTML;
             }
 
             /*
-             * Bestehende Originaldatei im Modulbaum.
-             * Keine Laufzeitkopie in /user/ und keine zusätzliche generierte Datei.
+             * Dynamische Projekt-/Runtime-Daten werden nicht mehr in die HTML-SDK-
+             * Ausgabe eingebettet. Dadurch kann ein großer Floorplan den Output-
+             * Buffer von GetVisualizationTile() nicht mehr vergrößern.
+             */
+            if ($asset === 'project.json') {
+                $project = $this->AddRuntimeValues($this->GetProject());
+                $payload = json_encode(
+                    $project,
+                    JSON_UNESCAPED_SLASHES
+                    | JSON_UNESCAPED_UNICODE
+                    | JSON_HEX_TAG
+                    | JSON_HEX_AMP
+                );
+
+                if ($payload === false) {
+                    throw new RuntimeException('Floorplan-Projekt konnte nicht serialisiert werden.');
+                }
+
+                header('Content-Type: application/json; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-store, no-cache, must-revalidate');
+                header('Pragma: no-cache');
+                header('Content-Length: ' . strlen($payload));
+                echo $payload;
+                return;
+            }
+
+            /*
+             * Der komplette Floorplan-Editor bleibt Bestandteil dieser module.php.
+             * Er wird nur nicht mehr über GetVisualizationTile() ausgegeben, sondern
+             * bei Bedarf direkt über den WebHook ausgeliefert.
+             */
+            if ($asset === 'floorplan-editor.js') {
+                $source = $this->GetVisualizationEditorJavaScript();
+
+                header('Content-Type: text/javascript; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-cache');
+                header('Content-Length: ' . strlen($source));
+                echo $source;
+                return;
+            }
+
+            /*
+             * Easy-Floorplan bleibt unverändert als Originaldatei im Modulbaum.
              */
             $path = __DIR__
                 . DIRECTORY_SEPARATOR
@@ -7110,7 +7354,7 @@ HTML;
                 . DIRECTORY_SEPARATOR
                 . 'vendor'
                 . DIRECTORY_SEPARATOR
-                . $asset;
+                . 'easy-floorplan.js';
 
             if (!is_file($path)) {
                 http_response_code(404);
@@ -8650,11 +8894,14 @@ HTML;
     private function CountElements(array $Project): array
     {
         $counts = [
-            'floors'   => 0,
-            'walls'    => 0,
-            'openings' => 0,
-            'items'    => 0,
-            'texts'    => 0
+            'floors'    => 0,
+            'walls'     => 0,
+            'doors'     => 0,
+            'windows'   => 0,
+            'items'     => 0,
+            'furniture' => 0,
+            'shapes'    => 0,
+            'texts'     => 0
         ];
 
         $floors = $Project['floors'] ?? [];
@@ -8669,9 +8916,23 @@ HTML;
                 continue;
             }
 
-            foreach (['walls', 'openings', 'items', 'texts'] as $key) {
+            foreach (['walls', 'items', 'furniture', 'shapes', 'texts'] as $key) {
                 if (isset($floor[$key]) && is_array($floor[$key])) {
                     $counts[$key] += count($floor[$key]);
+                }
+            }
+
+            if (isset($floor['openings']) && is_array($floor['openings'])) {
+                foreach ($floor['openings'] as $opening) {
+                    if (!is_array($opening)) {
+                        continue;
+                    }
+
+                    if (($opening['type'] ?? '') === 'door') {
+                        $counts['doors']++;
+                    } elseif (($opening['type'] ?? '') === 'window') {
+                        $counts['windows']++;
+                    }
                 }
             }
         }

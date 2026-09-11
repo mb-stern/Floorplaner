@@ -1,12 +1,12 @@
 {
     "id": "{3A7E91C4-5B26-4D8F-9C13-6F02E7A85BD1}",
     "author": "Stefan Künzli",
-    "name": "Floorplaner",
-    "url": "https://github.com/mb-stern/Floorplaner",
+    "name": "Floorplan",
+    "url": "https://github.com/mb-stern/Floorplan",
     "compatibility": {
         "version": "8.2"
     },
-    "version": "1.9",
+    "version": "1.10",
     "build": 0,
     "date": 0
 }

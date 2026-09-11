@@ -1,14 +1,14 @@
 {
     "id": "{B40F2C5A-EA71-E415-ADD0-023253339425}",
-    "name": "Floorplaner",
+    "name": "Floorplan",
     "type": 3,
     "vendor": "",
     "aliases": [
-        "Floorplaner"
+        "Floorplan"
     ],
     "parentRequirements": [],
     "childRequirements": [],
     "implemented": [],
     "prefix": "FLOOR",
-    "url": "https://github.com/mb-stern/Floorplaner/tree/beta"
+    "url": "https://github.com/mb-stern/Floorplan/tree/beta"
 }
