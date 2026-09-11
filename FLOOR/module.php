@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 /*
+ * Floorplan
+ * Prefix in module.json: FLOOR
+ *
  * Basis / Zielprojekt:
  * Easy Floorplan by Nicolas Sandller
  * https://github.com/nicosandller/easy-floorplan
@@ -102,7 +105,7 @@ class Floorplan extends IPSModuleStrict
         $elements = [
             [
                 'type'    => 'Label',
-                'caption' => 'Floorplaner'
+                'caption' => 'Floorplan'
             ],
             [
                 'type'    => 'Label',
@@ -3493,7 +3496,7 @@ class Floorplan extends IPSModuleStrict
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
-            // Er ist unabhängig von der optionalen Floorplaner-Statusfarbe.
+            // Er ist unabhängig von der optionalen Floorplan-Statusfarbe.
             const boolClass = isBooleanDevice
                 ? (
                     boolActive && (statusRingEnabled || symconGlowEnabled)
@@ -3772,7 +3775,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         // Legacy-Profil mit einer Farbe auf der aktuellen Association.
-        // Auch dort wäre die manuelle Floorplaner-Farbe wirkungslos.
+        // Auch dort wäre die manuelle Floorplan-Farbe wirkungslos.
         if (legacyIntegerCurrentColor(item) !== '') {
             return true;
         }
@@ -3793,7 +3796,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         // Bool sowie numerische Integer/Float-Werte ohne eigene
-        // Präsentationsfarbe behalten die manuelle Floorplaner-Farbe.
+        // Präsentationsfarbe behalten die manuelle Floorplan-Farbe.
         return true;
     }
 
@@ -6405,7 +6408,7 @@ class Floorplan extends IPSModuleStrict
         entity[newIntegerStatusColorKey] = node?.newIntegerStatusColor || '';
 
         // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
-        // Floorplaner-Konfiguration "Statusfarbe EIN" übernehmen.
+        // Floorplan-Konfiguration "Statusfarbe EIN" übernehmen.
         // AUS erhält bewusst keine eigene Farbe.
         if (
             entityType === 'item' &&
@@ -6520,7 +6523,7 @@ class Floorplan extends IPSModuleStrict
     }
 
     if (!variableModal || !variableList || !variableSearch) {
-        throw new Error('Floorplaner: Variablen-Auswahldialog fehlt im HTML.');
+        throw new Error('Floorplan: Variablen-Auswahldialog fehlt im HTML.');
     }
 
     variableSearch.addEventListener('input', () => renderObjectTree(variableSearch.value));
@@ -6822,7 +6825,7 @@ class Floorplan extends IPSModuleStrict
     });
 
     // Geräte-Popup auch schließen, wenn außerhalb des eigentlichen Dialogs
-    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplaner absichtlich
+    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplan absichtlich
     // pointer-events:none, deshalb muss dies auf Dokumentebene geprüft werden.
     document.addEventListener('pointerdown', evt => {
         if (!controlModal?.classList.contains('open')) return;
