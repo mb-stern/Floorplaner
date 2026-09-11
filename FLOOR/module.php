@@ -3,16 +3,13 @@
 declare(strict_types=1);
 
 /*
- * Floorplaner
- * Prefix in module.json: FLOOR
- *
  * Basis / Zielprojekt:
  * Easy Floorplan by Nicolas Sandller
  * https://github.com/nicosandller/easy-floorplan
  * License: MIT
  */
 
-class Floorplaner extends IPSModuleStrict
+class Floorplan extends IPSModuleStrict
 {
     private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;

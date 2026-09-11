@@ -1,4 +1,4 @@
-# 🏠 Floorplaner für IP-Symcon
+# 🏠 Floorplan für IP-Symcon
 
 Ein interaktiver Grundriss-Editor für **IP-Symcon**. Räume, Wände, Türen, Fenster, Möbel und Geräte lassen sich direkt im Browser platzieren und anschließend in der Visualisierung bedienen.
 

@@ -1,4 +1,4 @@
-# 🏠 Floorplaner für IP-Symcon
+# 🏠 Floorplan für IP-Symcon
 
 **Floorplaner** ist ein grafischer Grundriss-Editor für IP-Symcon.
 
