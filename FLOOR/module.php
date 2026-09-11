@@ -1994,8 +1994,7 @@ class Floorplaner extends IPSModuleStrict
                         circle: 'Kreis / Ellipse',
                         triangle: 'Dreieck',
                         arrow: 'Pfeil',
-                        freeform: 'Freiform'
-                    };
+                            };
                     shape.name = shapeNames[shape.kind || 'rect'] || 'Form';
                 }
                 if (typeof shape.showName !== 'boolean') shape.showName = false;
@@ -2335,7 +2334,7 @@ class Floorplaner extends IPSModuleStrict
                 continue;
             }
 
-            if (kind === 'rect' || kind === 'triangle' || kind === 'arrow' || kind === 'freeform') {
+            if (kind === 'rect' || kind === 'triangle' || kind === 'arrow') {
                 const x1 = Number(shape.x1) || 0;
                 const y1 = Number(shape.y1) || 0;
                 const x2 = Number(shape.x2) || 0;
@@ -3117,7 +3116,7 @@ class Floorplaner extends IPSModuleStrict
                         `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
                     );
                 }
-            } else if (shape.kind === 'triangle' || shape.kind === 'arrow' || shape.kind === 'freeform') {
+            } else if (shape.kind === 'triangle' || shape.kind === 'arrow') {
                 const x = Math.min(Number(shape.x1) || 0, Number(shape.x2) || 0);
                 const y = Math.min(Number(shape.y1) || 0, Number(shape.y2) || 0);
                 const w = Math.max(1, Math.abs((Number(shape.x2) || 0) - (Number(shape.x1) || 0)));
@@ -3130,13 +3129,11 @@ class Floorplaner extends IPSModuleStrict
                 let points;
                 if (shape.kind === 'triangle') {
                     points = `${cx},${y} ${x + w},${y + h} ${x},${y + h}`;
-                } else if (shape.kind === 'arrow') {
+                } else {
                     const shaftY1 = y + h * .34;
                     const shaftY2 = y + h * .66;
                     const headX = x + w * .58;
                     points = `${x},${shaftY1} ${headX},${shaftY1} ${headX},${y} ${x + w},${cy} ${headX},${y + h} ${headX},${shaftY2} ${x},${shaftY2}`;
-                } else {
-                    points = `${x + w * .12},${y + h * .18} ${x + w * .62},${y} ${x + w},${y + h * .28} ${x + w * .84},${y + h * .82} ${x + w * .36},${y + h} ${x},${y + h * .62}`;
                 }
 
                 parts.push(`<polygon class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" points="${points}"${transform}/>`);
@@ -4464,7 +4461,6 @@ class Floorplaner extends IPSModuleStrict
                 circle: 'Kreis / Ellipse',
                 triangle: 'Dreieck',
                 arrow: 'Pfeil',
-                freeform: 'Freiform'
             };
 
             const x = kind === 'circle'
@@ -4545,7 +4541,6 @@ class Floorplaner extends IPSModuleStrict
                         </div>
                     ` : ''}
                 `}
-                ${kind === 'freeform' ? `<div class="profile-hint">Freiform ist vorerst eine frei skalierbare unregelmäßige Fläche. Einzelne Eckpunkte können wir später ergänzen.</div>` : ''}
             `;
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
@@ -4618,9 +4613,8 @@ class Floorplaner extends IPSModuleStrict
                         circle: 'Kreis / Ellipse',
                         triangle: 'Dreieck',
                         arrow: 'Pfeil',
-                        freeform: 'Freiform'
-                    };
-                    const automaticNames = ['Form', 'Linie', 'Rechteck', 'Kreis / Ellipse', 'Dreieck', 'Pfeil', 'Freiform'];
+                            };
+                    const automaticNames = ['Form', 'Linie', 'Rechteck', 'Kreis / Ellipse', 'Dreieck', 'Pfeil'];
                     if (!obj.name || automaticNames.includes(obj.name)) {
                         obj.name = defaultNames[obj.kind] || 'Form';
                     }
