@@ -2136,6 +2136,9 @@ class Floorplaner extends IPSModuleStrict
     }
 
     function setMode(mode) {
+        // Jeder Wechsel zwischen Editor und Live-Ansicht beendet ein aktives Werkzeug.
+        deactivateToolWithoutRender();
+
         state.mode = mode === 'view' ? 'view' : 'edit';
 
         const gridControls = document.querySelector('.grid-editor-controls');
@@ -4923,6 +4926,14 @@ class Floorplaner extends IPSModuleStrict
 
     document.querySelectorAll('[data-tool]').forEach(btn => {
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
+    });
+
+    // Sobald ein anderer Button der Editor-Leiste gedrückt wird, darf kein
+    // Platzierungs-/Verschiebe-Werkzeug aktiv bleiben.
+    document.querySelectorAll('.toolbar button:not([data-tool])').forEach(btn => {
+        btn.addEventListener('click', () => {
+            deactivateToolWithoutRender();
+        });
     });
 
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
