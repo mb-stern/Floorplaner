@@ -78,6 +78,9 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 - Konfigurationsformular aktualisiert.
 - Auswahl der Formen derjenigen der Möbel angepasst und um Pfeil und Dreieck erweitert.
 - Verhalten der Buttons im Editor überarbeitet.
+- Formen liegn nun unterhalb der Möbel, da sie Grundflächen markieren sollen.
+- Möbel und Formen werden nun alphabetisch gelistet.
+
 
 ### 1.9
 
