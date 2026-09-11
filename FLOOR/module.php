@@ -3078,6 +3078,36 @@ class Floorplaner extends IPSModuleStrict
             return 'style="fill:rgba(150,160,175,.18)"';
         }
 
+        // Formen liegen als eigene Ebene unter den Möbeln.
+        // Da viele Möbel-Symbole teilweise transparent gezeichnet werden, reicht
+        // die reine SVG-Reihenfolge nicht aus: Die Form würde sonst durch das
+        // Möbel hindurch sichtbar bleiben. Deshalb schneiden wir die Grundfläche
+        // jedes Möbels aus der Formen-Ebene heraus.
+        const furnitureMaskParts = [];
+        for (const furniture of floor.furniture || []) {
+            const tpl = furnitureTemplates[furniture.type] || furnitureTemplates.sofa;
+            const fw = Math.max(8, Number(furniture.width) || Number(tpl?.size?.w) || 100);
+            const fh = Math.max(8, Number(furniture.height) || Number(tpl?.size?.h) || 60);
+            const fx = Number(furniture.x) || 0;
+            const fy = Number(furniture.y) || 0;
+            const rotation = Number(furniture.rotation) || 0;
+
+            furnitureMaskParts.push(
+                `<rect x="${-fw / 2}" y="${-fh / 2}" width="${fw}" height="${fh}" ` +
+                `transform="translate(${fx} ${fy}) rotate(${rotation})" fill="black"/>`
+            );
+        }
+
+        parts.push(
+            `<defs><mask id="shapeBelowFurnitureMask" maskUnits="userSpaceOnUse" ` +
+            `x="-100000" y="-100000" width="200000" height="200000">` +
+            `<rect x="-100000" y="-100000" width="200000" height="200000" fill="white"/>` +
+            furnitureMaskParts.join('') +
+            `</mask></defs>`
+        );
+
+        parts.push(`<g class="shape-layer" mask="url(#shapeBelowFurnitureMask)">`);
+
         for (const shape of floor.shapes || []) {
             const sel = selected?.type === 'shape' && selected.id === shape.id;
             const cls = sel ? ' selection-shape' : '';
@@ -3224,6 +3254,8 @@ class Floorplaner extends IPSModuleStrict
 
             parts.push(`<text class="furniture-label" x="${nx}" y="${ny}" dy=".35em">${escapeHtml(shape.name)}</text>`);
         }
+
+        parts.push(`</g>`);
 
         for (const w of floor.walls) {
             const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
