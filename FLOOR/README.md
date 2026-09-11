@@ -80,6 +80,7 @@ Anschließend eine **Floorplaner-Instanz** anlegen, den Editor öffnen und den G
 - Verhalten der Buttons im Editor überarbeitet.
 - Formen liegn nun unterhalb der Möbel, da sie Grundflächen markieren sollen.
 - Möbel und Formen werden nun alphabetisch gelistet.
+- Floorplaner in Floorplan umbenannt
 
 
 ### 1.9
