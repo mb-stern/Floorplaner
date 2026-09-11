@@ -4469,6 +4469,7 @@ class Floorplaner extends IPSModuleStrict
                     <label>Möbeltyp</label>
                     <select data-field="type">
                         ${Object.entries(furnitureTemplates)
+                            .sort(([, a], [, b]) => String(a?.name || '').localeCompare(String(b?.name || ''), 'de', {sensitivity: 'base'}))
                             .map(([key,tpl]) => `<option value="${key}"${key === ftype ? ' selected' : ''}>${escapeHtml(tpl.name)}</option>`)
                             .join('')}
                     </select>
@@ -4549,9 +4550,11 @@ class Floorplaner extends IPSModuleStrict
                 <div class="field">
                     <label>Formtyp</label>
                     <select data-field="shapeKind">
-                        ${Object.entries(shapeNames).map(([key, name]) =>
-                            `<option value="${key}"${key === kind ? ' selected' : ''}>${escapeHtml(name)}</option>`
-                        ).join('')}
+                        ${Object.entries(shapeNames)
+                            .sort(([, a], [, b]) => String(a || '').localeCompare(String(b || ''), 'de', {sensitivity: 'base'}))
+                            .map(([key, name]) =>
+                                `<option value="${key}"${key === kind ? ' selected' : ''}>${escapeHtml(name)}</option>`
+                            ).join('')}
                     </select>
                 </div>
 
