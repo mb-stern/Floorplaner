@@ -2059,6 +2059,7 @@ HTML;
                 if (typeof shape.showName !== 'boolean') shape.showName = false;
                 if (typeof shape.fillEnabled !== 'boolean') shape.fillEnabled = false;
                 if (!['light', 'hatch', 'tiles'].includes(shape.fillMode)) shape.fillMode = 'light';
+                if (!Number.isFinite(Number(shape.fillRotation))) shape.fillRotation = 0;
                 if (!Number.isFinite(Number(shape.rotation))) shape.rotation = 0;
 
                 if (shape.kind === 'circle') {
@@ -3101,21 +3102,52 @@ HTML;
         const floor = currentFloor();
         const parts = [];
 
-        // Dezente Füllmuster für Formen. Bewusst nur eine kleine Auswahl.
-        parts.push(`
-            <defs>
-                <pattern id="shapePatternHatch" width="8" height="8" patternUnits="userSpaceOnUse">
-                    <path d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6"
-                          fill="none" stroke="var(--fp-text)" stroke-opacity=".28"
-                          stroke-width="1" vector-effect="non-scaling-stroke"/>
-                </pattern>
-                <pattern id="shapePatternTiles" width="18" height="12" patternUnits="userSpaceOnUse">
-                    <path d="M0,0 H18 V12 H0 Z M9,0 V12"
-                          fill="none" stroke="var(--fp-text)" stroke-opacity=".24"
-                          stroke-width="1" vector-effect="non-scaling-stroke"/>
-                </pattern>
-            </defs>
-        `);
+        // Dezente Füllmuster für Formen. Jedes Muster erhält pro Form eine
+        // eigene Definition, damit dessen Ausrichtung unabhängig von der Form
+        // über fillRotation gedreht werden kann.
+        function shapePatternId(shape, mode = '') {
+            const safeId = String(shape?.id || 'shape').replace(/[^A-Za-z0-9_-]/g, '');
+            return `shapePattern_${safeId}_${mode || shape?.fillMode || 'pattern'}`;
+        }
+
+        const shapePatternDefinitions = [];
+        for (const shape of floor.shapes || []) {
+            if (shape.fillEnabled !== true) continue;
+
+            const mode = shape.fillMode || 'light';
+            if (mode !== 'hatch' && mode !== 'tiles') continue;
+
+            const angle = Number.isFinite(Number(shape.fillRotation))
+                ? Number(shape.fillRotation)
+                : 0;
+            const patternId = shapePatternId(shape, mode);
+
+            if (mode === 'hatch') {
+                shapePatternDefinitions.push(`
+                    <pattern id="${patternId}" width="8" height="8"
+                             patternUnits="userSpaceOnUse"
+                             patternTransform="rotate(${angle})">
+                        <path d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6"
+                              fill="none" stroke="var(--fp-text)" stroke-opacity=".28"
+                              stroke-width="1" vector-effect="non-scaling-stroke"/>
+                    </pattern>
+                `);
+            } else {
+                shapePatternDefinitions.push(`
+                    <pattern id="${patternId}" width="18" height="12"
+                             patternUnits="userSpaceOnUse"
+                             patternTransform="rotate(${angle})">
+                        <path d="M0,0 H18 V12 H0 Z M9,0 V12"
+                              fill="none" stroke="var(--fp-text)" stroke-opacity=".24"
+                              stroke-width="1" vector-effect="non-scaling-stroke"/>
+                    </pattern>
+                `);
+            }
+        }
+
+        if (shapePatternDefinitions.length > 0) {
+            parts.push(`<defs>${shapePatternDefinitions.join('')}</defs>`);
+        }
         // Rollladen-Bedienelemente werden separat gesammelt und ganz zum Schluss
         // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
         // zuverlässig anklickbar.
@@ -3132,8 +3164,9 @@ HTML;
         function shapeFillAttribute(shape) {
             if (shape.fillEnabled !== true) return 'style="fill:none"';
             const mode = shape.fillMode || 'light';
-            if (mode === 'hatch') return 'style="fill:url(#shapePatternHatch)"';
-            if (mode === 'tiles') return 'style="fill:url(#shapePatternTiles)"';
+            if (mode === 'hatch' || mode === 'tiles') {
+                return `style="fill:url(#${shapePatternId(shape, mode)})"`;
+            }
             return 'style="fill:rgba(150,160,175,.18)"';
         }
 
@@ -4653,6 +4686,13 @@ HTML;
                                 <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
                             </select>
                         </div>
+                        ${(obj.fillMode === 'hatch' || obj.fillMode === 'tiles') ? `
+                            <div class="field">
+                                <label>Muster-Drehung (°)</label>
+                                <input data-field="fillRotation" type="number" min="-360" max="360" step="1"
+                                       value="${Math.round(Number(obj.fillRotation) || 0)}">
+                            </div>
+                        ` : ''}
                     ` : ''}
                 `}
             `;
@@ -4807,7 +4847,10 @@ HTML;
                     obj[fieldName] = value;
                 }
 
-                if (selected.type === 'shape' && fieldName === 'fillEnabled') {
+                if (
+                    selected.type === 'shape'
+                    && (fieldName === 'fillEnabled' || fieldName === 'fillMode')
+                ) {
                     refreshPropertiesAfterStructuralChange();
                 }
 
@@ -5584,7 +5627,8 @@ HTML;
                 y2: p.y + 30,
                 rotation: 0,
                 fillEnabled: false,
-                fillMode: 'light'
+                fillMode: 'light',
+                fillRotation: 0
             };
             floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
             floor.shapes.push(shape);
