@@ -177,6 +177,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.11
+
+- Inhalt der Formen kann nun rotiert werden, um eine andere Optik zu erzeugen.
+
 ### 1.10
 
 - Konfigurationsformular aktualisiert.
