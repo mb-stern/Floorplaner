@@ -179,7 +179,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ### 1.12
 
-- Letzte Output-Buffer Optimierung wieder rückgängig gemacht da offenbar IPSView nicht damit umgehen konnte. Das bedeutet für grössere Projekte dass allenfalls der Output-Buffer erhöht werden muss.
+- Letzte Output-Buffer Optimierung wieder rückgängig gemacht da offenbar IPSView nicht damit umgehen konnte. Das bedeutet für grössere Projekte, dass allenfalls der Output-Buffer erhöht werden muss.
 
 ### 1.11
 
