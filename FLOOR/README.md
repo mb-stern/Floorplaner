@@ -184,6 +184,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 ### 1.11
 
 - Inhalt der Formen kann nun rotiert werden, um eine andere Optik zu erzeugen.
+- Flackern der Stockwerk-Auswahl auf einigen Android Tablets behoben.
 
 ### 1.10
 
