@@ -810,13 +810,15 @@ class Floorplan extends IPSModuleStrict
         #viewbar {
             display: none;
             position: absolute;
-            left: 50%;
+            left: 0;
+            right: 0;
             bottom: 10px;
-            transform: translateX(-50%);
+            transform: none;
             z-index: 50;
-            pointer-events: auto;
+            pointer-events: none;
             gap: 6px;
             align-items: center;
+            justify-content: center;
         }
 
         #viewbar select {
@@ -829,10 +831,16 @@ class Floorplan extends IPSModuleStrict
             color: var(--fp-text);
             cursor: pointer;
             box-shadow: 0 2px 8px rgba(0,0,0,.35);
+            pointer-events: auto;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
         }
 
         #viewbar button {
             width: 36px;
+            pointer-events: auto;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
             height: 36px;
             min-width: 36px;
             min-height: 30px;
@@ -2662,17 +2670,43 @@ HTML;
     }
 
     function renderFloorSelect() {
-        const options = state.floors.map(f =>
-            `<option value="${escapeHtml(f.id)}"${f.id === state.activeFloor ? ' selected' : ''}>${escapeHtml(f.name)}</option>`
-        ).join('');
+        // Android-WebViews reagieren sichtbar auf ein wiederholtes Neuaufbauen
+        // nativer <select>-Elemente. Deshalb werden die Etagen-Optionen nur dann
+        // ersetzt, wenn sich IDs oder Namen der Etagen wirklich geändert haben.
+        const signature = state.floors
+            .map(f => `${String(f.id)}\u0000${String(f.name)}`)
+            .join('\u0001');
 
-        floorSelect.innerHTML = options;
+        if (renderFloorSelect._signature !== signature) {
+            const options = state.floors.map(f =>
+                `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`
+            ).join('');
+
+            floorSelect.innerHTML = options;
+            if (liveFloorSelect) {
+                liveFloorSelect.innerHTML = options;
+                updateLiveFloorSelectWidth();
+            }
+            renderFloorSelect._signature = signature;
+        }
+
+        if (floorSelect.value !== state.activeFloor) {
+            floorSelect.value = state.activeFloor;
+        }
 
         if (liveFloorSelect) {
-            liveFloorSelect.innerHTML = options;
-            liveFloorSelect.style.display = state.floors.length > 1 ? '' : 'none';
-            liveFloorSelect.disabled = state.floors.length <= 1;
-            updateLiveFloorSelectWidth();
+            if (liveFloorSelect.value !== state.activeFloor) {
+                liveFloorSelect.value = state.activeFloor;
+            }
+
+            const showLiveFloorSelect = state.floors.length > 1;
+            const wantedDisplay = showLiveFloorSelect ? '' : 'none';
+            if (liveFloorSelect.style.display !== wantedDisplay) {
+                liveFloorSelect.style.display = wantedDisplay;
+            }
+            if (liveFloorSelect.disabled === showLiveFloorSelect) {
+                liveFloorSelect.disabled = !showLiveFloorSelect;
+            }
         }
     }
 
