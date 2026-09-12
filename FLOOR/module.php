@@ -212,17 +212,35 @@ class Floorplan extends IPSModuleStrict
     public function GetVisualizationTile(): string
     {
         /*
-         * Output-Buffer-Optimierung:
-         * Die HTML-SDK-Kachel enthält weiterhin das komplette CSS und die komplette
-         * DOM-Struktur, aber nicht mehr den großen Editor-JavaScript-Block und auch
-         * nicht mehr das komplette Projekt inklusive Runtime-Metadaten.
+         * IPSView-kompatible Lade-Architektur:
+         * - easy-floorplan.js bleibt als einziges grosses externes Asset am WebHook.
+         * - Editor-JavaScript und Projekt-/Runtime-Daten werden wieder direkt in die
+         *   HTML-SDK-Kachel eingebettet.
+         * - Kein project.json-Fetch, kein nachgeladener Editor und kein Delay.
          *
-         * Beides wird über den bereits vorhandenen instanzbezogenen WebHook geladen.
-         * Damit bleibt GetVisualizationTile() unabhängig von der Projektgröße klein.
+         * Damit entspricht der Startablauf wieder der zuvor funktionierenden
+         * TileHTML/IPSView-Variante.
          */
         $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
-        $editorJavaScriptUrl = $this->GetVisualizationModuleWebHookUrl('floorplan-editor.js');
-        $projectUrl = $this->GetVisualizationModuleWebHookUrl('project.json');
+
+        $project = $this->AddRuntimeValues($this->GetProject());
+        $initial = json_encode(
+            $project,
+            JSON_UNESCAPED_SLASHES
+            | JSON_UNESCAPED_UNICODE
+            | JSON_HEX_TAG
+            | JSON_HEX_AMP
+        );
+
+        if ($initial === false) {
+            throw new RuntimeException('Floorplan-Startdaten konnten nicht serialisiert werden.');
+        }
+
+        $editorJavaScript = str_replace(
+            ['__INITIAL_PROJECT__', '__INSTANCE_ID__'],
+            [$initial, (string) $this->InstanceID],
+            $this->GetVisualizationEditorJavaScript()
+        );
 
         $html = <<<'HTML'
 <!doctype html>
@@ -1760,12 +1778,8 @@ class Floorplan extends IPSModuleStrict
 </div>
 
 <script>
-window.__FLOORPLAN_BOOTSTRAP__ = Object.freeze({
-    instanceId: __INSTANCE_ID__,
-    projectUrl: '__FLOORPLAN_PROJECT_URL__'
-});
+__FLOORPLAN_EDITOR_JAVASCRIPT__
 </script>
-<script defer src="__FLOORPLAN_EDITOR_JS_URL__"></script>
 
 
 </body>
@@ -1774,16 +1788,12 @@ HTML;
 
         return str_replace(
             [
-                '__INSTANCE_ID__',
                 '__EASY_FLOORPLAN_MODULE_URL__',
-                '__FLOORPLAN_EDITOR_JS_URL__',
-                '__FLOORPLAN_PROJECT_URL__'
+                '__FLOORPLAN_EDITOR_JAVASCRIPT__'
             ],
             [
-                (string) $this->InstanceID,
                 htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-                htmlspecialchars($editorJavaScriptUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-                htmlspecialchars($projectUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                $editorJavaScript
             ],
             $html
         );
@@ -1793,24 +1803,8 @@ HTML;
     {
         return <<<'JAVASCRIPT'
 (async () => {
-    const bootstrap = window.__FLOORPLAN_BOOTSTRAP__ || {};
-    const projectUrl = String(bootstrap.projectUrl || '');
-
-    if (!projectUrl) {
-        throw new Error('Projekt-URL fehlt.');
-    }
-
-    const response = await fetch(projectUrl, {
-        cache: 'no-store',
-        credentials: 'same-origin'
-    });
-
-    if (!response.ok) {
-        throw new Error(`Floorplan-Projekt konnte nicht geladen werden (${response.status}).`);
-    }
-
-    const initial = await response.json();
-    const instanceID = Number(bootstrap.instanceId) || 0;
+    const initial = __INITIAL_PROJECT__;
+    const instanceID = __INSTANCE_ID__;
     const lastViewFloorStorageKey = `floorplaner:lastViewFloor:${instanceID}`;
     const svg = document.getElementById('viewport');
     const scene = document.getElementById('scene');
@@ -7299,9 +7293,7 @@ JAVASCRIPT;
     private function GetVisualizationWebHookAssets(): array
     {
         return [
-            'easy-floorplan.js',
-            'floorplan-editor.js',
-            'project.json'
+            'easy-floorplan.js'
         ];
     }
 
@@ -7342,50 +7334,6 @@ JAVASCRIPT;
                 http_response_code(404);
                 header('Content-Type: text/plain; charset=utf-8');
                 echo 'Not found';
-                return;
-            }
-
-            /*
-             * Dynamische Projekt-/Runtime-Daten werden nicht mehr in die HTML-SDK-
-             * Ausgabe eingebettet. Dadurch kann ein großer Floorplan den Output-
-             * Buffer von GetVisualizationTile() nicht mehr vergrößern.
-             */
-            if ($asset === 'project.json') {
-                $project = $this->AddRuntimeValues($this->GetProject());
-                $payload = json_encode(
-                    $project,
-                    JSON_UNESCAPED_SLASHES
-                    | JSON_UNESCAPED_UNICODE
-                    | JSON_HEX_TAG
-                    | JSON_HEX_AMP
-                );
-
-                if ($payload === false) {
-                    throw new RuntimeException('Floorplan-Projekt konnte nicht serialisiert werden.');
-                }
-
-                header('Content-Type: application/json; charset=utf-8');
-                header('X-Content-Type-Options: nosniff');
-                header('Cache-Control: no-store, no-cache, must-revalidate');
-                header('Pragma: no-cache');
-                header('Content-Length: ' . strlen($payload));
-                echo $payload;
-                return;
-            }
-
-            /*
-             * Der komplette Floorplan-Editor bleibt Bestandteil dieser module.php.
-             * Er wird nur nicht mehr über GetVisualizationTile() ausgegeben, sondern
-             * bei Bedarf direkt über den WebHook ausgeliefert.
-             */
-            if ($asset === 'floorplan-editor.js') {
-                $source = $this->GetVisualizationEditorJavaScript();
-
-                header('Content-Type: text/javascript; charset=utf-8');
-                header('X-Content-Type-Options: nosniff');
-                header('Cache-Control: no-cache');
-                header('Content-Length: ' . strlen($source));
-                echo $source;
                 return;
             }
 
