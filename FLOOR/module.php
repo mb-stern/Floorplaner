@@ -213,60 +213,1604 @@ class Floorplan extends IPSModuleStrict
     {
         /*
          * Output-Buffer-Optimierung:
-         * Die HTML-SDK-Kachel enthält CSS, DOM und Editor-JavaScript wieder direkt,
-         * damit auch eingebettete HTML-SDK-Clients wie IPSView TileHTML ohne
-         * zusätzliche fetch-/Script-Nachladewege funktionieren.
+         * Die HTML-SDK-Kachel enthält weiterhin das komplette CSS und die komplette
+         * DOM-Struktur, aber nicht mehr den großen Editor-JavaScript-Block und auch
+         * nicht mehr das komplette Projekt inklusive Runtime-Metadaten.
          *
-         * Das komplette Projekt inklusive Runtime-Metadaten bleibt dagegen aus der
-         * initialen Tile-Ausgabe heraus und wird über requestAction('loadProject')
-         * nachgeladen. Damit wächst GetVisualizationTile() nicht mehr mit der
-         * Projektgröße.
+         * Beides wird über den bereits vorhandenen instanzbezogenen WebHook geladen.
+         * Damit bleibt GetVisualizationTile() unabhängig von der Projektgröße klein.
          */
         $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
+        $editorJavaScriptUrl = $this->GetVisualizationModuleWebHookUrl('floorplan-editor.js');
+        $projectUrl = $this->GetVisualizationModuleWebHookUrl('project.json');
 
-        $editorJavaScript = <<<'JAVASCRIPT'
-(async () => {
-    const instanceID = __INSTANCE_ID__;
-    const pendingBootstrapMessages = [];
-
-    const initial = await new Promise((resolve, reject) => {
-        let completed = false;
-
-        const timeout = setTimeout(() => {
-            if (completed) return;
-            completed = true;
-            reject(new Error('Floorplan-Projekt konnte nicht über das HTML-SDK geladen werden.'));
-        }, 10000);
-
-        // Bereits vor der vollständigen Initialisierung einen Message-Handler
-        // bereitstellen, damit die Antwort auf loadProject nicht verloren geht.
-        window.handleMessage = message => {
-            try {
-                const data = typeof message === 'string' ? JSON.parse(message) : message;
-
-                if (!completed && data?.type === 'project' && data.project) {
-                    completed = true;
-                    clearTimeout(timeout);
-                    resolve(data.project);
-                    return;
-                }
-
-                // Andere Nachrichten während des Starts später noch abarbeiten.
-                pendingBootstrapMessages.push(message);
-            } catch (error) {
-                console.error('Floorplan Bootstrap Message', error);
-            }
-        };
-
-        try {
-            requestAction('loadProject', '');
-        } catch (error) {
-            clearTimeout(timeout);
-            completed = true;
-            reject(error);
+        $html = <<<'HTML'
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="/icons.js"></script>
+    <script type="module" src="__EASY_FLOORPLAN_MODULE_URL__"></script>
+    <style>
+        :root {
+            --fp-bg: transparent;
+            --fp-panel: rgba(38,38,38,.96);
+            --fp-panel-2: rgba(54,54,54,.96);
+            --fp-border: rgba(255,255,255,.16);
+            --fp-text: #f2f2f2;
+            --fp-muted: #b8b8b8;
+            --fp-grid: rgba(255,255,255,.14);
+            --fp-accent: #4da3ff;
+            --fp-danger: #e35d6a;
         }
+
+        html[data-theme="light"] {
+            --fp-bg: transparent;
+            --fp-panel: rgba(232,232,232,.98);
+            --fp-panel-2: rgba(218,218,218,.98);
+            --fp-border: rgba(0,0,0,.34);
+            --fp-text: #111111;
+            --fp-muted: #444444;
+            --fp-grid: rgba(0,0,0,.24);
+            --fp-accent: #1769aa;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: transparent !important;
+            color: var(--fp-text);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        button, input, select {
+            font: inherit;
+        }
+
+        #app {
+            display: grid;
+            grid-template-rows: 1fr auto;
+            width: 100%;
+            height: 100%;
+            min-height: 420px;
+            position: relative;
+        }
+
+        /* HTML-SDK: Bedienelemente bewusst UNTEN.
+           Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            padding: 8px;
+            background: var(--fp-panel);
+            border-top: 1px solid var(--fp-border);
+        }
+
+        .toolbar .group {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            padding-right: 8px;
+            margin-right: 2px;
+            border-right: 1px solid var(--fp-border);
+        }
+
+        .toolbar button,
+        .toolbar select {
+            min-height: 32px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .toolbar button.active {
+            outline: 2px solid var(--fp-accent);
+            background: color-mix(in srgb, var(--fp-accent) 30%, var(--fp-panel-2));
+        }
+
+        .toolbar button.danger {
+            color: #ffd4d8;
+        }
+
+        .toolbar .spacer { flex: 1; }
+
+        .status {
+            color: var(--fp-muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .main {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            min-height: 0;
+        }
+
+        .canvas-wrap {
+            position: relative;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        #viewport {
+            width: 100%;
+            height: 100%;
+            display: block;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .sidebar {
+            min-width: 0;
+            overflow: auto;
+            padding: 12px;
+            background: var(--fp-panel);
+            border-left: 1px solid var(--fp-border);
+        }
+
+        .sidebar h3 {
+            margin: 0 0 12px 0;
+            font-size: 15px;
+        }
+
+        .field {
+            display: grid;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+
+        .field label {
+            color: var(--fp-muted);
+            font-size: 12px;
+        }
+
+        .field input,
+        .field select {
+            width: 100%;
+            min-height: 32px;
+            padding: 5px 7px;
+            border: 1px solid var(--fp-border);
+            border-radius: 5px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+        }
+
+        .row2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .help {
+            margin-top: 12px;
+            color: var(--fp-muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .selection-box {
+            fill: none;
+            stroke: var(--fp-accent);
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+            stroke-dasharray: 7 4;
+            pointer-events: none;
+        }
+
+        .drawing-shape {
+            fill: none;
+            stroke: var(--fp-text);
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+            cursor: move;
+        }
+
+        /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
+           mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
+        .drawing-shape-hit {
+            fill: transparent;
+            stroke: transparent;
+            stroke-width: 7;
+            vector-effect: non-scaling-stroke;
+            pointer-events: all;
+            cursor: move;
+        }
+        .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
+        }
+
+        .wall {
+            stroke: #ececec;
+            stroke-width: 12;
+            stroke-linecap: square;
+            vector-effect: non-scaling-stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .wall {
+            cursor: pointer;
+        }
+
+        .wall.selected {
+            stroke: #74b9ff;
+        }
+
+        .opening {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening {
+            cursor: pointer;
+        }
+
+        /* Größere Trefferfläche nur für die Öffnung selbst.
+           Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
+        .shutter-control {
+            pointer-events: all;
+            isolation: isolate;
+        }
+
+        .shutter-control circle:not(.shutter-hit) {
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .shutter-control .shutter-hit {
+            fill: transparent;
+            stroke: transparent;
+            pointer-events: all;
+        }
+
+        .shutter-control text {
+            fill: #202020;
+            stroke: none;
+            font-size: 12px;
+            font-weight: 700;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .shutter-control circle:not(.shutter-hit) {
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
+        }
+
+        html[data-theme="light"] .shutter-control text {
+            fill: #202020;
+            stroke: none;
+        }
+
+        .opening-hit {
+            stroke: transparent;
+            stroke-width: 22;
+            fill: none;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening-hit {
+            cursor: move;
+        }
+
+        .opening-gap {
+            stroke: #303030;
+            stroke-width: 16;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .opening-line {
+            stroke: #d7d7d7;
+            stroke-width: 3;
+            fill: none;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .opening.selected .opening-line {
+            stroke: #74b9ff;
+        }
+
+        .opening-state-open {
+            stroke: #4da3ff;
+        }
+
+        .opening-shutter {
+            stroke: #b8c4d8;
+            stroke-width: 5;
+            vector-effect: non-scaling-stroke;
+            stroke-linecap: butt;
+        }
+
+        .opening-shutter-slat {
+            stroke: #8695aa;
+            stroke-width: 1.4;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .furniture {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .furniture {
+            cursor: move;
+        }
+
+        .furniture-shape {
+            fill: rgba(150, 160, 175, .18);
+            stroke: #9ca9ba;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .furniture.selected .furniture-shape {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
+        .furniture-label {
+            fill: var(--fp-text);
+            font-size: 11px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
+        .device {
+            cursor: pointer;
+        }
+
+        .device circle {
+            fill: #404040;
+            stroke: #dedede;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .device.selected circle {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
+        /* Klima / Heizung: bewusst als kleines Wand-Bedienteil statt
+           als rundes Thermostat-/Messwertsymbol darstellen. */
+        .device .climate-panel {
+            fill: #404040;
+            stroke: #dedede;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .device .climate-panel-display {
+            fill: rgba(255,255,255,.08);
+            stroke: #9aa6b2;
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device .climate-panel-dot {
+            fill: #bfc8d2;
+            stroke: none;
+            pointer-events: none;
+        }
+
+        .device.selected .climate-panel {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
+        /* Boolean-Statusring für alle Geräte mit Bool-Variable.
+           Die Farbe kommt je Gerät aus --device-status-color. */
+        /* Numerischer Status: Die normale Geräte-Kontur bleibt immer erhalten.
+           Nur dieser zusätzliche Farbring wird mit dem Zahlenwert ein-/ausgeblendet. */
+        .device.numeric-status .device-status-ring {
+            fill: none;
+            stroke: var(--device-status-color, #ffe66d);
+            stroke-width: 2;
+            stroke-opacity: var(--device-status-opacity, 1);
+            filter: drop-shadow(0 0 var(--device-status-glow, 0px) var(--device-status-color, #ffe66d));
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
+        }
+
+        /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
+        .device.active-light.boolean-active circle {
+            fill: #5b5422;
+        }
+
+        .device.inactive-light {
+            opacity: .72;
+        }
+
+        .resize-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 0.4;
+            vector-effect: non-scaling-stroke;
+            cursor: nwse-resize;
+            pointer-events: all;
+        }
+
+        .device .resize-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 0.4;
+        }
+
+        /* Light-Theme: Resize-/Verschiebepunkte schwarz darstellen.
+           Im Dark-Theme bleiben sie weiß. */
+        html[data-theme="light"] .resize-handle {
+            fill: #111111;
+        }
+
+        html[data-theme="light"] .rotate-handle {
+            fill: #111111;
+        }
+
+        /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
+           Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
+        .device-direct-slider {
+            cursor: pointer;
+        }
+
+        .device-direct-slider-hit {
+            stroke: transparent;
+            stroke-width: 30;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+        }
+
+        .device-direct-slider-track {
+            stroke: rgba(160,170,185,.65);
+            stroke-width: 4;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device-direct-slider-fill {
+            stroke: #d7e9ff;
+            stroke-width: 5;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device-direct-slider-thumb {
+            fill: #ffffff;
+            stroke: #66788a;
+            stroke-width: 1.4;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        #app:not(.view-mode) .device-direct-slider {
+            pointer-events: none;
+            opacity: .65;
+        }
+
+        .rotate-handle-line {
+            stroke: #74b9ff;
+            stroke-width: 0.6;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .rotate-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 0.6;
+            vector-effect: non-scaling-stroke;
+            cursor: grab;
+            pointer-events: all;
+        }
+
+        .rotate-handle:active {
+            cursor: grabbing;
+        }
+
+        .check {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            width: auto;
+            font-size: 12px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+
+        .check input[type="checkbox"] {
+            width: 13px !important;
+            height: 13px !important;
+            min-width: 13px !important;
+            max-width: 13px !important;
+            margin: 0;
+            padding: 0;
+            flex: 0 0 13px;
+        }
+
+        .device-label {
+            pointer-events: none;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+        }
+
+        .device-label,
+        .runtime-value,
+        .plan-text {
+            fill: white;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+            line-height: 1;
+            paint-order: stroke;
+            stroke: rgba(0,0,0,.35);
+            stroke-width: 2px;
+            text-rendering: geometricPrecision;
+        }
+
+        .grid-line {
+            stroke: rgba(255,255,255,.09);
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .preview-line {
+            stroke: #74b9ff;
+            stroke-width: 3;
+            stroke-dasharray: 7 5;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        #viewbar {
+            display: none;
+            position: absolute;
+            left: 50%;
+            bottom: 10px;
+            transform: translateX(-50%);
+            z-index: 50;
+            pointer-events: auto;
+            gap: 6px;
+            align-items: center;
+        }
+
+        #viewbar select {
+            height: 36px;
+            max-width: none;
+            padding: 0 26px 0 9px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,.35);
+        }
+
+        #viewbar button {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 30px;
+            padding: 0;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            font-size: 20px;
+            line-height: 34px;
+            text-align: center;
+            cursor: pointer;
+            pointer-events: auto;
+            touch-action: manipulation;
+            box-shadow: 0 2px 8px rgba(0,0,0,.35);
+        }
+
+        #app.view-mode .toolbar { display: none; }
+        #app.view-mode #viewbar { display: flex; }
+        #app.view-mode .main { grid-template-columns: 1fr; }
+        #app.view-mode .sidebar { display: none; }
+
+        /* Bedienansicht:
+           Nur echte Geräte sollen mit dem Hand-Cursor als bedienbar erscheinen.
+           Wände, Türen/Fenster, Möbel und Texte sind hier reine Darstellung. */
+        #app.view-mode .wall,
+        #app.view-mode .opening,
+        #app.view-mode .opening-hit,
+        #app.view-mode .furniture,
+        #app.view-mode .plan-text {
+            cursor: default !important;
+        }
+
+        #app.view-mode .device {
+            cursor: pointer !important;
+        }
+
+        /* Zusätzliche, direkt am SVG-Szenen-Container gesetzte Laufzeitregel.
+           Damit werden auch Cursor von Unterelementen (SVG-Pfade, Linien usw.)
+           sicher überschrieben. */
+        #scene.runtime-view,
+        #scene.runtime-view * {
+            cursor: default !important;
+        }
+
+        #scene.runtime-view .device,
+        #scene.runtime-view .device * {
+            cursor: pointer !important;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(0,0,0,.62);
+            z-index: 1000;
+        }
+
+        .modal-backdrop.open { display: flex; }
+
+        .modal {
+            width: min(760px, 96vw);
+            max-height: min(720px, 90vh);
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            overflow: hidden;
+            border: 1px solid var(--fp-border);
+            border-radius: 10px;
+            background: var(--fp-panel);
+            box-shadow: 0 16px 60px rgba(0,0,0,.45);
+        }
+
+        .modal h3 {
+            margin: 0;
+            padding: 14px;
+            border-bottom: 1px solid var(--fp-border);
+        }
+
+        .modal-search {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--fp-border);
+        }
+
+        .modal-search input {
+            width: 100%;
+            min-height: 34px;
+            padding: 6px 9px;
+            color: var(--fp-text);
+            background: var(--fp-panel-2);
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+        }
+
+        .variable-list {
+            overflow: auto;
+            padding: 6px;
+        }
+
+        .variable-row {
+            display: grid;
+            grid-template-columns: 90px 1fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .variable-row:hover { background: color-mix(in srgb, var(--fp-text) 8%, transparent); }
+        .variable-id { color: #9fc7ff; font-family: monospace; }
+        .variable-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .variable-type { color: var(--fp-muted); font-size: 11px; }
+
+        .object-tree { padding: 4px 2px 10px; }
+        .tree-node { user-select: none; }
+        .tree-row {
+            min-height: 31px;
+            display: grid;
+            grid-template-columns: 22px 24px minmax(120px, 1fr) auto auto;
+            gap: 5px;
+            align-items: center;
+            padding: 3px 8px 3px calc(8px + (var(--depth, 0) * 18px));
+            border-radius: 5px;
+        }
+        .tree-row:hover { background: color-mix(in srgb, var(--fp-text) 7%, transparent); }
+        .tree-toggle { width: 22px; text-align: center; color: var(--fp-muted); cursor: pointer; }
+        .tree-icon { text-align: center; }
+        .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tree-id { color: #9fc7ff; font-family: monospace; font-size: 11px; }
+        .tree-value { color: var(--fp-muted); font-size: 11px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tree-row.variable { cursor: pointer; }
+        .tree-row.variable.selected-variable { outline: 1px solid #74b9ff; background: rgba(116,185,255,.12); }
+        .tree-children.collapsed { display: none; }
+        .tree-empty { padding: 16px; color: var(--fp-muted); text-align: center; }
+        .variable-select-field { cursor: pointer !important; caret-color: transparent; }
+        .variable-select-field:hover { outline: 1px solid #74b9ff; }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--fp-border);
+        }
+
+        .modal-actions button {
+            min-height: 32px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 5px 12px;
+            cursor: pointer;
+        }
+
+        .device-value-box {
+            fill: rgba(255,255,255,.08);
+            stroke: currentColor;
+            stroke-width: 0.8;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .runtime-value {
+            fill: #d7e9ff !important;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+        }
+
+        .runtime-value-frame {
+            fill: rgba(255,255,255,.06);
+            stroke: currentColor;
+            stroke-width: 1.2;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .runtime-value-frame {
+            fill: rgba(255,255,255,.78);
+            stroke: #5f5f5f;
+        }
+
+        /* Reine Status-/Messwertvariablen ohne Aktion sind im Bedienmodus
+           bewusst nicht als klickbares Bedienelement dargestellt. */
+        #app.view-mode .device.status-only,
+        #app.view-mode .device.status-only *,
+        #scene.runtime-view .device.status-only,
+        #scene.runtime-view .device.status-only * {
+            cursor: default !important;
+            pointer-events: none !important;
+        }
+
+        .control-modal {
+            width: max-content;
+            min-width: 0;
+            max-width: 92vw;
+            max-height: min(620px, 86vh);
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            overflow: hidden;
+            border: 1px solid var(--fp-border);
+            border-radius: 10px;
+            background: var(--fp-panel);
+            box-shadow: 0 16px 60px rgba(0,0,0,.45);
+        }
+
+        .control-modal h3 {
+            margin: 0;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--fp-border);
+        }
+
+        .control-body {
+            padding: 10px 12px;
+            overflow: visible;
+            width: max-content;
+            max-width: calc(92vw - 24px);
+        }
+
+        .control-slider { min-width: 260px; padding: 6px 2px; }
+        .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .control-slider-row { display: grid; grid-template-columns: 38px minmax(180px, 1fr) 38px; gap: 8px; align-items: center; }
+        .control-slider-row button {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            min-height: 38px;
+            padding: 0;
+            font-size: 22px;
+            line-height: 36px;
+            touch-action: manipulation;
+        }
+        .control-slider input[type="range"] {
+            width: 100%;
+            min-height: 38px;
+            margin: 0;
+            cursor: pointer;
+            touch-action: none;
+        }
+        .control-slider input[type="range"]::-webkit-slider-thumb {
+            width: 22px;
+            height: 22px;
+        }
+        .control-slider input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+        }
+
+        .control-associations {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            margin: 0;
+            width: max-content;
+            max-width: 100%;
+        }
+
+        .control-associations button,
+        .control-actions button,
+        #controlRangeApply {
+            min-height: 36px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
+        .control-associations button {
+            width: auto;
+            min-width: 0;
+            max-width: 100%;
+            min-height: 28px;
+            padding: 4px 12px;
+            white-space: nowrap;
+            align-self: flex-start;
+        }
+
+        .control-associations button.current {
+            outline: 2px solid var(--fp-text);
+            outline-offset: 2px;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55);
+            font-weight: 700;
+        }
+
+        .control-range {
+            display: grid;
+            gap: 8px;
+        }
+
+        .control-range input[type="range"] {
+            width: 100%;
+        }
+
+        .control-range-value {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .control-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--fp-border);
+        }
+
+        .profile-hint {
+            color: var(--fp-muted);
+            font-size: 11px;
+            line-height: 1.35;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 800px) {
+            .main {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr auto;
+            }
+            .sidebar {
+                max-height: 220px;
+                border-left: 0;
+                border-top: 1px solid var(--fp-border);
+            }
+        }
+            .device-glyph { color: currentColor; pointer-events: none; }
+        .device-glyph * { vector-effect: non-scaling-stroke; }
+
+
+
+        .grid-editor-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            width: auto;
+            flex: 0 0 auto;
+        }
+
+        .grid-size-input {
+            width: 4.5ch;
+            min-width: 4.5ch;
+            max-width: 4.5ch;
+            box-sizing: content-box;
+            padding-left: 4px;
+            padding-right: 2px;
+            flex: 0 0 auto;
+        }
+
+        .view-mode .grid-editor-controls {
+            display: none !important;
+        }
+
+
+        html,
+        body,
+        #app,
+        .main,
+        .canvas-wrap,
+        #viewport,
+        #scene {
+            background: transparent !important;
+            background-color: transparent !important;
+        }
+
+        /* Wie bei Energiefluss/Wärmepumpe:
+           Die eigentliche Visualisierung malt KEINEN eigenen Hintergrund.
+           Dadurch kommt die reale Kachelfarbe direkt von Symcon. */
+        #viewport,
+        #viewport * {
+            --card-background-color: transparent;
+        }
+
+
+        html[data-theme="light"] .wall,
+        html[data-theme="light"] .opening,
+        html[data-theme="light"] .furniture,
+        html[data-theme="light"] .device,
+        html[data-theme="light"] .label,
+        html[data-theme="light"] text,
+        html[data-theme="light"] tspan {
+            color: #111111;
+        }
+
+        html[data-theme="light"] .wall {
+            stroke: #181818;
+        }
+
+        /* Gezeichnete Formen im hellen Theme an die übrigen Konturlinien
+           angleichen. Im dunklen Theme bleibt die bestehende Darstellung
+           über var(--fp-text) unverändert. */
+        html[data-theme="light"] .drawing-shape {
+            /* Gleiche sichtbare Linienfarbe wie Tür/Fenster im hellen Theme.
+               #252525 war deutlich dunkler als die späteren Light-Theme-Regeln
+               für Wand (#4a4a4a) und Öffnung (#5f5f5f). */
+            stroke: #5f5f5f;
+        }
+
+        html[data-theme="light"] .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
+        }
+
+        html[data-theme="light"] .furniture {
+            color: #222222;
+        }
+
+        html[data-theme="light"] .device circle {
+            fill: #f2f2f2;
+            stroke: rgba(0,0,0,.62);
+        }
+
+        html[data-theme="light"] .device.active-light circle {
+            fill: #fff2a8;
+            stroke: #8a7200;
+        }
+
+        html[data-theme="light"] .device-glyph {
+            color: #111111;
+        }
+
+        /* Möbel im hellen Theme:
+           helle Flächen + dunkle Konturen, damit Details nicht in dunklen
+           Eigenfüllungen verschwinden. */
+        html[data-theme="light"] .furniture {
+            color: #252525;
+        }
+
+        html[data-theme="light"] .furniture [fill="currentColor"] {
+            fill: #eeeeee !important;
+            stroke: #252525 !important;
+        }
+
+        html[data-theme="light"] .furniture [fill="none"] {
+            stroke: #252525 !important;
+        }
+
+        html[data-theme="light"] .furniture.selected [fill="currentColor"],
+        html[data-theme="light"] .furniture.selected [fill="none"] {
+            stroke: #1769aa !important;
+        }
+
+        html[data-theme="light"] .opening {
+            stroke: #202020;
+        }
+
+        html[data-theme="light"] .grid-line {
+            stroke: rgba(0,0,0,.24);
+        }
+
+        html[data-theme="light"] button,
+        html[data-theme="light"] input,
+        html[data-theme="light"] select {
+            color: #111111;
+            border-color: rgba(0,0,0,.34);
+        }
+
+        html[data-theme="light"] button {
+            background: rgba(224,224,224,.98);
+        }
+
+        html[data-theme="light"] button.danger {
+            color: #111111;
+        }
+
+        html[data-theme="light"] button:hover {
+            background: rgba(205,205,205,.98);
+        }
+
+        html[data-theme="light"] input,
+        html[data-theme="light"] select {
+            background: rgba(245,245,245,.98);
+        }
+
+        html[data-theme="light"] .properties,
+        html[data-theme="light"] .toolbar,
+        html[data-theme="light"] .bottom-bar,
+        html[data-theme="light"] .modal,
+        html[data-theme="light"] .picker {
+            background: var(--fp-panel);
+            color: var(--fp-text);
+            border-color: var(--fp-border);
+        }
+
+        /* Helles Symcon-Theme:
+           Dark bleibt unverändert. Im hellen Theme die Grundrisszeichnung
+           bewusst weicher als reines Schwarz darstellen. */
+        html[data-theme="light"] .wall {
+            stroke: #4a4a4a;
+        }
+
+        /* Markierte Wände sollen auch im Light-Theme wie alle anderen
+           selektierten Elemente blau hervorgehoben werden. */
+        html[data-theme="light"] .wall.selected {
+            stroke: #74b9ff;
+        }
+
+        html[data-theme="light"] .opening-gap {
+            stroke: #f5f5f5;
+        }
+
+        html[data-theme="light"] .opening-line {
+            stroke: #5f5f5f;
+        }
+
+        /* Offenes Fenster muss auch im hellen Theme blau bleiben.
+           Diese spezifischere Regel verhindert, dass die allgemeine
+           helle Fensterfarbe den Offen-Status überschreibt. */
+        html[data-theme="light"] .opening-line.opening-state-open {
+            stroke: #1769aa;
+        }
+
+        html[data-theme="light"] .opening-shutter {
+            stroke: #707070;
+        }
+
+        html[data-theme="light"] .opening-shutter-slat {
+            stroke: #8a8a8a;
+        }
+
+        html[data-theme="light"] .furniture {
+            color: #555555;
+        }
+
+        html[data-theme="light"] .furniture [fill="currentColor"] {
+            fill: rgba(90,90,90,.08) !important;
+            stroke: #555555 !important;
+        }
+
+        html[data-theme="light"] .furniture [fill="none"] {
+            stroke: #555555 !important;
+        }
+
+        html[data-theme="light"] .device circle {
+            fill: rgba(255,255,255,.72);
+            stroke: #777777;
+        }
+
+        /* Aktive Bool-Geräte müssen auch im hellen Theme ihre konfigurierte
+           Statusfarbe behalten. Diese Regel steht bewusst nach der allgemeinen
+           hellen Geräte-Kontur, damit diese die Statusfarbe nicht überschreibt. */
+        html[data-theme="light"] .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(
+                0 0 var(--device-status-glow, 7px)
+                var(--device-status-color, #ffe66d)
+            );
+        }
+
+        html[data-theme="light"] .device .climate-panel {
+            fill: rgba(255,255,255,.82);
+            stroke: #777777;
+        }
+
+        html[data-theme="light"] .device .climate-panel-display {
+            fill: rgba(80,80,80,.07);
+            stroke: #888888;
+        }
+
+        html[data-theme="light"] .device .climate-panel-dot {
+            fill: #666666;
+        }
+
+        html[data-theme="light"] .device-glyph {
+            color: #555555;
+        }
+
+        html[data-theme="light"] .runtime-value {
+            fill: #4a4a4a !important;
+        }
+
+        html[data-theme="light"] .label,
+        html[data-theme="light"] text,
+        html[data-theme="light"] tspan,
+        html[data-theme="light"] .furniture-label {
+            fill: #303030;
+            color: #303030;
+            stroke: none !important;
+            paint-order: normal !important;
+            text-rendering: geometricPrecision;
+        }
+
+        /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
+           Das verhindert den verwaschenen Eindruck bei Text und Symbolen. */
+        html[data-theme="light"] #scene text,
+        html[data-theme="light"] #scene tspan {
+            stroke: none !important;
+            filter: none !important;
+        }
+
+        html[data-theme="light"] .device-glyph,
+        html[data-theme="light"] .furniture,
+        html[data-theme="light"] .opening,
+        html[data-theme="light"] .wall {
+            filter: none !important;
+        }
+
+        html[data-theme="light"] .status,
+        html[data-theme="light"] .hint,
+        html[data-theme="light"] small {
+            color: var(--fp-muted);
+        }
+
+
+        /* Kamera-/Stream-Popup: klein starten, bei Bedarf vergrößern. */
+        .stream-popup-body {
+            display: grid;
+            gap: 8px;
+            width: min(320px, calc(100vw - 32px));
+            max-width: 100%;
+        }
+
+        .stream-view {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            height: auto;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
+            overflow: hidden;
+            border-radius: 7px;
+            background: #000;
+        }
+
+        .stream-view img {
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+            object-fit: contain;
+            background: #000;
+        }
+
+        #controlModal.stream-expanded .stream-popup-body {
+            width: min(960px, calc(100vw - 32px));
+            max-width: 100%;
+        }
+
+        #controlModal.stream-expanded .stream-view {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
+        }
+
+        .stream-popup-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .stream-popup-actions button {
+            min-height: 32px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
+        #controlModal {
+            background: transparent;
+            padding: 0;
+            align-items: initial;
+            justify-content: initial;
+            pointer-events: none;
+        }
+
+        #controlModal.open {
+            display: block;
+        }
+
+        #controlModal .control-modal {
+            position: fixed;
+            margin: 0;
+            pointer-events: auto;
+            max-width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        /* Einheitlicher Cursor für den Grundriss:
+           Über allen gezeichneten Elementen und Bearbeitungsgriffen wird
+           bewusst immer die Hand angezeigt. Damit gibt es keine wechselnden
+           Pfeil-, Verschiebe- oder Resize-Cursor mehr. */
+        #scene,
+        #scene * {
+            cursor: pointer !important;
+        }
+
+        /* IP-Symcon / Font-Awesome Icons aus /icons.js */
+        .device-icon-html {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--fp-text);
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .device-icon-html {
+            color: #4f4f4f;
+        }
+
+        .icon-select-button {
+            width: 100%;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 6px 9px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .icon-select-button i {
+            width: 22px;
+            text-align: center;
+            font-size: 18px;
+        }
+
+        .bool-icon-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .bool-icon-field {
+            display: grid;
+            gap: 4px;
+        }
+
+        .bool-icon-field > label {
+            color: var(--fp-muted);
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .bool-icon-button {
+            width: 100%;
+            min-height: 38px;
+            padding: 4px;
+            justify-content: center;
+        }
+
+        .bool-icon-button .icon-select-preview {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+        }
+
+        .icon-select-preview {
+            width: 24px;
+            height: 24px;
+            flex: 0 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: currentColor;
+        }
+
+        .icon-select-preview svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+            fill: currentColor;
+            color: inherit;
+        }
+
+        .symcon-icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+            gap: 6px;
+            padding: 8px;
+        }
+
+        .symcon-icon-grid button {
+            min-width: 0;
+            height: 46px;
+            padding: 4px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .symcon-icon-grid button:hover,
+        .symcon-icon-grid button.current {
+            outline: 2px solid var(--fp-accent);
+        }
+
+        .device-icon-html svg {
+            width: 1em;
+            height: 1em;
+            display: block;
+            margin: auto;
+            fill: currentColor;
+            color: inherit;
+        }
+
+        .symcon-icon-grid button svg {
+            width: 1.15em;
+            height: 1.15em;
+            display: block;
+            margin: auto;
+            fill: currentColor;
+            color: inherit;
+        }
+
+        .icon-picker-hint {
+            padding: 6px 14px 0;
+            color: var(--fp-muted);
+            font-size: 11px;
+        }
+
+</style>
+</head>
+<body>
+<div id="app">
+    <div class="main">
+        <div class="canvas-wrap">
+            <svg id="viewport" xmlns="http://www.w3.org/2000/svg">
+                <g id="scene"></g>
+            </svg>
+        </div>
+
+        <aside class="sidebar">
+            <h3 id="propTitle">Projekteigenschaften</h3>
+            <div id="properties"></div>
+            <div class="help">
+                <b>Bedienung</b><br>
+                Wand: Start- und Endpunkt anklicken.<br>
+                Tür/Fenster: auf eine Wand klicken.<br>
+                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
+                Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
+                Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
+                Formen: Position anklicken; Formtyp, Name, Größe und Darstellung danach rechts einstellen.<br>
+                Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
+                − / +: manuell heraus- oder hineinzoomen.<br>
+                Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
+            </div>
+        </aside>
+    </div>
+    <div class="toolbar">
+        <div class="group">
+            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
+            <button data-tool="shape" title="Form platzieren">Formen</button>
+            <button data-tool="wall">Wand</button>
+            <button data-tool="door">Tür</button>
+            <button data-tool="window">Fenster</button>
+            <button data-tool="device">Gerät</button>
+            <button data-tool="text">Text</button>
+                <button data-tool="furniture">Möbel</button>
+            <div class="grid-editor-controls" title="Raster">
+                <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
+                <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
+            </div>
+            
+        </div>
+
+        <div class="group">
+            <button id="undoBtn" title="Rückgängig">↶</button>
+            <button id="redoBtn" title="Wiederholen">↷</button>
+            <button id="deleteBtn" class="danger">Löschen</button>
+        </div>
+
+        <div class="group">
+            <button id="addFloorBtn">+ Etage</button>
+            <button id="copyFloorBtn" type="button" title="Aktuelle Etage komplett kopieren">Etage kopieren</button>
+            <select id="floorSelect"></select>
+            <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
+        </div>
+
+        <div class="group">
+            <button id="zoomOutBtn" type="button" title="Herauszoomen">−</button>
+            <button id="zoomInBtn" type="button" title="Hineinzoomen">+</button>
+            <button id="fitBtn">Einpassen</button>
+            <button id="finishBtn">Live-Ansicht</button>
+        </div>
+
+        <div class="spacer"></div>
+        <div id="status" class="status">Bereit</div>
+    </div>
+
+    <div id="viewbar">
+        <select id="liveFloorSelect" title="Etage auswählen" aria-label="Etage auswählen"></select>
+        <button id="editBtn" type="button" title="Floorplan bearbeiten" aria-label="Floorplan bearbeiten">✎</button>
+    </div>
+</div>
+
+<div id="variableModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+        <h3>IP-Symcon Objektbaum</h3>
+        <div class="modal-search">
+            <input id="variableSearch" placeholder="Objekt, Variable, Profil oder ID suchen …">
+        </div>
+        <div id="variableList" class="variable-list"></div>
+        <div class="modal-actions">
+            <button id="variableClearBtn" type="button">Zuordnung entfernen</button>
+            <button id="variableCloseBtn" type="button">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<div id="iconModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+        <h3>IP-Symcon Icon auswählen</h3>
+        <div class="modal-search">
+            <input id="iconSearch" placeholder="Icon suchen … z. B. light, temperature, door">
+        </div>
+        <div class="icon-picker-hint">Es werden die von IP-Symcon über /icons.js bereitgestellten Icons verwendet.</div>
+        <div id="iconList" class="variable-list"></div>
+        <div class="modal-actions">
+            <button id="iconAutoBtn" type="button">Icon der Variable übernehmen</button>
+            <button id="iconCloseBtn" type="button">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<div id="controlModal" class="modal-backdrop" aria-hidden="true">
+    <div class="control-modal">
+        <h3 id="controlTitle">Gerät bedienen</h3>
+        <div id="controlBody" class="control-body"></div>
+
+    </div>
+</div>
+
+<script>
+window.__FLOORPLAN_BOOTSTRAP__ = Object.freeze({
+    instanceId: __INSTANCE_ID__,
+    projectUrl: '__FLOORPLAN_PROJECT_URL__'
+});
+</script>
+<script defer src="__FLOORPLAN_EDITOR_JS_URL__"></script>
+
+
+</body>
+</html>
+HTML;
+
+        return str_replace(
+            [
+                '__INSTANCE_ID__',
+                '__EASY_FLOORPLAN_MODULE_URL__',
+                '__FLOORPLAN_EDITOR_JS_URL__',
+                '__FLOORPLAN_PROJECT_URL__'
+            ],
+            [
+                (string) $this->InstanceID,
+                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars($editorJavaScriptUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars($projectUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            ],
+            $html
+        );
+    }
+
+    private function GetVisualizationEditorJavaScript(): string
+    {
+        return <<<'JAVASCRIPT'
+(async () => {
+    const bootstrap = window.__FLOORPLAN_BOOTSTRAP__ || {};
+    const projectUrl = String(bootstrap.projectUrl || '');
+
+    if (!projectUrl) {
+        throw new Error('Projekt-URL fehlt.');
+    }
+
+    const response = await fetch(projectUrl, {
+        cache: 'no-store',
+        credentials: 'same-origin'
     });
 
+    if (!response.ok) {
+        throw new Error(`Floorplan-Projekt konnte nicht geladen werden (${response.status}).`);
+    }
+
+    const initial = await response.json();
+    const instanceID = Number(bootstrap.instanceId) || 0;
     const lastViewFloorStorageKey = `floorplaner:lastViewFloor:${instanceID}`;
     const svg = document.getElementById('viewport');
     const scene = document.getElementById('scene');
@@ -5696,12 +7240,6 @@ class Floorplan extends IPSModuleStrict
         }
     };
 
-    // Nachrichten, die zwischen loadProject und vollständiger Initialisierung
-    // eingetroffen sind, jetzt mit dem normalen Handler nacharbeiten.
-    for (const queuedMessage of pendingBootstrapMessages.splice(0)) {
-        window.handleMessage(queuedMessage);
-    }
-
     let resizeFitFrame = 0;
     const resizeObserver = new ResizeObserver(() => {
         // Die Projektgröße bleibt unverändert. Nur die Ansicht wird an die
@@ -5756,1570 +7294,14 @@ class Floorplan extends IPSModuleStrict
 });
 
 JAVASCRIPT;
-
-        $html = <<<'HTML'
-<!doctype html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <script src="/icons.js"></script>
-    <script type="module" src="__EASY_FLOORPLAN_MODULE_URL__"></script>
-    <style>
-        :root {
-            --fp-bg: transparent;
-            --fp-panel: rgba(38,38,38,.96);
-            --fp-panel-2: rgba(54,54,54,.96);
-            --fp-border: rgba(255,255,255,.16);
-            --fp-text: #f2f2f2;
-            --fp-muted: #b8b8b8;
-            --fp-grid: rgba(255,255,255,.14);
-            --fp-accent: #4da3ff;
-            --fp-danger: #e35d6a;
-        }
-
-        html[data-theme="light"] {
-            --fp-bg: transparent;
-            --fp-panel: rgba(232,232,232,.98);
-            --fp-panel-2: rgba(218,218,218,.98);
-            --fp-border: rgba(0,0,0,.34);
-            --fp-text: #111111;
-            --fp-muted: #444444;
-            --fp-grid: rgba(0,0,0,.24);
-            --fp-accent: #1769aa;
-        }
-
-        * { box-sizing: border-box; }
-
-        html, body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: transparent !important;
-            color: var(--fp-text);
-            font-family: Arial, Helvetica, sans-serif;
-        }
-
-        button, input, select {
-            font: inherit;
-        }
-
-        #app {
-            display: grid;
-            grid-template-rows: 1fr auto;
-            width: 100%;
-            height: 100%;
-            min-height: 420px;
-            position: relative;
-        }
-
-        /* HTML-SDK: Bedienelemente bewusst UNTEN.
-           Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
-        .toolbar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            align-items: center;
-            padding: 8px;
-            background: var(--fp-panel);
-            border-top: 1px solid var(--fp-border);
-        }
-
-        .toolbar .group {
-            display: flex;
-            gap: 4px;
-            align-items: center;
-            padding-right: 8px;
-            margin-right: 2px;
-            border-right: 1px solid var(--fp-border);
-        }
-
-        .toolbar button,
-        .toolbar select {
-            min-height: 32px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-
-        .toolbar button.active {
-            outline: 2px solid var(--fp-accent);
-            background: color-mix(in srgb, var(--fp-accent) 30%, var(--fp-panel-2));
-        }
-
-        .toolbar button.danger {
-            color: #ffd4d8;
-        }
-
-        .toolbar .spacer { flex: 1; }
-
-        .status {
-            color: var(--fp-muted);
-            font-size: 12px;
-            white-space: nowrap;
-        }
-
-        .main {
-            display: grid;
-            grid-template-columns: 1fr 300px;
-            min-height: 0;
-        }
-
-        .canvas-wrap {
-            position: relative;
-            min-width: 0;
-            min-height: 0;
-            overflow: hidden;
-            background: transparent;
-        }
-
-        #viewport {
-            width: 100%;
-            height: 100%;
-            display: block;
-            user-select: none;
-            touch-action: none;
-        }
-
-        .sidebar {
-            min-width: 0;
-            overflow: auto;
-            padding: 12px;
-            background: var(--fp-panel);
-            border-left: 1px solid var(--fp-border);
-        }
-
-        .sidebar h3 {
-            margin: 0 0 12px 0;
-            font-size: 15px;
-        }
-
-        .field {
-            display: grid;
-            gap: 4px;
-            margin-bottom: 10px;
-        }
-
-        .field label {
-            color: var(--fp-muted);
-            font-size: 12px;
-        }
-
-        .field input,
-        .field select {
-            width: 100%;
-            min-height: 32px;
-            padding: 5px 7px;
-            border: 1px solid var(--fp-border);
-            border-radius: 5px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-        }
-
-        .row2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-        }
-
-        .help {
-            margin-top: 12px;
-            color: var(--fp-muted);
-            font-size: 12px;
-            line-height: 1.45;
-        }
-
-        .selection-box {
-            fill: none;
-            stroke: var(--fp-accent);
-            stroke-width: 2;
-            vector-effect: non-scaling-stroke;
-            stroke-dasharray: 7 4;
-            pointer-events: none;
-        }
-
-        .drawing-shape {
-            fill: none;
-            stroke: var(--fp-text);
-            stroke-width: 2;
-            vector-effect: non-scaling-stroke;
-            cursor: move;
-        }
-
-        /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
-           mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
-        .drawing-shape-hit {
-            fill: transparent;
-            stroke: transparent;
-            stroke-width: 7;
-            vector-effect: non-scaling-stroke;
-            pointer-events: all;
-            cursor: move;
-        }
-        .drawing-shape.selection-shape {
-            stroke: var(--fp-accent);
-        }
-
-        .wall {
-            stroke: #ececec;
-            stroke-width: 12;
-            stroke-linecap: square;
-            vector-effect: non-scaling-stroke;
-            cursor: default;
-        }
-
-        #app:not(.view-mode) .wall {
-            cursor: pointer;
-        }
-
-        .wall.selected {
-            stroke: #74b9ff;
-        }
-
-        .opening {
-            cursor: default;
-        }
-
-        #app:not(.view-mode) .opening {
-            cursor: pointer;
-        }
-
-        /* Größere Trefferfläche nur für die Öffnung selbst.
-           Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
-        .shutter-control {
-            pointer-events: all;
-            isolation: isolate;
-        }
-
-        .shutter-control circle:not(.shutter-hit) {
-            fill: #ffffff;
-            stroke: #303030;
-            stroke-width: 2.4;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .shutter-control .shutter-hit {
-            fill: transparent;
-            stroke: transparent;
-            pointer-events: all;
-        }
-
-        .shutter-control text {
-            fill: #202020;
-            stroke: none;
-            font-size: 12px;
-            font-weight: 700;
-            text-anchor: middle;
-            dominant-baseline: central;
-            pointer-events: none;
-        }
-
-        html[data-theme="light"] .shutter-control circle:not(.shutter-hit) {
-            fill: #ffffff;
-            stroke: #303030;
-            stroke-width: 2.4;
-        }
-
-        html[data-theme="light"] .shutter-control text {
-            fill: #202020;
-            stroke: none;
-        }
-
-        .opening-hit {
-            stroke: transparent;
-            stroke-width: 22;
-            fill: none;
-            vector-effect: non-scaling-stroke;
-            pointer-events: stroke;
-            cursor: default;
-        }
-
-        #app:not(.view-mode) .opening-hit {
-            cursor: move;
-        }
-
-        .opening-gap {
-            stroke: #303030;
-            stroke-width: 16;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .opening-line {
-            stroke: #d7d7d7;
-            stroke-width: 3;
-            fill: none;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .opening.selected .opening-line {
-            stroke: #74b9ff;
-        }
-
-        .opening-state-open {
-            stroke: #4da3ff;
-        }
-
-        .opening-shutter {
-            stroke: #b8c4d8;
-            stroke-width: 5;
-            vector-effect: non-scaling-stroke;
-            stroke-linecap: butt;
-        }
-
-        .opening-shutter-slat {
-            stroke: #8695aa;
-            stroke-width: 1.4;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .furniture {
-            cursor: default;
-        }
-
-        #app:not(.view-mode) .furniture {
-            cursor: move;
-        }
-
-        .furniture-shape {
-            fill: rgba(150, 160, 175, .18);
-            stroke: #9ca9ba;
-            stroke-width: 2;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .furniture.selected .furniture-shape {
-            stroke: #74b9ff;
-            stroke-width: 3;
-        }
-
-        .furniture-label {
-            fill: var(--fp-text);
-            font-size: 11px;
-            text-anchor: middle;
-            pointer-events: none;
-        }
-
-        .device {
-            cursor: pointer;
-        }
-
-        .device circle {
-            fill: #404040;
-            stroke: #dedede;
-            stroke-width: 2;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .device.selected circle {
-            stroke: #74b9ff;
-            stroke-width: 3;
-        }
-
-        /* Klima / Heizung: bewusst als kleines Wand-Bedienteil statt
-           als rundes Thermostat-/Messwertsymbol darstellen. */
-        .device .climate-panel {
-            fill: #404040;
-            stroke: #dedede;
-            stroke-width: 2;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .device .climate-panel-display {
-            fill: rgba(255,255,255,.08);
-            stroke: #9aa6b2;
-            stroke-width: 1;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        .device .climate-panel-dot {
-            fill: #bfc8d2;
-            stroke: none;
-            pointer-events: none;
-        }
-
-        .device.selected .climate-panel {
-            stroke: #74b9ff;
-            stroke-width: 3;
-        }
-
-        /* Boolean-Statusring für alle Geräte mit Bool-Variable.
-           Die Farbe kommt je Gerät aus --device-status-color. */
-        /* Numerischer Status: Die normale Geräte-Kontur bleibt immer erhalten.
-           Nur dieser zusätzliche Farbring wird mit dem Zahlenwert ein-/ausgeblendet. */
-        .device.numeric-status .device-status-ring {
-            fill: none;
-            stroke: var(--device-status-color, #ffe66d);
-            stroke-width: 2;
-            stroke-opacity: var(--device-status-opacity, 1);
-            filter: drop-shadow(0 0 var(--device-status-glow, 0px) var(--device-status-color, #ffe66d));
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        .device.boolean-active circle {
-            stroke: var(--device-status-color, #ffe66d);
-            filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
-        }
-
-        /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
-        .device.active-light.boolean-active circle {
-            fill: #5b5422;
-        }
-
-        .device.inactive-light {
-            opacity: .72;
-        }
-
-        .resize-handle {
-            fill: #ffffff;
-            stroke: #74b9ff;
-            stroke-width: 0.4;
-            vector-effect: non-scaling-stroke;
-            cursor: nwse-resize;
-            pointer-events: all;
-        }
-
-        .device .resize-handle {
-            fill: #ffffff;
-            stroke: #74b9ff;
-            stroke-width: 0.4;
-        }
-
-        /* Light-Theme: Resize-/Verschiebepunkte schwarz darstellen.
-           Im Dark-Theme bleiben sie weiß. */
-        html[data-theme="light"] .resize-handle {
-            fill: #111111;
-        }
-
-        html[data-theme="light"] .rotate-handle {
-            fill: #111111;
-        }
-
-        /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
-           Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
-        .device-direct-slider {
-            cursor: pointer;
-        }
-
-        .device-direct-slider-hit {
-            stroke: transparent;
-            stroke-width: 30;
-            vector-effect: non-scaling-stroke;
-            pointer-events: stroke;
-        }
-
-        .device-direct-slider-track {
-            stroke: rgba(160,170,185,.65);
-            stroke-width: 4;
-            stroke-linecap: round;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        .device-direct-slider-fill {
-            stroke: #d7e9ff;
-            stroke-width: 5;
-            stroke-linecap: round;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        .device-direct-slider-thumb {
-            fill: #ffffff;
-            stroke: #66788a;
-            stroke-width: 1.4;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        #app:not(.view-mode) .device-direct-slider {
-            pointer-events: none;
-            opacity: .65;
-        }
-
-        .rotate-handle-line {
-            stroke: #74b9ff;
-            stroke-width: 0.6;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        .rotate-handle {
-            fill: #ffffff;
-            stroke: #74b9ff;
-            stroke-width: 0.6;
-            vector-effect: non-scaling-stroke;
-            cursor: grab;
-            pointer-events: all;
-        }
-
-        .rotate-handle:active {
-            cursor: grabbing;
-        }
-
-        .check {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            width: auto;
-            font-size: 12px;
-            line-height: 1.2;
-            cursor: pointer;
-        }
-
-        .check input[type="checkbox"] {
-            width: 13px !important;
-            height: 13px !important;
-            min-width: 13px !important;
-            max-width: 13px !important;
-            margin: 0;
-            padding: 0;
-            flex: 0 0 13px;
-        }
-
-        .device-label {
-            pointer-events: none;
-            font-family: Arial, Helvetica, sans-serif;
-            font-style: normal;
-            font-weight: 400;
-            font-stretch: normal;
-            letter-spacing: normal;
-        }
-
-        .device-label,
-        .runtime-value,
-        .plan-text {
-            fill: white;
-            font-family: Arial, Helvetica, sans-serif;
-            font-style: normal;
-            font-weight: 400;
-            font-stretch: normal;
-            letter-spacing: normal;
-            line-height: 1;
-            paint-order: stroke;
-            stroke: rgba(0,0,0,.35);
-            stroke-width: 2px;
-            text-rendering: geometricPrecision;
-        }
-
-        .grid-line {
-            stroke: rgba(255,255,255,.09);
-            stroke-width: 1;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        .preview-line {
-            stroke: #74b9ff;
-            stroke-width: 3;
-            stroke-dasharray: 7 5;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        #viewbar {
-            display: none;
-            position: absolute;
-            left: 50%;
-            bottom: 10px;
-            transform: translateX(-50%);
-            z-index: 50;
-            pointer-events: auto;
-            gap: 6px;
-            align-items: center;
-        }
-
-        #viewbar select {
-            height: 36px;
-            max-width: none;
-            padding: 0 26px 0 9px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,.35);
-        }
-
-        #viewbar button {
-            width: 36px;
-            height: 36px;
-            min-width: 36px;
-            min-height: 30px;
-            padding: 0;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            font-size: 20px;
-            line-height: 34px;
-            text-align: center;
-            cursor: pointer;
-            pointer-events: auto;
-            touch-action: manipulation;
-            box-shadow: 0 2px 8px rgba(0,0,0,.35);
-        }
-
-        #app.view-mode .toolbar { display: none; }
-        #app.view-mode #viewbar { display: flex; }
-        #app.view-mode .main { grid-template-columns: 1fr; }
-        #app.view-mode .sidebar { display: none; }
-
-        /* Bedienansicht:
-           Nur echte Geräte sollen mit dem Hand-Cursor als bedienbar erscheinen.
-           Wände, Türen/Fenster, Möbel und Texte sind hier reine Darstellung. */
-        #app.view-mode .wall,
-        #app.view-mode .opening,
-        #app.view-mode .opening-hit,
-        #app.view-mode .furniture,
-        #app.view-mode .plan-text {
-            cursor: default !important;
-        }
-
-        #app.view-mode .device {
-            cursor: pointer !important;
-        }
-
-        /* Zusätzliche, direkt am SVG-Szenen-Container gesetzte Laufzeitregel.
-           Damit werden auch Cursor von Unterelementen (SVG-Pfade, Linien usw.)
-           sicher überschrieben. */
-        #scene.runtime-view,
-        #scene.runtime-view * {
-            cursor: default !important;
-        }
-
-        #scene.runtime-view .device,
-        #scene.runtime-view .device * {
-            cursor: pointer !important;
-        }
-
-        .modal-backdrop {
-            position: fixed;
-            inset: 0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            background: rgba(0,0,0,.62);
-            z-index: 1000;
-        }
-
-        .modal-backdrop.open { display: flex; }
-
-        .modal {
-            width: min(760px, 96vw);
-            max-height: min(720px, 90vh);
-            display: grid;
-            grid-template-rows: auto auto 1fr auto;
-            overflow: hidden;
-            border: 1px solid var(--fp-border);
-            border-radius: 10px;
-            background: var(--fp-panel);
-            box-shadow: 0 16px 60px rgba(0,0,0,.45);
-        }
-
-        .modal h3 {
-            margin: 0;
-            padding: 14px;
-            border-bottom: 1px solid var(--fp-border);
-        }
-
-        .modal-search {
-            padding: 10px 14px;
-            border-bottom: 1px solid var(--fp-border);
-        }
-
-        .modal-search input {
-            width: 100%;
-            min-height: 34px;
-            padding: 6px 9px;
-            color: var(--fp-text);
-            background: var(--fp-panel-2);
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-        }
-
-        .variable-list {
-            overflow: auto;
-            padding: 6px;
-        }
-
-        .variable-row {
-            display: grid;
-            grid-template-columns: 90px 1fr auto;
-            gap: 10px;
-            align-items: center;
-            padding: 8px 10px;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        .variable-row:hover { background: color-mix(in srgb, var(--fp-text) 8%, transparent); }
-        .variable-id { color: #9fc7ff; font-family: monospace; }
-        .variable-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .variable-type { color: var(--fp-muted); font-size: 11px; }
-
-        .object-tree { padding: 4px 2px 10px; }
-        .tree-node { user-select: none; }
-        .tree-row {
-            min-height: 31px;
-            display: grid;
-            grid-template-columns: 22px 24px minmax(120px, 1fr) auto auto;
-            gap: 5px;
-            align-items: center;
-            padding: 3px 8px 3px calc(8px + (var(--depth, 0) * 18px));
-            border-radius: 5px;
-        }
-        .tree-row:hover { background: color-mix(in srgb, var(--fp-text) 7%, transparent); }
-        .tree-toggle { width: 22px; text-align: center; color: var(--fp-muted); cursor: pointer; }
-        .tree-icon { text-align: center; }
-        .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tree-id { color: #9fc7ff; font-family: monospace; font-size: 11px; }
-        .tree-value { color: var(--fp-muted); font-size: 11px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tree-row.variable { cursor: pointer; }
-        .tree-row.variable.selected-variable { outline: 1px solid #74b9ff; background: rgba(116,185,255,.12); }
-        .tree-children.collapsed { display: none; }
-        .tree-empty { padding: 16px; color: var(--fp-muted); text-align: center; }
-        .variable-select-field { cursor: pointer !important; caret-color: transparent; }
-        .variable-select-field:hover { outline: 1px solid #74b9ff; }
-
-        .modal-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 6px;
-            padding: 10px 14px;
-            border-top: 1px solid var(--fp-border);
-        }
-
-        .modal-actions button {
-            min-height: 32px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            padding: 5px 12px;
-            cursor: pointer;
-        }
-
-        .device-value-box {
-            fill: rgba(255,255,255,.08);
-            stroke: currentColor;
-            stroke-width: 0.8;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .runtime-value {
-            fill: #d7e9ff !important;
-            font-family: Arial, Helvetica, sans-serif;
-            font-style: normal;
-            font-weight: 400;
-            font-stretch: normal;
-            letter-spacing: normal;
-        }
-
-        .runtime-value-frame {
-            fill: rgba(255,255,255,.06);
-            stroke: currentColor;
-            stroke-width: 1.2;
-            vector-effect: non-scaling-stroke;
-            pointer-events: none;
-        }
-
-        html[data-theme="light"] .runtime-value-frame {
-            fill: rgba(255,255,255,.78);
-            stroke: #5f5f5f;
-        }
-
-        /* Reine Status-/Messwertvariablen ohne Aktion sind im Bedienmodus
-           bewusst nicht als klickbares Bedienelement dargestellt. */
-        #app.view-mode .device.status-only,
-        #app.view-mode .device.status-only *,
-        #scene.runtime-view .device.status-only,
-        #scene.runtime-view .device.status-only * {
-            cursor: default !important;
-            pointer-events: none !important;
-        }
-
-        .control-modal {
-            width: max-content;
-            min-width: 0;
-            max-width: 92vw;
-            max-height: min(620px, 86vh);
-            display: grid;
-            grid-template-rows: auto 1fr auto;
-            overflow: hidden;
-            border: 1px solid var(--fp-border);
-            border-radius: 10px;
-            background: var(--fp-panel);
-            box-shadow: 0 16px 60px rgba(0,0,0,.45);
-        }
-
-        .control-modal h3 {
-            margin: 0;
-            padding: 12px 14px;
-            border-bottom: 1px solid var(--fp-border);
-        }
-
-        .control-body {
-            padding: 10px 12px;
-            overflow: visible;
-            width: max-content;
-            max-width: calc(92vw - 24px);
-        }
-
-        .control-slider { min-width: 260px; padding: 6px 2px; }
-        .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .control-slider-row { display: grid; grid-template-columns: 38px minmax(180px, 1fr) 38px; gap: 8px; align-items: center; }
-        .control-slider-row button {
-            width: 38px;
-            height: 38px;
-            min-width: 38px;
-            min-height: 38px;
-            padding: 0;
-            font-size: 22px;
-            line-height: 36px;
-            touch-action: manipulation;
-        }
-        .control-slider input[type="range"] {
-            width: 100%;
-            min-height: 38px;
-            margin: 0;
-            cursor: pointer;
-            touch-action: none;
-        }
-        .control-slider input[type="range"]::-webkit-slider-thumb {
-            width: 22px;
-            height: 22px;
-        }
-        .control-slider input[type="range"]::-moz-range-thumb {
-            width: 22px;
-            height: 22px;
-        }
-
-        .control-associations {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 4px;
-            margin: 0;
-            width: max-content;
-            max-width: 100%;
-        }
-
-        .control-associations button,
-        .control-actions button,
-        #controlRangeApply {
-            min-height: 36px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            padding: 6px 10px;
-            cursor: pointer;
-        }
-
-        .control-associations button {
-            width: auto;
-            min-width: 0;
-            max-width: 100%;
-            min-height: 28px;
-            padding: 4px 12px;
-            white-space: nowrap;
-            align-self: flex-start;
-        }
-
-        .control-associations button.current {
-            outline: 2px solid var(--fp-text);
-            outline-offset: 2px;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55);
-            font-weight: 700;
-        }
-
-        .control-range {
-            display: grid;
-            gap: 8px;
-        }
-
-        .control-range input[type="range"] {
-            width: 100%;
-        }
-
-        .control-range-value {
-            text-align: center;
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .control-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-            padding: 10px 14px;
-            border-top: 1px solid var(--fp-border);
-        }
-
-        .profile-hint {
-            color: var(--fp-muted);
-            font-size: 11px;
-            line-height: 1.35;
-            margin-top: 8px;
-        }
-
-        @media (max-width: 800px) {
-            .main {
-                grid-template-columns: 1fr;
-                grid-template-rows: 1fr auto;
-            }
-            .sidebar {
-                max-height: 220px;
-                border-left: 0;
-                border-top: 1px solid var(--fp-border);
-            }
-        }
-            .device-glyph { color: currentColor; pointer-events: none; }
-        .device-glyph * { vector-effect: non-scaling-stroke; }
-
-
-
-        .grid-editor-controls {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            width: auto;
-            flex: 0 0 auto;
-        }
-
-        .grid-size-input {
-            width: 4.5ch;
-            min-width: 4.5ch;
-            max-width: 4.5ch;
-            box-sizing: content-box;
-            padding-left: 4px;
-            padding-right: 2px;
-            flex: 0 0 auto;
-        }
-
-        .view-mode .grid-editor-controls {
-            display: none !important;
-        }
-
-
-        html,
-        body,
-        #app,
-        .main,
-        .canvas-wrap,
-        #viewport,
-        #scene {
-            background: transparent !important;
-            background-color: transparent !important;
-        }
-
-        /* Wie bei Energiefluss/Wärmepumpe:
-           Die eigentliche Visualisierung malt KEINEN eigenen Hintergrund.
-           Dadurch kommt die reale Kachelfarbe direkt von Symcon. */
-        #viewport,
-        #viewport * {
-            --card-background-color: transparent;
-        }
-
-
-        html[data-theme="light"] .wall,
-        html[data-theme="light"] .opening,
-        html[data-theme="light"] .furniture,
-        html[data-theme="light"] .device,
-        html[data-theme="light"] .label,
-        html[data-theme="light"] text,
-        html[data-theme="light"] tspan {
-            color: #111111;
-        }
-
-        html[data-theme="light"] .wall {
-            stroke: #181818;
-        }
-
-        /* Gezeichnete Formen im hellen Theme an die übrigen Konturlinien
-           angleichen. Im dunklen Theme bleibt die bestehende Darstellung
-           über var(--fp-text) unverändert. */
-        html[data-theme="light"] .drawing-shape {
-            /* Gleiche sichtbare Linienfarbe wie Tür/Fenster im hellen Theme.
-               #252525 war deutlich dunkler als die späteren Light-Theme-Regeln
-               für Wand (#4a4a4a) und Öffnung (#5f5f5f). */
-            stroke: #5f5f5f;
-        }
-
-        html[data-theme="light"] .drawing-shape.selection-shape {
-            stroke: var(--fp-accent);
-        }
-
-        html[data-theme="light"] .furniture {
-            color: #222222;
-        }
-
-        html[data-theme="light"] .device circle {
-            fill: #f2f2f2;
-            stroke: rgba(0,0,0,.62);
-        }
-
-        html[data-theme="light"] .device.active-light circle {
-            fill: #fff2a8;
-            stroke: #8a7200;
-        }
-
-        html[data-theme="light"] .device-glyph {
-            color: #111111;
-        }
-
-        /* Möbel im hellen Theme:
-           helle Flächen + dunkle Konturen, damit Details nicht in dunklen
-           Eigenfüllungen verschwinden. */
-        html[data-theme="light"] .furniture {
-            color: #252525;
-        }
-
-        html[data-theme="light"] .furniture [fill="currentColor"] {
-            fill: #eeeeee !important;
-            stroke: #252525 !important;
-        }
-
-        html[data-theme="light"] .furniture [fill="none"] {
-            stroke: #252525 !important;
-        }
-
-        html[data-theme="light"] .furniture.selected [fill="currentColor"],
-        html[data-theme="light"] .furniture.selected [fill="none"] {
-            stroke: #1769aa !important;
-        }
-
-        html[data-theme="light"] .opening {
-            stroke: #202020;
-        }
-
-        html[data-theme="light"] .grid-line {
-            stroke: rgba(0,0,0,.24);
-        }
-
-        html[data-theme="light"] button,
-        html[data-theme="light"] input,
-        html[data-theme="light"] select {
-            color: #111111;
-            border-color: rgba(0,0,0,.34);
-        }
-
-        html[data-theme="light"] button {
-            background: rgba(224,224,224,.98);
-        }
-
-        html[data-theme="light"] button.danger {
-            color: #111111;
-        }
-
-        html[data-theme="light"] button:hover {
-            background: rgba(205,205,205,.98);
-        }
-
-        html[data-theme="light"] input,
-        html[data-theme="light"] select {
-            background: rgba(245,245,245,.98);
-        }
-
-        html[data-theme="light"] .properties,
-        html[data-theme="light"] .toolbar,
-        html[data-theme="light"] .bottom-bar,
-        html[data-theme="light"] .modal,
-        html[data-theme="light"] .picker {
-            background: var(--fp-panel);
-            color: var(--fp-text);
-            border-color: var(--fp-border);
-        }
-
-        /* Helles Symcon-Theme:
-           Dark bleibt unverändert. Im hellen Theme die Grundrisszeichnung
-           bewusst weicher als reines Schwarz darstellen. */
-        html[data-theme="light"] .wall {
-            stroke: #4a4a4a;
-        }
-
-        /* Markierte Wände sollen auch im Light-Theme wie alle anderen
-           selektierten Elemente blau hervorgehoben werden. */
-        html[data-theme="light"] .wall.selected {
-            stroke: #74b9ff;
-        }
-
-        html[data-theme="light"] .opening-gap {
-            stroke: #f5f5f5;
-        }
-
-        html[data-theme="light"] .opening-line {
-            stroke: #5f5f5f;
-        }
-
-        /* Offenes Fenster muss auch im hellen Theme blau bleiben.
-           Diese spezifischere Regel verhindert, dass die allgemeine
-           helle Fensterfarbe den Offen-Status überschreibt. */
-        html[data-theme="light"] .opening-line.opening-state-open {
-            stroke: #1769aa;
-        }
-
-        html[data-theme="light"] .opening-shutter {
-            stroke: #707070;
-        }
-
-        html[data-theme="light"] .opening-shutter-slat {
-            stroke: #8a8a8a;
-        }
-
-        html[data-theme="light"] .furniture {
-            color: #555555;
-        }
-
-        html[data-theme="light"] .furniture [fill="currentColor"] {
-            fill: rgba(90,90,90,.08) !important;
-            stroke: #555555 !important;
-        }
-
-        html[data-theme="light"] .furniture [fill="none"] {
-            stroke: #555555 !important;
-        }
-
-        html[data-theme="light"] .device circle {
-            fill: rgba(255,255,255,.72);
-            stroke: #777777;
-        }
-
-        /* Aktive Bool-Geräte müssen auch im hellen Theme ihre konfigurierte
-           Statusfarbe behalten. Diese Regel steht bewusst nach der allgemeinen
-           hellen Geräte-Kontur, damit diese die Statusfarbe nicht überschreibt. */
-        html[data-theme="light"] .device.boolean-active circle {
-            stroke: var(--device-status-color, #ffe66d);
-            filter: drop-shadow(
-                0 0 var(--device-status-glow, 7px)
-                var(--device-status-color, #ffe66d)
-            );
-        }
-
-        html[data-theme="light"] .device .climate-panel {
-            fill: rgba(255,255,255,.82);
-            stroke: #777777;
-        }
-
-        html[data-theme="light"] .device .climate-panel-display {
-            fill: rgba(80,80,80,.07);
-            stroke: #888888;
-        }
-
-        html[data-theme="light"] .device .climate-panel-dot {
-            fill: #666666;
-        }
-
-        html[data-theme="light"] .device-glyph {
-            color: #555555;
-        }
-
-        html[data-theme="light"] .runtime-value {
-            fill: #4a4a4a !important;
-        }
-
-        html[data-theme="light"] .label,
-        html[data-theme="light"] text,
-        html[data-theme="light"] tspan,
-        html[data-theme="light"] .furniture-label {
-            fill: #303030;
-            color: #303030;
-            stroke: none !important;
-            paint-order: normal !important;
-            text-rendering: geometricPrecision;
-        }
-
-        /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
-           Das verhindert den verwaschenen Eindruck bei Text und Symbolen. */
-        html[data-theme="light"] #scene text,
-        html[data-theme="light"] #scene tspan {
-            stroke: none !important;
-            filter: none !important;
-        }
-
-        html[data-theme="light"] .device-glyph,
-        html[data-theme="light"] .furniture,
-        html[data-theme="light"] .opening,
-        html[data-theme="light"] .wall {
-            filter: none !important;
-        }
-
-        html[data-theme="light"] .status,
-        html[data-theme="light"] .hint,
-        html[data-theme="light"] small {
-            color: var(--fp-muted);
-        }
-
-
-        /* Kamera-/Stream-Popup: klein starten, bei Bedarf vergrößern. */
-        .stream-popup-body {
-            display: grid;
-            gap: 8px;
-            width: min(320px, calc(100vw - 32px));
-            max-width: 100%;
-        }
-
-        .stream-view {
-            width: 100%;
-            aspect-ratio: 16 / 9;
-            height: auto;
-            max-width: 100%;
-            max-height: calc(100vh - 120px);
-            overflow: hidden;
-            border-radius: 7px;
-            background: #000;
-        }
-
-        .stream-view img {
-            width: 100%;
-            height: 100%;
-            max-width: 100%;
-            max-height: 100%;
-            display: block;
-            object-fit: contain;
-            background: #000;
-        }
-
-        #controlModal.stream-expanded .stream-popup-body {
-            width: min(960px, calc(100vw - 32px));
-            max-width: 100%;
-        }
-
-        #controlModal.stream-expanded .stream-view {
-            width: 100%;
-            height: auto;
-            aspect-ratio: 16 / 9;
-            max-width: 100%;
-            max-height: calc(100vh - 120px);
-        }
-
-        .stream-popup-actions {
-            display: flex;
-            justify-content: flex-end;
-        }
-
-        .stream-popup-actions button {
-            min-height: 32px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-
-        /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
-        #controlModal {
-            background: transparent;
-            padding: 0;
-            align-items: initial;
-            justify-content: initial;
-            pointer-events: none;
-        }
-
-        #controlModal.open {
-            display: block;
-        }
-
-        #controlModal .control-modal {
-            position: fixed;
-            margin: 0;
-            pointer-events: auto;
-            max-width: calc(100vw - 16px);
-            max-height: calc(100vh - 16px);
-            overflow: hidden;
-            box-sizing: border-box;
-        }
-
-        /* Einheitlicher Cursor für den Grundriss:
-           Über allen gezeichneten Elementen und Bearbeitungsgriffen wird
-           bewusst immer die Hand angezeigt. Damit gibt es keine wechselnden
-           Pfeil-, Verschiebe- oder Resize-Cursor mehr. */
-        #scene,
-        #scene * {
-            cursor: pointer !important;
-        }
-
-        /* IP-Symcon / Font-Awesome Icons aus /icons.js */
-        .device-icon-html {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--fp-text);
-            line-height: 1;
-            pointer-events: none;
-        }
-
-        html[data-theme="light"] .device-icon-html {
-            color: #4f4f4f;
-        }
-
-        .icon-select-button {
-            width: 100%;
-            min-height: 36px;
-            display: flex;
-            align-items: center;
-            gap: 9px;
-            padding: 6px 9px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            cursor: pointer;
-            text-align: left;
-        }
-
-        .icon-select-button i {
-            width: 22px;
-            text-align: center;
-            font-size: 18px;
-        }
-
-        .bool-icon-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-        }
-
-        .bool-icon-field {
-            display: grid;
-            gap: 4px;
-        }
-
-        .bool-icon-field > label {
-            color: var(--fp-muted);
-            font-size: 11px;
-            text-align: center;
-        }
-
-        .bool-icon-button {
-            width: 100%;
-            min-height: 38px;
-            padding: 4px;
-            justify-content: center;
-        }
-
-        .bool-icon-button .icon-select-preview {
-            width: 22px;
-            height: 22px;
-            flex: 0 0 22px;
-        }
-
-        .icon-select-preview {
-            width: 24px;
-            height: 24px;
-            flex: 0 0 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: currentColor;
-        }
-
-        .icon-select-preview svg {
-            width: 20px;
-            height: 20px;
-            display: block;
-            fill: currentColor;
-            color: inherit;
-        }
-
-        .symcon-icon-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
-            gap: 6px;
-            padding: 8px;
-        }
-
-        .symcon-icon-grid button {
-            min-width: 0;
-            height: 46px;
-            padding: 4px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            color: var(--fp-text);
-            cursor: pointer;
-            font-size: 20px;
-        }
-
-        .symcon-icon-grid button:hover,
-        .symcon-icon-grid button.current {
-            outline: 2px solid var(--fp-accent);
-        }
-
-        .device-icon-html svg {
-            width: 1em;
-            height: 1em;
-            display: block;
-            margin: auto;
-            fill: currentColor;
-            color: inherit;
-        }
-
-        .symcon-icon-grid button svg {
-            width: 1.15em;
-            height: 1.15em;
-            display: block;
-            margin: auto;
-            fill: currentColor;
-            color: inherit;
-        }
-
-        .icon-picker-hint {
-            padding: 6px 14px 0;
-            color: var(--fp-muted);
-            font-size: 11px;
-        }
-
-</style>
-</head>
-<body>
-<div id="app">
-    <div class="main">
-        <div class="canvas-wrap">
-            <svg id="viewport" xmlns="http://www.w3.org/2000/svg">
-                <g id="scene"></g>
-            </svg>
-        </div>
-
-        <aside class="sidebar">
-            <h3 id="propTitle">Projekteigenschaften</h3>
-            <div id="properties"></div>
-            <div class="help">
-                <b>Bedienung</b><br>
-                Wand: Start- und Endpunkt anklicken.<br>
-                Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 26 Easy-Floorplan-Symbole verfügbar.<br>
-                Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
-                Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
-                Formen: Position anklicken; Formtyp, Name, Größe und Darstellung danach rechts einstellen.<br>
-                Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
-                − / +: manuell heraus- oder hineinzoomen.<br>
-                Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
-            </div>
-        </aside>
-    </div>
-    <div class="toolbar">
-        <div class="group">
-            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
-            <button data-tool="shape" title="Form platzieren">Formen</button>
-            <button data-tool="wall">Wand</button>
-            <button data-tool="door">Tür</button>
-            <button data-tool="window">Fenster</button>
-            <button data-tool="device">Gerät</button>
-            <button data-tool="text">Text</button>
-                <button data-tool="furniture">Möbel</button>
-            <div class="grid-editor-controls" title="Raster">
-                <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
-                <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
-            </div>
-            
-        </div>
-
-        <div class="group">
-            <button id="undoBtn" title="Rückgängig">↶</button>
-            <button id="redoBtn" title="Wiederholen">↷</button>
-            <button id="deleteBtn" class="danger">Löschen</button>
-        </div>
-
-        <div class="group">
-            <button id="addFloorBtn">+ Etage</button>
-            <button id="copyFloorBtn" type="button" title="Aktuelle Etage komplett kopieren">Etage kopieren</button>
-            <select id="floorSelect"></select>
-            <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
-        </div>
-
-        <div class="group">
-            <button id="zoomOutBtn" type="button" title="Herauszoomen">−</button>
-            <button id="zoomInBtn" type="button" title="Hineinzoomen">+</button>
-            <button id="fitBtn">Einpassen</button>
-            <button id="finishBtn">Live-Ansicht</button>
-        </div>
-
-        <div class="spacer"></div>
-        <div id="status" class="status">Bereit</div>
-    </div>
-
-    <div id="viewbar">
-        <select id="liveFloorSelect" title="Etage auswählen" aria-label="Etage auswählen"></select>
-        <button id="editBtn" type="button" title="Floorplan bearbeiten" aria-label="Floorplan bearbeiten">✎</button>
-    </div>
-</div>
-
-<div id="variableModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal">
-        <h3>IP-Symcon Objektbaum</h3>
-        <div class="modal-search">
-            <input id="variableSearch" placeholder="Objekt, Variable, Profil oder ID suchen …">
-        </div>
-        <div id="variableList" class="variable-list"></div>
-        <div class="modal-actions">
-            <button id="variableClearBtn" type="button">Zuordnung entfernen</button>
-            <button id="variableCloseBtn" type="button">Abbrechen</button>
-        </div>
-    </div>
-</div>
-
-<div id="iconModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal">
-        <h3>IP-Symcon Icon auswählen</h3>
-        <div class="modal-search">
-            <input id="iconSearch" placeholder="Icon suchen … z. B. light, temperature, door">
-        </div>
-        <div class="icon-picker-hint">Es werden die von IP-Symcon über /icons.js bereitgestellten Icons verwendet.</div>
-        <div id="iconList" class="variable-list"></div>
-        <div class="modal-actions">
-            <button id="iconAutoBtn" type="button">Icon der Variable übernehmen</button>
-            <button id="iconCloseBtn" type="button">Abbrechen</button>
-        </div>
-    </div>
-</div>
-
-<div id="controlModal" class="modal-backdrop" aria-hidden="true">
-    <div class="control-modal">
-        <h3 id="controlTitle">Gerät bedienen</h3>
-        <div id="controlBody" class="control-body"></div>
-
-    </div>
-</div>
-
-<script>
-__FLOORPLAN_EDITOR_JS__
-</script>
-
-</body>
-</html>
-HTML;
-
-        return str_replace(
-            [
-                '__INSTANCE_ID__',
-                '__EASY_FLOORPLAN_MODULE_URL__',
-                '__FLOORPLAN_EDITOR_JS__'
-            ],
-            [
-                (string) $this->InstanceID,
-                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-                $editorJavaScript
-            ],
-            $html
-        );
     }
-
 
     private function GetVisualizationWebHookAssets(): array
     {
         return [
-            'easy-floorplan.js'
+            'easy-floorplan.js',
+            'floorplan-editor.js',
+            'project.json'
         ];
     }
 
@@ -7347,6 +7329,7 @@ HTML;
             $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?? '');
             $hookPath = '/hook/' . $this->GetVisualizationWebHookBaseAddress();
 
+            // Nur exakt den WebHook dieser Instanz bedienen.
             if ($requestPath !== $hookPath) {
                 http_response_code(404);
                 header('Content-Type: text/plain; charset=utf-8');
@@ -7362,7 +7345,53 @@ HTML;
                 return;
             }
 
-            // Easy-Floorplan bleibt unverändert als Originaldatei im Modulbaum.
+            /*
+             * Dynamische Projekt-/Runtime-Daten werden nicht mehr in die HTML-SDK-
+             * Ausgabe eingebettet. Dadurch kann ein großer Floorplan den Output-
+             * Buffer von GetVisualizationTile() nicht mehr vergrößern.
+             */
+            if ($asset === 'project.json') {
+                $project = $this->AddRuntimeValues($this->GetProject());
+                $payload = json_encode(
+                    $project,
+                    JSON_UNESCAPED_SLASHES
+                    | JSON_UNESCAPED_UNICODE
+                    | JSON_HEX_TAG
+                    | JSON_HEX_AMP
+                );
+
+                if ($payload === false) {
+                    throw new RuntimeException('Floorplan-Projekt konnte nicht serialisiert werden.');
+                }
+
+                header('Content-Type: application/json; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-store, no-cache, must-revalidate');
+                header('Pragma: no-cache');
+                header('Content-Length: ' . strlen($payload));
+                echo $payload;
+                return;
+            }
+
+            /*
+             * Der komplette Floorplan-Editor bleibt Bestandteil dieser module.php.
+             * Er wird nur nicht mehr über GetVisualizationTile() ausgegeben, sondern
+             * bei Bedarf direkt über den WebHook ausgeliefert.
+             */
+            if ($asset === 'floorplan-editor.js') {
+                $source = $this->GetVisualizationEditorJavaScript();
+
+                header('Content-Type: text/javascript; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-cache');
+                header('Content-Length: ' . strlen($source));
+                echo $source;
+                return;
+            }
+
+            /*
+             * Easy-Floorplan bleibt unverändert als Originaldatei im Modulbaum.
+             */
             $path = __DIR__
                 . DIRECTORY_SEPARATOR
                 . 'assets'
@@ -7399,26 +7428,6 @@ HTML;
     public function RequestAction(string $Ident, mixed $Value): void
     {
         switch ($Ident) {
-            case 'loadProject':
-                $project = $this->AddRuntimeValues($this->GetProject());
-                $message = json_encode(
-                    [
-                        'type'    => 'project',
-                        'project' => $project
-                    ],
-                    JSON_UNESCAPED_SLASHES
-                    | JSON_UNESCAPED_UNICODE
-                    | JSON_HEX_TAG
-                    | JSON_HEX_AMP
-                );
-
-                if ($message === false) {
-                    throw new RuntimeException('Floorplan-Projekt konnte nicht serialisiert werden.');
-                }
-
-                $this->UpdateVisualizationValue($message);
-                break;
-
             case 'save':
                 if (!is_string($Value)) {
                     throw new InvalidArgumentException('Floorplan-Daten müssen als JSON-String übergeben werden.');
